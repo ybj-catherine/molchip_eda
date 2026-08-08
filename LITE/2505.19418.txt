@@ -1,0 +1,1550 @@
+Enhancing Test Efficiency through Automated
+ATPG-Aware Lightweight Scan Instrumentation
+
+arXiv:2505.19418v1 [cs.AR] 26 May 2025
+
+Sudipta Paria, Md Rezoan Ferdous, Aritra Dasgupta, Atri Chatterjee and Swarup Bhunia
+Department of Electrical and Computer Engineering, University of Florida, Gainesville, FL, USA
+Email: {sudiptaparia, mdrezoan.ferdous, aritradasgupta, a.chatterjee}ufl.edu, swarup@ece.ufl.edu
+
+Abstract—Scan-based Design-for-Testability (DFT) measures
+are prevalent in modern digital integrated circuits to achieve
+high test quality at low hardware cost. With the advent of 3D
+heterogeneous integration and chiplet-based systems, the role of
+scan is becoming ever more important due to its ability to make
+internal design nodes controllable and observable in a systematic
+and scalable manner. However, the effectiveness of scan-based
+DFT suffers from poor testability of internal nodes for complex
+circuits at deep logic levels. Existing solutions to address this
+problem primarily rely on Test Point Insertion (TPI) in the nodes
+with poor controllability or observability. However, TPI-based
+solutions, while an integral part of commercial practice, come
+at a high design and hardware cost. To address this issue, in
+this paper, we present LITE, a novel ATPG-aware lightweight
+scan instrumentation approach that utilizes the functional flipflops in a scan chain to make multiple internal nodes observable
+and controllable in a low-cost, scalable manner. We provide
+both circuit-level design as well as an algorithmic approach
+for automating the insertion of LITE for design modifications.
+We show that LITE significantly improves the testability in
+terms of the number of patterns and test coverage for ATPG
+and random pattern testability, respectively, while incurring
+considerably lower overhead than TPI-based solutions.
+Index Terms—Design-for-Testability (DFT), Scan Instrumentation, Testability, Observability, Controllability, Test Points, Fault
+Coverage, Automated Test Pattern Generation (ATPG).
+
+I. I NTRODUCTION
+Over the last few decades, advances in fabrication techniques have made it possible to integrate more complex
+systems onto a single silicon chip. While this has brought
+many benefits, it has also introduced a significant challenge:
+testing these systems both after fabrication and during their
+use in the field. The problem lies in the growing complexity
+of the systems being tested, as well as the difficulty in
+accessing the internal parts of these systems. As digital designs
+became more complex, traditional testing methods that rely on
+accessing internal nodes became inefficient, making it difficult
+to observe and control the internal states of modern chips,
+which significantly impacts testability analysis. Testability of
+a design refers to the ability to efficiently and effectively test
+a circuit or system to ensure it performs as intended and to
+detect any faults or defects. Faults can manifest in different
+forms, such as stuck-at faults, and if left undetected, such
+faults can lead to operational malfunctions, increased power
+consumption, or even complete system failure. Scan chains
+improve testability by transforming the internal structure of
+a circuit into a more accessible form. A series of flip-flops
+(FFs) connected in linear sequence allows the circuit to be
+
+shifted into a known state, enabling individual control and
+observation of each flip-flop. This structure simplifies fault
+detection by providing easy access to internal nodes and
+ensuring systematic testing of all nodes in the circuit.
+Recent research into testing complex systems has identified
+several factors contributing to the increasing testing costs.
+These factors include higher costs associated with test pattern
+generation and fault simulation, the growing volume of test
+data that must be stored and processed, and longer test application times. In response to these challenges, several strategies
+have been explored to mitigate the rising testing costs. These
+strategies include the development of more advanced test generation algorithms, the adoption of design for testability (DFT)
+techniques, and the implementation of built-in test methods.
+Built-in Self Test (BIST) [1] and Logic Built-in Self Test
+(LBIST) [2] techniques emerged as popular DFT techniques
+that involve the use of on-chip test pattern generation and
+output response analysis to improve test time with higher
+coverage but suffers due to random-pattern-resistant (RPR)
+faults, which have low detection probabilities resulting in
+limited fault coverage with pseudo-random patterns. Test Point
+Insertion (TPI) [3]–[7] has been studied extensively, which
+inserts extra gates as test points (TPs) into the circuit to
+improve the test coverage. Authors in [8] proposed a method
+that uses functional FFs to drive control test points instead of
+test-dedicated FFs for reducing the area overhead. However,
+TP insertion introduces significant hardware overhead due to
+the insertion of additional logic circuitry and also impacts
+critical path delay, resulting in limited performance for testability improvement. With the emergence of machine learning,
+various ML-based approaches [9]–[12] were proposed for TP
+insertion for test coverage improvement, but they bounded by
+the heuristic algorithm and provide sub-optimal solutions due
+to inaccuracy arises from limited training and does not scale
+well with lack of generalization for larger designs.
+Several behavioral-level DFT approaches at the register
+transfer level (RTL) have been proposed to generate testable
+circuits for partial scan, sequential ATPG, and BIST, including
+modifications to RTL scan selection [13], [14], improvements
+to synthesized circuits [15], and incorporating testability during behavioral synthesis [16]. High-level techniques enhance
+datapath testability, assuming separate controller testing and
+full controllability of control signals in test mode [17]. RTL
+testability analysis methods for sequential ATPG [18] and
+Verilog models [19] improve fault coverage, while VHDL
+testability analysis and test point insertion are discussed in
+
+[20]. Efforts to improve test pattern generation have been made
+at both the gate level and higher abstraction levels. Systems
+like PODEM-X [21] generate tests for large modules (up to
+50,000 gates), while other advanced algorithms have been
+adapted for higher abstraction levels [22], using functional
+blocks or behavioral descriptions. Commercial electronic design automation (EDA) tools can automate test pattern generation and fault simulation by integrating scan chains into the
+design, enabling efficient fault detection and comprehensive
+internal node testing.
+Testability analysis can be limited due to the low controllability and observability of several nets in a circuit, which
+can hinder fault detection and reduce test coverage. TPI
+techniques often result in significant overhead, highlighting
+the need for more efficient DFT methods that minimize the
+area overhead along with the number of test patterns, thereby
+reducing test cycles and overall complexity, especially for
+larger circuits. In this paper, we propose LITE, a Lightweight
+Scan Instrumentation for enhancing the post-silicon Test
+Efficiency in ICs. Fig. 1a demonstrates the traditional scan
+operation, and Fig. 1b illustrates the integration of LITE into
+the existing circuit without altering the original functionality or
+changing the scan path for achieving improved testability. Fig.
+2 represents the generic block diagrams of D flip-flop without
+scan (Fig. 2a), traditional MUX-based scan flip-flop (SFF), as
+shown in Fig. 2b, and the proposed LITE incorporated scan
+flip-flop, as shown in Fig. 2c.
+This paper makes the following major contributions:
+• It presents LITE, a circuit-level scan instrumentation
+technique that incorporates low-overhead additional logic
+to the scan flip-flops to improve the controllability and
+observability of internal nodes that are challenging to
+adequately cover by the scan infrastructure. LITE eliminates the need for dedicated flip-flops to enable test
+point insertion. Instead, it inserts additional logic at
+the input (for enhancing observability) and output (for
+enhancing controllability) of a scan flip-flop to make
+a design more testable at low hardware overhead. The
+modified design is subsequently used by an automatic test
+pattern generation (ATPG) tool, which takes advantage of
+this extra hardware to generate patterns more efficiently,
+leading to reduced patterns and/or higher coverage.
+• It presents an algorithmic process for automatically modifying a scan chain without impacting the scan as well as
+normal mode design functionality. The additional logic
+uses standard cell library elements (e.g., MUX, XOR)
+only, and hence, LITE works for any process technology
+and any library. Consequently, LITE can be seamlessly
+integrated with commercial DFT tool flow.
+• It provides an extensive evaluation of LITE for ATPG
+patterns using a suite of ISCAS89 and ITC99 benchmarks. For ATPG patterns, we show that LITE can
+improve the test pattern count by about 31%.
+• It provides analysis results for random patterns. We show
+that LITE can effectively address the coverage issues
+arising from the random-resistant faults in a design,
+thereby improving the random pattern testability of these
+designs. Such a capability can be very attractive for
+
+built-in-self-test (BIST) solutions, including BIST for
+emerging 3D ICs, which rely on random test patterns
+for self-testing a logic circuit.
+
+(a) Traditional scan operation.
+
+(b) Scan operation with LITE.
+
+Fig. 1: Traditional scan operation and improved scan operation
+with LITE integration in a design.
+
+(a)
+
+(b)
+
+(c)
+
+Fig. 2: Elements of a scan chain: (a) A single original FF
+with no scan. (b) Original FF driven by MUXed logic in
+traditional scan architecture, and (c) The single unit of the
+scan FF integrated with LITE.
+The rest of the paper is organized as follows: Section
+II describes relevant background and motivation behind this
+work; Section III presents the automated insertion of different
+LITE configurations into a netlist; Section IV demonstrates
+the experimental results and analysis on different open-source
+benchmarks showing the effectiveness of LITE instrumentation over traditional ATPG; Section V discusses overhead
+improvements and potential extension of LITE approach; and
+Section VI concludes the paper.
+
+TABLE I: Comparison of the scope and features of LITE with existing scan instrumentation approaches
+Techniques
+TPI Insertion
+e.g. [3], [4], [8]
+Scan Reordering or Gating
+e.g. [23], [24], [25]
+Scan Locking or Obfuscation
+e.g. [26], [27], [28]
+LITE*
+(This work)
+
+Scope
+
+Overhead
+
+Approach
+
+Cov. Imprv.
+
+Test Cycles Imprv.
+
+Compatibility
+
+Improving Testability
+
+Moderate
+
+CC Improvement
+
+High
+
+Medium
+
+ATPG
+
+Improving Test Power
+
+Moderate
+
+Dynamic Reordering
+
+N/A
+
+N/A
+
+ATPG
+
+Improving Scan Security
+
+Low
+
+Authenticate Scan Access
+
+N/A
+
+N/A
+
+ATPG
+
+Improving Testability
+Test Patterns or Coverage
+
+Low
+
+Both CC and Obs
+Improvement
+
+High
+
+High
+
+ATPG, BIST
+
+II. BACKGROUND
+Scan-based DFT has proven to be highly effective for
+improving the structural test efficiency of a design. However,
+with the increasing complexity of modern designs, it faces a
+major challenge to test many internal nodes of a design that
+suffers from poor controllability and/or testability. To address
+this issue, test-point insertion is used as a DFT technique to
+make these nodes more testable during test application, leading
+to reduction in ATPG patterns count and/or improvement in
+test coverage. This is achieved by identifying hard-to-control
+or observe nodes in the design and intercepting with additional
+test point circuitry, which includes combinational logic gates
+and dedicated control/observe flip-flops.
+
+of circuit nodes, identifying areas of low fault coverage,
+and recommending or implementing test point insertion and
+scan design modifications. They can also generate optimized
+test patterns that minimize the number of required patterns
+while maximizing fault coverage. Furthermore, commercial
+tools are capable of analyzing circuits at different abstraction
+levels, from RTL to gate-level netlist, offering flexibility and
+scalability for complex designs. With their ability to simulate
+fault behavior, automate test generation, and provide valuable
+feedback on testability, commercial EDA tools significantly
+reduce manual effort and improve the overall efficiency of the
+test process, ensuring fault-tolerant integrated circuits.
+C. Prevalent Challenges
+
+A. SCOAP Values
+The Sandia Controllability and Observability (SCOAP) [29]
+values help in determining how easily each net (or signal)
+in a circuit can be controlled and observed during testing,
+which are essential aspects of effective test pattern generation
+and fault detection. The SCOAP values can be computed for
+each net in the circuit, which provides a quantitative way of
+assessing how testable the nodes are. They help in guiding test
+point insertion, optimizing test pattern generation, improving
+fault coverage, and enhancing overall testability.
+• Controllability (CC) refers to the difficulty with which a
+signal or node in a circuit can be set to a desired value
+by applying test inputs. Nodes with low controllability
+values denote nodes that are hard-to-control to influence
+the value of 0 or 1. For example, for all primary inputs
+(PIs), the controllability values for setting-to-0 (CC 0)
+and setting-to-1 (CC 1) are both set to 1.
+• Observability (Obs) refers to the ease with which the
+value of a signal or node can be observed or measured
+from the outputs of the circuit. Nodes with high observability (easy-to-observe) implies easy detection during
+testing. For example, for all primary outputs (POs), the
+observability value (CC obs) is set to 0.
+B. Commercial EDA tools for Testability Analysis
+Commercial EDA tools (e.g., Synopsys TestMax, Cadence
+Modus, etc.) integrate advanced algorithms for ATPG, fault
+simulation, and scan chain insertion, enabling efficient detection of manufacturing defects and functional failures and
+providing automated solutions to improve the testability of
+digital circuits. These tools are efficient in performing testability analysis by evaluating the controllability and observability
+
+Testability analysis for larger circuits presents several challenges that impede effective testing and fault detection. One
+of the primary difficulties is the identification of an optimal
+number of low observability and low controllability nets, as
+well as the optimal placement of test points strategically
+to enhance observability and controllability. However, this
+process is not straightforward, as it requires balancing between maximizing fault coverage and minimizing the area
+overhead. The insertion of test points introduces significant
+area overhead, which can adversely affect the circuit’s critical
+path, impacting performance and timing. Furthermore, the
+number of test point insertions can become excessive, leading
+to an increase in design size and complexity. Commercial
+EDA tools are equipped with automated test pattern generation
+capabilities but often struggle with incomplete fault analysis
+or reduced fault coverage and a significantly large number
+of undetected faults. The sheer volume of patterns needed
+for large designs leads to substantial test cycles, making
+the testing process time-consuming and resource-intensive.
+Additionally, commercial ATPG tools may fail to provide
+optimal test pattern sets, covering different fault models for
+complex circuits. Therefore, improving testability analysis
+with the reduction in the number of patterns with acceptable
+area overhead requires the integration of more scalable and
+robust DFT techniques that can be integrated with commercial
+EDA tools for achieving optimal performance for complex
+circuits.
+D. Motivation
+Table I compares the LITE approach with existing scan
+instrumentation approaches which vary in terms of scope
+and features. The primary goal of these approaches varies
+
+Fig. 3: Integrating LITE into the existing ASIC design flow and interfacing with commercial DFT tool (e.g., Synopsys TestMax)
+for improved testability.
+considerably, which includes testability (test coverage or pattern count), test power, and security improvement. Testability
+improvement solutions essentially rely on judicious insertion
+of controllable/observable test points using dedicated flip-flops
+or input/output ports. Some earlier work has attempted using a
+combination of dedicated and functional flip-flops, particularly
+for controllable TP insertion [8]. However, as discussed in
+Section II.C, existing TPI solutions come at high hardware
+overhead that impacts their scalability, may impact test time
+due to dedicated flip-flops in the scan chain, and do not
+typically consider improving random pattern testability. Hence,
+there is a critical need to augment the scan architecture that
+addresses the above challenges associated with TP insertion.
+The proposed LITE approach addresses the above challenges
+by introducing a systematic approach to scan instrumentation
+to enhance both ATPG and random pattern testability at much
+lower hardware cost than TP insertion approaches.
+III. P ROPOSED M ETHODOLOGY
+In this section, we present the automated flow for insertion
+of LITE into any gate-level netlist and illustrate different
+LITE configurations for improving test efficiency.
+Fig. 3 presents the integration of LITE into the generic
+IC design flow and highlights the baseline and improved
+testability analysis with LITE. Algorithm 1 demonstrates the
+sequence of steps involved for inserting LITE into any given
+netlist (IN ). Now we briefly describe the major stages of
+the proposed automated toolflow for incorporating LITE into
+any RTL or gate-level design with the flexibility to select the
+preferred configuration (θ) ∈ {Config1 Obs, Config2 Obs,
+Config1 Obs CC, Config2 Obs CC} and generate the updated netlist with LITE, as discussed below.
+A. Hypergraph Generation and Topological Sort
+The automated toolflow generates hypergraph G for the
+given input gate-level netlist IN with the graph represented
+as: G = (V, E) such that V denotes the set of gates in the
+design and E represents the interconnects between the gates.
+The proposed toolflow employs topological sorting of the
+hypergraph G for generating the linear ordering of vertices
+such that for each pair of vertices {u − v} with a directed
+edge, u must come before v in the ordering. The topologically
+sorted graph GT ensures that combinational loops are avoided
+and that the correct ordering of vertices is maintained.
+
+B. SCOAP Analysis
+The automated toolflow incorporates the calculation of
+Sandia Controllability and Observability (SCOAP) Values [29]
+to identify the low controllable and low observable nets. Nets
+with low controllability values denote hard-to-control to the
+value of 0 or 1. Nodes with low observability values imply
+hard-to-observe detection during testing. The low controllable
+nets are appended to either CC 0 or CC 1 based on the hard
+controllability value of 0 or 1, respectively, while low observable nets are appended to CC obs for further analysis in the
+subsequent stages.
+C. LITE Insertion
+• LITE: Config1 Obs
+This configuration selects two less observable nets (obs1
+and obs2 ) based on SCOAP values from the sorted list CC obs
+such that the topological order is satisfied and the conflictPI analysis yields True denoting these two nets are nonconflicting without contradictory values for PIs. The selected
+nets are routed to an XOR2 gate, followed by a 2 × 1 MUX.
+The original logic, previously connected to the D input of
+the scan FF, is now connected to the MUX 0 input. The
+output of the XOR gate is routed to the MUX 1 input. Each
+MUX is controlled by a common select (sel) line configured
+as an additional PI. Fig. 4a illustrates the circuit diagram
+of Config1 Obs configuration with the additional logic for
+LITE marked in green.
+• LITE: Config2 Obs
+This configuration selects one less observable net (obs1 )
+based on SCOAP values from the sorted list CC obs such that
+the topological order is satisfied. The selected net is then
+routed to an XOR2 gate with other input connected to the
+original logic, previously connected to the D input of the scan
+FF. The XOR gate is followed by a 2 × 1 MUX with original
+logic and XOR output connected to the MUX 0 and MUX 1
+inputs, respectively. The select line (sel) is set to value 1. Fig.
+4b shows the circuit diagram of Config2 Obs configuration
+with the additional logic for LITE marked in green.
+• LITE: Config1 Obs CC
+To improve the testability further, we consider the low
+controllable nets to values 0 or 1 from the sorted lists CC 0 and
+CC 1 , respectively. The circuit architecture of Config1 Obs is
+extended with an additional 2 × 1 MUX at the Q output of the
+scan FF, with the same connected to MUX 0 and the one of
+
+(a) LITE: Config1 Obs.
+
+(b) LITE: Config2 Obs.
+
+Fig. 4: LITE: Configuration with observability improvement
+logic (no CC).
+
+controlling the values of low observable nodes during pattern
+generation. The addition of MUX allows the original logic
+to be combined with the newly controlled logic. This method
+ensures that various states of the circuit can be accessed and
+monitored more easily, even for previously difficult-to-test
+points. The XOR operation enables the injection of specific
+signal variations without altering the original functionality,
+and the MUX allows for switching between the original
+and modified logic paths. By leveraging this combination,
+it becomes possible to more effectively target and detect
+faults across the circuit, which leads to the generation of
+more efficient and compact test patterns. Alternatively, we can
+employ XNOR gate instead of XOR since both of them exhibit
+unique equiprobable masking effects without any bias.
+D. LITE-inserted Netlist Generation
+The automated toolflow translates the modified hypergraph
+after insertion of LITE at respective positions for the given
+configuration (θ) into gate-level netlist SN by analyzing and
+extracting the necessary connectivity information and arrangement of gates and their interconnections. The generated netlist
+can be directly used by EDA tools for improved testability
+analysis and further stages of IC design flow.
+
+(a) LITE: Config1 Obs CC.
+
+(b) LITE: Config2 Obs CC.
+
+Fig. 5: LITE: Configuration with observability (Obs.) and
+controllability (CC) improvement logic.
+the low controllable selected nodes to MUX 1 port. For each
+insertion, one low controllable node is selected from either CC 0
+or CC 1 alternatively. Each MUX is controlled by a common
+select (sel cc) line configured as an additional PI. Fig. 5a
+depicts the circuit diagram of Config1 Obs CC configuration
+with Config1 Obs marked in green and the additional logic
+for controllability marked in blue.
+• LITE: Config2 Obs CC
+Similar to Config1 Obs CC, we also extend the
+Config2 Obs to improve testability by including low
+controllable nets selected alternatively from CC 0 and CC 1 ,
+respectively. The additional 2 × 1 MUX is placed in such
+a way that MUX 0 is connected to the Q output of the
+scan FF, while MUX 1 port is connected to the selected
+low controllable net driven by a common select (sel cc) line
+configured as an additional PI. Fig. 5b presents the circuit
+diagram of Config2 Obs CC configuration with Config2 Obs
+marked in green and the additional logic for controllability
+marked in blue.
+• Rationale for Selecting XOR and MUX in LITE
+By introducing XOR gates, low-observable and lowcontrollable points in the circuit can be dynamically manipulated by ATPG to achieve desired values, thereby improving
+the controllability and observability of such hard-to-observe
+nets. XOR gate exhibits a unique equiprobable masking effect
+when its inputs are randomly distributed. This property ensures
+that the XOR gate does not bias the output towards a specific
+value, unlike AND and OR gates. XOR gates help improve
+fault coverage by providing an additional degree of freedom in
+
+Algorithm 1: LITE insertion
+Input : Netlist (IN ), Config (θ)
+Output: Updated netlist with LITE (SN )
+1 G ← parse IN and construct hypergraph G = {V, E}
+T
+2 G
+← topological sort(G)
+3 CC 0 , CC 1 , CC obs ← scoap analysis(G, GT )
+4 if θ is config1 Obs then
+5
+obs1 , obs2 ← select nets obs(CC obs )
+6
+if check topo order(GT , obs1 , obs2 ) and
+check conflict pi(G, obs1 , obs2 ) then
+7
+G ← insert LITE(G, obs1 , obs2 , θ)
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+
+else if θ is config2 Obs then
+obs1 ← select nets obs(CC obs )
+if check topo order(GT , obs1 ) then
+G ← insert LITE(G, obs1 , θ)
+if θ is config1 Obs CC or config2 Obs CC then
+cc0 , cc1 ← select nets cc(CC 0 , CC 1 )
+if check topo order(GT , cc0 , cc1 , F Fout ) then
+G ← insert LITE(G, cc0 , cc1 , F Fout , θ)
+SN ← write verilog from graph(G)
+return SN
+IV. R ESULTS AND A NALYSIS
+
+In this section, we present our experimental setup and
+describe the results obtained on multiple open-source benchmarks that demonstrate the robustness and efficacy of the proposed LITE instrumentation for testability and fault coverage.
+We also compare the PPA (Power, Performance, Area) overhead values, fault coverage, and testability metrics observed
+from different configurations of our proposed approach against
+the traditional ATPG-based DFT setup as a baseline.
+
+TABLE II: Design specifications and fault coverage metrics for the evaluation benchmarks.
+Design
+s9234
+s13207
+s15850
+s38584
+s38417
+b17
+b18
+b19
+b20
+b22
+Average
+♦
+
+Source
+
+ISCAS891
+
+ITC992
+
+#PIs
+42
+68
+83
+44
+32
+41
+40
+49
+36
+36
+47
+
+#POs
+40
+153
+151
+305
+107
+97
+24
+31
+23
+23
+95
+
+Gate-Level Netlist♦
+#FFs #Gates
+Area (µm2 )
+145
+729
+6880.35
+625
+2315
+24850.08
+513
+2721
+23403.70
+1275
+7950
+70654.01
+1564
+7617
+65455.28
+1322
+11700
+104707.92
+3030
+34458
+325823.74
+6062
+63187
+583205.58
+430
+4838
+44398.83
+613
+7337
+64977.32
+1558
+14285
+131435.68
+
+Delay (ns)
+2.14
+3.46
+4.87
+3.59
+2.29
+8.77
+8.64
+8.25
+8.78
+7.78
+5.86
+
+Fault Coverage and Testability Analysis (Baseline ATPG)
+DT⋆
+Cov%⋆
+#Patterns
+#Cycles
+ASS%⋆
+ACS%⋆
+4654
+100%
+186
+27671
+49.40%
+34.36%
+14172
+100%
+453
+284939
+48.66%
+24.31%
+17050
+100%
+587
+303385
+48.31%
+30.55%
+51997
+100%
+837
+1070811
+48.27%
+24.32%
+48178
+100%
+1198
+1878777
+47.59%
+26.30%
+87864
+100%
+2950
+3910071
+46.65%
+10.63%
+250544
+100%
+6309
+19138167
+46.93%
+10.90%
+464592
+100%
+11734
+71172637
+47.61%
+9.51%
+35083
+100%
+772
+334705
+47.07%
+15.58%
+53082
+100%
+1101
+678827
+47.68%
+14.71%
+102722
+100%
+2613
+9879999
+47.82%
+20.12%
+
+Values obtained for gate-level netlist (mapped to SkyWater 130nm3 ); reported by the synthesis tool.
+DT: Detected stuck-at faults; Cov%: Percent of DT covered; ASS: Average Shift Switching; ACS: Average Capture Switching; reported by the ATPG tool.
+
+⋆
+
+TABLE III: Testability (# Patterns and # Cycles) improvements under different configurations in LITE.
+Design
+s9234
+s13207
+s15850
+s38584
+s38417
+b17
+b18
+b19
+b20
+b22
+Average
+
+Config1 Obs
+Improv.
+#Patterns
+6762 (100%)
+8.06%
+23092 (100%)
+24.72%
+24516 (100%)
+37.82%
+69958 (100%)
+17.08%
+70002 (100%)
+55.01%
+106228 (100%)
+13.56%
+292205 (100%)
+1.95%
+548726 (100%)
+13.99%
+41069 (100%)
+33.42%
+61611 (100%)
+33.42%
+124417 (100%)
+23.90%
+DT (Cov%)⋆
+
+(%)▲
+#Cycles
+8.03%
+24.63%
+37.75%
+17.06%
+54.96%
+13.55%
+1.95%
+13.99%
+33.38%
+33.39%
+23.87%
+
+Config2 Obs
+Improv.
+#Patterns
+6337 (100%)
+16.13%
+21333 (100%)
+40.84%
+23033 (100%)
+39.35%
+66619 (100%)
+23.42%
+65409 (100%)
+53.34%
+102406 (100%)
+18.98%
+283892 (100%)
+2.68%
+531270 (100%)
+11.14%
+39817 (100%)
+34.84%
+59829 (100%)
+32.79%
+119995 (100%)
+27.35%
+DT (Cov%)⋆
+
+(%)▲
+#Cycles
+16.06%
+40.72%
+39.28%
+23.38%
+53.30%
+18.98%
+2.68%
+11.14%
+34.80%
+32.76%
+27.31%
+
+Config1 Obs CC
+Improv.
+#Patterns
+7900 (100%)
+11.83%
+28065 (100%)
+46.58%
+28591 (100%)
+44.46%
+80104 (100%)
+44.56%
+82273 (100%)
+67.20%
+116775 (100%)
+8.78%
+316352 (100%)
+10.68%
+597117 (100%)
+19.97%
+44466 (100%)
+30.57%
+66423 (100%)
+33.61%
+136807 (100%)
+31.82%
+DT (Cov%)⋆
+
+(%)▲
+#Cycles
+11.77%
+46.45%
+44.39%
+44.51%
+67.14%
+8.78%
+10.68%
+19.97%
+30.53%
+33.58%
+31.78%
+
+Config2 Obs CC
+Improv.
+#Patterns
+7456 (100%)
+14.52%
+26185 (100%)
+48.12%
+26906 (100%)
+37.14%
+76645 (100%)
+45.52%
+76822 (100%)
+53.17%
+102406 (100%)
+18.98%
+307881 (100%)
+10.14%
+579267 (100%)
+22.40%
+39817 (100%)
+34.84%
+59829 (100%)
+32.79%
+130321 (100%)
+31.76%
+DT (Cov%)⋆
+
+(%)▲
+#Cycles
+14.46%
+47.99%
+37.07%
+45.47%
+53.13%
+18.98%
+10.14%
+22.40%
+34.80%
+32.76%
+31.72%
+
+▲
+
+Percentage improvements in #Patterns and #Cycles compared to Baseline ATPG.
+DT (Cov%): Detected stuck-at faults and the corresponding test coverage; reported by the ATPG tool. The higher fault counts correspond to the combinational logic
+(XOR/MUX) added by LITE, and are proportional to the #FFs in the scan chain.
+
+⋆
+
+A. Experimental Setup
+LITE was evaluated using multiple open-source IPs from
+the ISCAS891 and ITC992 benchmark suites. Synopsys Design
+Compiler (V-2023.12-SP5) was used to map the input RTL
+or gate-level netlist to the Skywater 130nm3 standard cell
+library and insert the DFT scan chain. To calculate the PPA
+metrics and overhead, all synthesis steps were constrained to
+an operating clock frequency of 100 MHz. Synopsys VCS
+(V-2023.12) was used to simulate the design functionality
+during the rareness (SCOAP) and coverage analysis steps.
+Synopsys TestMAX (V-2023.12-SP5) was used to generate
+the test patterns for fault coverage via ATPG. All of our
+experiments were performed on a Red Hat Enterprise Linux
+Server 7.9 operating system with an AMD® Epyc 7713 64core processor and 1007.6 GiB memory.
+B. Evaluation Benchmarks
+The gate-level design specifications reported by the synthesis tool for the evaluation benchmarks, along with the
+corresponding fault coverage and testability analysis metrics
+reported by the ATPG tool, are listed in Table II. The gate/FF
+counts, area, and delay values are representative of the nominal
+variants of the standard cells from SkyWater 130nm and
+not the NAND2 gate-equivalent values. We choose five large
+benchmarks each from ISCAS89 and ITC99, with a wide
+1 https://ddd.fit.cvut.cz/www/prj/Benchmarks/
+2 https://github.com/cad-polito-it/I99T
+3 https://github.com/google/skywater-pdk
+
+range of functionalities to ensure that our analysis is fair
+and comprehensive. On average, the evaluation benchmarks
+have ≈ 14.23 K (thousand) combination gates and ≈ 1.56 K
+sequential FF, with 47 PIs and 95 POs. The DFT scan chain
+is inserted by the synthesis tool, and the resulting netlists
+have an area of ≈ 131.44 K (µm2 ) with a delay of 5.86
+ns on average, which satisfies the synthesis constraints. The
+number of detected stuck-at faults (DT) varies from 4.65 K
+(s9234) up to 464.59 K (b19), with 100% test coverage for
+each benchmark, for which the ATPG tool generated between
+186 (s9234) and 11.73 K (b19) directed test patterns. The total
+test cycle count varies from 276.71 K for s9234 to 71.17 M
+(million) for b19. The average switching values reported by the
+ATPG tool for shifting (ASS) and capture (ACS) are 47.82%
+and 20.12%, respectively, when averaged over all evaluation
+benchmarks and can be used to estimate the switching power
+generated during the post-silicon validation at a testing facility.
+C. LITE vs. Baseline ATPG
+1) Comparing Fault Coverage and Testability: Table III
+presents the fault coverage and testability metrics reported
+by the ATPG tool for 4 different configurations in LITE:
+(1) Config1 Obs, (2) Config2 Obs, (3) Config1 Obs CC
+and (4) Config2 Obs CC. For each configuration, the total
+count of detected stuck-at faults (DT) increases compared to
+the baseline due to the combinational logic (XOR and MUX)
+introduced by LITE to the DFT scan chain and is directly
+proportional to the #FFs present in the scan chain. Moreover,
+test coverage (Cov) remains at 100% for each evaluation
+
+TABLE IV: Gate-level hardware overheads and average switching results under different configurations in LITE.
+Design
+s9234
+s13207
+s15850
+s38584
+s38417
+b17
+b18
+b19
+b20
+b22
+Average
+♦
+
+Config1 Obs
+Overhead (x)♦
+ASS%⋆
+Area
+Delay
+1.53x
+1.10x
+49.02%
+1.60x
+0.82x
+46.66%
+1.59x
+0.66x
+47.08%
+1.57x
+0.88x
+47.02%
+1.50x
+1.05x
+47.68%
+1.26x
+1.33x
+46.02%
+1.06x
+2.11x
+46.75%
+1.14x
+1.88x
+47.19%
+1.09x
+2.24x
+47.09%
+1.10x
+2.52x
+47.25%
+1.34x
+1.46x
+47.18%
+
+ACS%⋆
+40.71%
+42.89%
+41.24%
+36.61%
+36.08%
+19.76%
+14.62%
+18.60%
+24.69%
+22.24%
+29.74%
+
+Config2 Obs
+Overhead (x)♦
+ASS%⋆
+Area
+Delay
+1.53x
+1.05x
+49.14%
+1.60x
+0.80x
+48.74%
+1.59x
+0.64x
+49.46%
+1.57x
+0.57x
+49.62%
+1.50x
+1.04x
+49.79%
+1.26x
+1.35x
+49.56%
+1.06x
+1.95x
+50.12%
+1.14x
+1.83x
+49.86%
+1.09x
+2.05x
+49.43%
+1.10x
+2.32x
+49.42%
+1.34x
+1.36x
+49.51%
+
+ACS%⋆
+51.49%
+48.39%
+50.32%
+46.68%
+46.07%
+54.78%
+47.82%
+52.84%
+48.51%
+47.13%
+49.40%
+
+Config1 Obs CC
+Overhead (x)♦
+ASS%⋆
+ACS%⋆
+Area
+Delay
+1.77x
+2.02x
+48.98%
+35.12%
+1.89x
+1.91x
+47.54%
+42.51%
+1.84x
+1.54x
+47.55%
+41.33%
+1.82x
+1.58x
+47.68%
+37.46%
+1.72x
+2.85x
+47.79%
+37.31%
+1.40x
+1.74x
+42.70%
+30.67%
+1.17x
+2.73x
+41.74%
+29.05%
+1.25x
+2.74x
+43.70%
+30.18%
+1.19x
+2.46x
+48.12%
+22.45%
+1.20x
+2.70x
+48.29%
+21.22%
+1.53x
+2.23x
+46.41%
+32.73%
+
+Config2 Obs CC
+Overhead (x)♦
+ASS%⋆
+ACS%⋆
+Area
+Delay
+1.77x
+1.96x
+49.40%
+49.46%
+1.89x
+1.86x
+49.33%
+47.03%
+1.84x
+1.55x
+49.76%
+50.21%
+1.82x
+1.50x
+49.82%
+41.38%
+1.72x
+2.85x
+49.77%
+43.98%
+1.26x
+1.35x
+49.56%
+54.78%
+1.17x
+2.70x
+50.51%
+48.33%
+1.25x
+2.74x
+49.73%
+51.65%
+1.09x
+2.05x
+49.43%
+48.51%
+1.10x
+2.32x
+49.42%
+47.13%
+1.49x
+2.09x
+49.67%
+48.25%
+
+Overheads calculated as x times the original value; reported by the synthesis tool.
+Average Shift Switching (ASS) and Average Capture Switching (ACS) as the percentage of total DFT scan length; reported by the ATPG tool.
+
+⋆
+
+benchmark across all 4 configurations, implying that all faults,
+including the new ones added due LITE, are successfully
+covered by the test patterns generated by the ATPG.
+From Table III, it can be seen that for all configurations
+of LITE, the number of test patterns (#Patterns) and the
+total number of test cycles required (#Cycles) both improve
+(reduce) significantly for each evaluation benchmark, resulting
+in better testability across the board. On average, Config2 Obs
+provides better observability (and hence better testability)
+than Config1 Obs, which is reflected by the improvement
+(reduction) in both #Patterns and #Cycles by equivalent margins. The additional controllability in Config1 Obs CC and
+Config2 Obs CC improves the testability further, and as a
+result, both #Patterns and #Cycles improves (reduces), as
+observed from their respective columns in Table III. Interestingly, the difference in testability improvement between
+Config1 Obs and Config2 Obs goes away, resulting in equivalent #Patterns and #Cycles between Config1 Obs CC and
+Config2 Obs CC, with the former providing the best overall
+improvement in both #Patterns and #Cycles, which reduce
+by the average margins of 31.82% and 31.78%, respectively,
+compared to the baseline ATPG setup.
+2) Overhead Analysis: Table IV presents the hardware
+overheads for the 4 different configurations in LITE, calculated using the gate-level area and delay values reported by
+the synthesis tool. The overheads are expected due to the additional logic used for the scan modifications in LITE, but are
+within acceptable margins. Moreover, the area overheads incurred by LITE are much lower than the traditional approach
+to improve testability, as discussed in the next section. Since
+the scan modifications for Config1 Obs and Config2 Obs
+are implemented using an identical set of logic gates, the
+corresponding area overheads are the same. Similarly, the area
+overheads for Config1 Obs CC and Config2 Obs CC are
+also identical for the ISCAS89 benchmarks, and those for
+ITC99 are also very close to each other, with minor variations
+due to timing constraints. The average switching values for
+scan shifting (ASS) and scan capture (ACS), reported by the
+ATPG tool as a fraction (%) of the total length DFT scan
+chain (#FFs), are directly proportional to the switching power
+consumption during testing and can be used to estimate the
+overall test power. We observe that the scan chain modifications introduced by LITE have a negligible impact on the
+cumulative value of ASS% across all configurations, which
+
+is expected since the length of the scan chain (and hence
+the number of shifts required per pattern) remains the same.
+However, ACS% increases significantly compared to baseline
+ATPG values, with the maximum capture switching observed
+for Config2 Obs. The increase in ACS% can be explained
+by the presence of the XOR gates added to the input of each
+SFF in LITE, as the XOR gate switches with a probability of
+50% for random inputs. In particular, the scan modifications in
+Config2 Obs and Config2 Obs CC, as seen in Fig. 4b and
+Fig. 5b respectively, are more likely to switch during scan
+capture as the original logic is activated more frequently.
+
+(a) Control 0 Test Point Insertion.
+
+(b) Control 1 Test Point Insertion.
+
+(c) Observable Test Point Insertion.
+
+Fig. 6: Test Point Insertion for hard-to-control and hard-toobserve points.
+
+(a) Fault Coverage for s13207 using Random Test Patterns.
+
+(b) Fault Coverage for s38417 using Random Test Patterns.
+
+(c) Fault Coverage for b19 using Random Test Patterns.
+
+(d) Fault Coverage for b22 using Random Test Patterns.
+
+Fig. 7: Fault coverage using random test patterns for ISCAS89 and ITC99 benchmarks: (a) s13207, (a) s38417, (c) b19, and
+(d) b22. The fault coverage with randomly generated test patterns improves significantly in LITE due to its ability to sensitize
+random-resistant faults, compared to the baseline ATPG.
+Gate/FF
+DFF
+SDFF
+INV2
+AND2
+MUX2
+XOR2
+
+Area (µm2 )
+20.02
+26.28
+3.76
+6.26
+11.26
+8.76
+
+Type
+CC
+Obs
+CC+Obs
+
+Trad. TPI
+36.28
+32.53
+36.28
+
+LITE
+11.26
+20.02
+31.28
+
+Improv. (%)
+69%
+38%
+14%
+
+CC: Controllability ⇔ LITE : {Config1/Config2} CC
+Obs: Observability ⇔ LITE : {Config1/Config2} Obs
+CC + Obs: Combined ⇔ LITE : {Config1/Config2} Obs CC
+
+TABLE V: Gate/FF area for SkyWater 130nm std. cell lib.
+(left) and area comparison between traditional TPI and the
+proposed LITE approach (right).
+D. Area Comparison with State-of-the-art TPI Techniques
+Test points refer to the points/nets where the commercial
+EDA tools (e.g., Synopsys TestMAX) insert additional logic
+to improve the testability of the design. The primary goal
+of TPI is to increase the observability and controllability of
+internal nodes within a circuit, which are otherwise difficult
+to access directly during testing. Fig. 6a and 6b demonstrate
+control 0 or control 1 test points, respectively, which allow
+hard-to-control signals to be controllable for some test vectors
+for testability improvement. Fig. 6c illustrates observable test
+point insertion, which is typically inserted at hard-to-observe
+signals in a design to reduce the number of test patterns and
+increase coverage.
+State-of-the-art TPI techniques [3], [8] lead to an increase in
+design area due to additional logic and can potentially impact
+the critical path due to the additional functional FFs, resulting
+in extra routing. In our proposed approach, LITE incorporates
+XOR and MUX for observability improvement and only MUX
+
+for controllability improvement without adding any additional
+sequential elements. The combinational logic introduced by
+LITE adds in additional area and delay overhead, but it
+doesn’t impact the critical path delay. Table V provides a
+comparative analysis of additional area overhead incurred by
+state-of-the-art TPI and proposed LITE approach for improving controllability, observability, and both calculated using
+cell area values for different gates and FFs from Skywater
+130nm3 std. cell library. We observe that LITE substantially
+outperforms TPI techniques in terms of area overhead, making it a more practical and efficient solution for testability
+improvement for larger designs.
+E. Improved Test Coverage with Random Patterns
+In our analysis of fault coverage using varying numbers
+of random test patterns generated by ATPG, we compared
+the baseline design utilizing traditional scan flip-flops with
+LITE-inserted designs. Figure 7 illustrates the test coverages
+achieved for varying numbers of test patterns, ranging from
+500 to 100K, across four different-sized benchmarks with two
+from ISCAS89 (Fig. 7a and 7b) and two from ITC99 (Fig. 7c
+and 7d). We observed a significant improvement in fault coverage for LITE-inserted designs with both Config1 Obs CC
+and Config2 Obs CC configurations outperforming the baseline. Notably, more than 95% coverage was achieved with
+approximately 50,000 test patterns, while the baseline design
+could only achieve a lower coverage within the same number
+
+of patterns. As the number of patterns increased, the coverage
+approached 100%, which highlights the efficacy of LITE in
+improving testability. This improvement in fault coverage in
+LITE also indicates the minimization of the impact by RPR
+faults, which significantly impacts the coverage in traditional
+scan-based designs or modified designs using TPI techniques.
+Moreover, the essential observation is the higher coverage
+achieved with a lower number of test patterns, which implies a
+reduction in the test cycles required for complex designs. This
+reduction is particularly beneficial for large-scale designs, as it
+significantly improves testing efficiency without compromising
+fault coverage.
+F. Performance Analysis for Varying XOR Sizes
+We analyzed the performance of XOR gates by varying the
+input size from 2 to 5, aiming to comprehend how increasing
+input sizes impact testability analysis. As the input size grows,
+we can include more low observable nets in the XOR inputs
+of the proposed LITE configurations, allowing for increased
+net consideration to improve testability. Fig. 8 shows that
+increasing the XOR input size contributes to reducing the
+number of test patterns, implying the reduction in the number
+of test cycles needed without impacting the fault coverage for
+two ISCAS89 benchmarks (s13207 and s38417). However, this
+reduction in test patterns comes at the cost of increased area
+overhead, as larger input sizes lead to a higher area footprint.
+Notably, we observed that beyond XOR5, further increases in
+input size result in saturation in terms of pattern improvement
+percentage. This highlights a trade-off between achieving
+higher pattern improvement and managing area overhead.
+Consequently, designers must carefully balance these factors
+when selecting the optimal XOR gate size based on the specific
+requirements and available resources. Our proposed automated
+toolflow offers flexibility to allow designers to specify the
+desired XOR size for the respective LITE configuration and
+generate LITE-inserted netlists for efficient testability analysis.
+For our analysis, we selected XOR2 since it offers considerable pattern improvement (≈ 30%) while incurring the lowest
+area overhead (≈ 1.5 × org) compared to larger sizes of XOR.
+
+(a) Improving #Patterns (⇈) and Increasing Area Overhead (⇊) vs
+XOR Size (2 − 5) for s13207 benchmark.
+
+(b) Improving #Patterns (⇈) and Increasing Area Overhead (⇊) vs
+XOR Size (2 − 5) for s38417 benchmark.
+
+Fig. 8: Performance analysis for varying sizes of XOR up to 5
+inputs for ISCAS89 benchmarks: (a) s13207, and (b) s38417.
+
+In this section, we discuss avenues to further improve the
+hardware overhead in LITE and future research directions
+with respect to its extension in other areas.
+
+number of low-observable or low-controllable nodes) with the
+additional testability-enhancement logic. While this approach
+is effective in improving testability, an optimal choice of SFFs
+for the proposed instrumentation can entail further reduction in
+overhead while maintaining the testability improvement. This
+can be accomplished through an iterative approach, where
+the SFF selection and test generation run in a loop, and
+the selection of a specific SFF is guided by the impact on
+testability. It is also possible to formulate the SFF selection
+problem as a combinatorial optimization (CO) problem and
+solve it with an appropriate CO solver.
+
+A. Further Improvement of LITE Overhead
+
+B. Extension of LITE
+
+While LITE improves the overhead compared to traditional
+test point insertion approaches, there are several opportunities
+to further reduce the hardware overhead. These include the
+following two solutions. First, the multiplexer and XOR logic
+inserted for a scan flip-flop for observability improvement
+can be integrated into the scan chain and custom-designed
+as a library cell. We anticipate 30-40% area reduction of
+this logic through custom design based on our analysis of
+active area (W×L of the transistors) and layout area of the
+SkyWater 130nm library. Second, the current implementation
+of LITE aims at augmenting most of the scan flip-flops (except
+for the ones for which specific criteria, such as inadequate
+
+The proposed approach can be extended in many ways.
+First, the additional logic for improving controllability can
+be used to minimize test power during scan shift operation.
+This can be achieved by controlling the multiplexer at the out
+of SFF to disable switching in combinational logic. Second,
+LITE can be attractive for improving the test efficiency of
+chiplet-based 3D ICs, where high-density I/O creates significant test challenges with respect to managing thermal issues
+and poor structural test coverage. The higher density of I/O and
+the addition of 3D interconnects usually necessitate a greater
+number of TPs, which can increase test time and complexity.
+Since LITE can greatly enhance both ATPG and random
+
+V. D ISCUSSION
+
+pattern testability, as shown in Fig. 7, it can be used in the
+chiplets as a low-overhead alternative to TPs. Further, it can
+assist 3D IC BIST infrastructure in achieving efficient selftesting of the chiplets as well as inter-chiplet communications.
+It can also be integrated with scan protection techniques like
+[28] for improved scan chain security with test efficiency. We
+plan to explore possible extensions of LITE in the directions
+noted above in our future work.
+VI. C ONCLUSION
+We have presented LITE, a lightweight scan instrumentation technique that incorporates additional logic into functional scan flip-flops to achieve significant improvement in
+the testability of a design. It connects a set of select internal
+nodes to the scan infrastructure through additional logic and
+then employs conventional ATPG to generate test patterns
+more efficiently. We have provided detailed circuit-level implementation for the LITE approach for both controllability and
+observability improvement and described algorithmic steps to
+automatically incorporate the design modifications. We have
+also shown how LITE interfaces with commercial ATPG
+tools (e.g., Synopsys TestMax) and how the proposed design
+modifications can be implemented using commercial ASIC
+design tool flow and standard cell library. LITE does not alter
+the functionality of the normal mode, nor does it alter the test
+application process of a design. Using a suite of ISCAS89 and
+ITC99 benchmarks, we have demonstrated LITE is effective
+in significantly improving the number of patterns for ATPGbased testing and coverage for random pattern testing. Compared to TP-based approaches for testability improvement, it
+reduces the overhead by 14%–69%. Our future work will
+include custom scan cell design for LITE and optimal SFF
+selection for scan augmentation to further reduce the hardware
+overhead, extension of the proposed approach to 3D chipletbased systems to address its test challenges, and analysis of
+the LITE approach efficacy in test power improvement.
+R EFERENCES
+[1] E. McCluskey, “Built-In Self-Test Techniques,” IEEE Des. Test,
+vol. 2, no. 2, p. 21–28, Mar. 1985. [Online]. Available:
+https://doi.org/10.1109/MDT.1985.294856
+[2] M. He, G. K. Contreras, D. Tran, L. Winemberg, and M. Tehranipoor,
+“Test-Point Insertion Efficiency Analysis for LBIST in High-Assurance
+Applications,” IEEE Transactions on Very Large Scale Integration
+(VLSI) Systems, vol. 25, no. 9, pp. 2602–2615, 2017.
+[3] M. Williams and J. Angell, “Enhancing Testability of Large-Scale Integrated Circuits via Test Points and Additional Logic,” IEEE Transactions
+on Computers, vol. C-22, no. 1, pp. 46–60, 1973.
+[4] B. Krishnamurthy, “A dynamic programming approach to the test
+point insertion problem,” in Proceedings of the 24th ACM/IEEE
+Design Automation Conference, ser. DAC ’87. New York, NY, USA:
+Association for Computing Machinery, 1987, p. 695–705. [Online].
+Available: https://doi.org/10.1145/37888.38000
+[5] N. Tamarapalli and J. Rajski, “Constructive multi-phase test point insertion for scan-based BIST,” in Proceedings International Test Conference
+1996. Test and Design Validity, 1996, pp. 649–658.
+[6] D. Das and N. Touba, “Reducing test data volume using external/LBIST
+hybrid test patterns,” in Proceedings International Test Conference 2000
+(IEEE Cat. No.00CH37159), 2000, pp. 115–122.
+[7] S. Roy, B. Stiene, S. K. Millican, and V. D. Agrawal, “Improved
+pseudo-random fault coverage through inversions: a study on test point
+architectures,” Journal of Electronic Testing, vol. 36, pp. 123–133, 2020.
+[8] J.-S. Yang, B. Nadeau-Dostie, and N. A. Touba, “Test point insertion
+using functional flip-flops to drive control points,” in 2009 International
+Test Conference, 2009, pp. 1–10.
+
+[9] Y. Sun and S. Millican, “Test Point Insertion Using Artificial Neural
+Networks,” in 2019 IEEE Computer Society Annual Symposium on VLSI
+(ISVLSI), 2019, pp. 253–258.
+[10] S. Millican, Y. Sun, S. Roy, and V. Agrawal, “Applying Neural Networks to Delay Fault Testing: Test Point Insertion and Random Circuit
+Training,” in 2019 IEEE 28th Asian Test Symposium (ATS), 2019, pp.
+13–135.
+[11] Y. Ma, H. Ren, B. Khailany, H. Sikka, L. Luo, K. Natarajan, and B. Yu,
+“High Performance Graph Convolutional Networks with Applications
+in Testability Analysis,” in Proceedings of the 56th Annual Design
+Automation Conference 2019, ser. DAC ’19. New York, NY, USA:
+Association for Computing Machinery, 2019. [Online]. Available:
+https://doi.org/10.1145/3316781.3317838
+[12] Z. Shi, M. Li, S. Khan, L. Wang, N. Wang, Y. Huang, and Q. Xu,
+“Deeptpi: Test point insertion with deep reinforcement learning,” in 2022
+IEEE International Test Conference (ITC). IEEE, 2022, pp. 194–203.
+[13] X. Gu, K. Kuchcinski, and Z. Peng, Testability analysis and improvement from VHDL behavioral specifications.
+Universitetet i
+Linköping/Tekniska Högskolan i Linköping. Institutionen för . . . , 1994.
+[14] V. Chickermane, J. Lee, and J. H. Patel, “Addressing design for testability at the architectural level,” IEEE transactions on computer-aided
+design of integrated circuits and systems, vol. 13, no. 7, pp. 920–934,
+1994.
+[15] C.-H. Chen, T. Karnik, and D. G. Saab, “Structural and behavioral
+synthesis for testability techniques,” IEEE transactions on computeraided design of integrated circuits and systems, vol. 13, no. 6, pp. 777–
+785, 1994.
+[16] L. Avra, “Allocation and assignment in high-level synthesis for selftestable data paths,” in 1991, Proceedings. International Test Conference.
+IEEE, 1991, p. 463.
+[17] M. Nourani and C. Papachristou, “Structural BIST insertion using
+behavioral test analysis,” in Proceedings European Design and Test
+Conference. ED & TC 97. IEEE, 1997, pp. 64–68.
+[18] S. Bhattacharya and S. Dey, “H-SCAN: A high level alternative to
+full-scan testing with reduced area and test application overheads,” in
+Proceedings of 14th VLSI Test Symposium, 1996, pp. 74–80.
+[19] W. Mao and R. K. Gulati, “Improving gate level fault coverage by RTL
+fault grading,” in Proceedings International Test Conference 1996. Test
+and Design Validity. IEEE, 1996, pp. 150–159.
+[20] S. Boubezari, E. Cerny, B. Kaminska, and B. Nadeau-Dostie, “Testability
+analysis and test-point insertion in rtl vhdl specifications for scanbased bist,” IEEE Transactions on Computer-Aided Design of Integrated
+Circuits and Systems, vol. 18, no. 9, pp. 1327–1340, 1999.
+[21] P. Goel and B. C. Rosales, “PODEM-X: An automatic test generation
+system for VLSI logic structures,” in Proceedings of the 18th Design
+Automation Conference, ser. DAC ’81. IEEE Press, 1981, p. 260–268.
+[22] F. E. Norrod, “An automatic test generation algorithm for hardware
+description languages,” in Proceedings of the 26th ACM/IEEE Design
+Automation Conference, ser. DAC ’89. New York, NY, USA:
+Association for Computing Machinery, 1989, p. 429–434. [Online].
+Available: https://doi.org/10.1145/74382.74454
+[23] Y.-Z. Wu and M. C.-T. Chao, “Scan-chain reordering for minimizing
+scan-shift power based on non-specified test cubes,” in 26th IEEE VLSI
+Test Symposium (vts 2008), 2008, pp. 147–154.
+[24] D. Ghosh, S. Bhunia, and K. Roy, “A low-complexity scan reordering
+algorithm for low power test-per-scan bist,” in Proceedings of the
+International Conference on VLSI Design, Mumbai, India. Citeseer,
+2004, pp. 5–9.
+[25] S. Bhunia, H. Mahmoodi, D. Ghosh, and K. Roy, “Power reduction in
+test-per-scan bist with supply gating and efficient scan partitioning,” in
+Sixth international symposium on quality electronic design (isqed’05),
+2005, pp. 453–458.
+[26] D. Zhang, M. He, X. Wang, and M. Tehranipoor, “Dynamically obfuscated scan for protecting IPs against scan-based attacks throughout
+supply chain,” in 2017 IEEE 35th VLSI Test Symposium (VTS), 2017,
+pp. 1–6.
+[27] S. Paul, R. S. Chakraborty, and S. Bhunia, “VIm-Scan: A Low Overhead
+Scan Design Approach for Protection of Secret Key in Scan-Based
+Secure Chips,” in 25th IEEE VLSI Test Symposium (VTS’07), 2007, pp.
+455–460.
+[28] S. Bhunia, P. D. Gaikwad, J. W. Cruz, and S. Paria, “Invisible scan
+architecture for secure testing of digital designs,” Apr. 9 2024, uS Patent
+11,953,548.
+[29] L. Goldstein and E. Thigpen, “SCOAP: Sandia Controllability/Observability Analysis Program,” in 17th Design Automation Conference, 1980, pp. 190–196.
+
+
