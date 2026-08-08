@@ -1,0 +1,283 @@
+                                                                                                                                                                                                                                  9th IEEE International Test Conference India (ITC India) 2025
+
+
+
+                                                                                                                                                        LLMCov: A Methodology for LLM-aided DfT
+                                                                                                                                                        Coverage Improvement in Open-Source Designs
+                                                                                                                                                            Manisha Kumari                             Subharthi Roy                       Masahiro Fujita                        Binod Kumar
+                                                                                                                                                      Dept. Electrical Engineering            Dept. Electrical Engineering                      VDEC                     Dept. Electrical Engineering
+                                                                                                                                                              IIT Jodhpur                             IIT Jodhpur                         University of Tokyo                    IIT Jodhpur
+                                                                                                                                                             Jodhpur,India                           Jodhpur,India                           Tokyo, Japan                       Jodhpur,India
+                                                                                                                                                         p24ee0205@iitj.ac.in                    m24eev017@iitj.ac.in                  fujita@ee.t.u-tokyo.ac.jp               binod@iitj.ac.in
+
+
+
+                                                                                                                                                       Abstract—Scan insertion is one of the important steps in the                 ChatGPT, which then suggests modifications to the synthesis
+                                                                                                                                                    development of test infrastructure in modern designs. During                    constraint script. This updated script is reapplied and the
+2025 IEEE 9th International Test Conference India (ITC India) | 979-8-3315-0129-7/25/$31.00 ©2025 IEEE | DOI: 10.1109/ITCINDIA66078.2025.11141575
+
+
+
+
+                                                                                                                                                    the scan insertion step, it is very crucial to resolve all design               flow is repeated until satisfactory fault coverage is achieved,
+                                                                                                                                                    rule violations as these violations may lead to significant drop
+                                                                                                                                                    in the test coverage. Because of nature of these violations,                    typically between 95% and 99%. This methodology demon-
+                                                                                                                                                    it becomes a tedious debugging exercise and requires lot of                     strates how LLMs can intelligently interpret violation logs and
+                                                                                                                                                    manual expertise. In this work, we propose AI-based solution                    iteratively improve synthesis outcomes, reducing manual effort
+                                                                                                                                                    for seeking solution for these design rule checks. The power of                 and accelerating convergence toward high test quality.
+                                                                                                                                                    AI-based techniques (such as CNN-based models or LLM-based
+                                                                                                                                                    methods) is getting widely recognized in the area of EDA tools                                            II. P RELIMINARIES
+                                                                                                                                                    performance enhancement. Therefore, we develop a LLM-aided
+                                                                                                                                                    DRC debugging methodology to aid the scan synthesis tool that                      Design-for-Test (DfT) Design Rule Check (DRC) violations
+                                                                                                                                                    in turn assists the ATPG tool to obtain enhanced test coverage                  occur when test structures violate logical or physical con-
+                                                                                                                                                    values. Experimental results indicate significant improvement in
+                                                                                                                                                    the test coverage with fixes obtained with assistance of LLM.                   straints, impacting fault coverage, simulation consistency, and
+                                                                                                                                                       Index Terms—Design-for-Testability, Test Coverage, Design                    manufacturability. These are typically categorized into asser-
+                                                                                                                                                    Rule Violations.                                                                tion rules, scan integrity, clock control, and physical layout
+                                                                                                                                                                                                                                    constraints. Below is a breakdown of commonly encountered
+                                                                                                                                                                             I. I NTRODUCTION                                       violation classes [9]:
+                                                                                                                                                                                                                                       • Broken Scan Chains: Occur when functional logic is
+                                                                                                                                                       As per Moore’s Law [1], transistor counts double every
+                                                                                                                                                                                                                                          inadvertently inserted between scan flip-flops, disrupting
+                                                                                                                                                    two years, leading to denser and more complex designs.
+                                                                                                                                                                                                                                          serial scan path continuity and hindering controllabili-
+                                                                                                                                                    This increases the need for effective testing to prevent costly
+                                                                                                                                                                                                                                          ty/observability. Example: ERROR_MULTI_PATHS.
+                                                                                                                                                    defects. Scan-based DfT is the most effective technique,
+                                                                                                                                                                                                                                       • Untraceable Paths (T3 Violations): ATPG tools fail
+                                                                                                                                                    enabling controllability and observability of flip-flops to aid
+                                                                                                                                                                                                                                          to resolve scan chains traversing black-box modules,
+                                                                                                                                                    ATPG in detecting faults [2]–[5]. However, scan insertion
+                                                                                                                                                                                                                                          unmodeled hierarchy, or domains with untoggled clocks,
+                                                                                                                                                    often causes DRC violations due to design complexity, low-
+                                                                                                                                                                                                                                          rendering paths invisible during ATPG.
+                                                                                                                                                    ering fault coverage. Debugging these violations is manual
+                                                                                                                                                                                                                                       • Unscannable Registers: Registers omitted from scan
+                                                                                                                                                    and slow, and current EDA tools offer limited guidance.
+                                                                                                                                                                                                                                          chains due to wrong synthesis constraints, physical block-
+                                                                                                                                                    Thus, automated methods to resolve DRC issues pre-scan and
+                                                                                                                                                                                                                                          ages, or exclusion filters can significantly reduce overall
+                                                                                                                                                    post-scan insertion are increasingly vital. The emergence of
+                                                                                                                                                                                                                                          fault coverage.
+                                                                                                                                                    Large Language Models (LLMs), such as OpenAI’s ChatGPT,
+                                                                                                                                                                                                                                       • Equivalent Cell Conflicts (S19): Scan chains are stitched
+                                                                                                                                                    has revolutionized machine understanding and generation of
+                                                                                                                                                                                                                                          using flip flops that are functionally equivalent but struc-
+                                                                                                                                                    human-like language [6]. LLMs can process vast data, in-
+                                                                                                                                                                                                                                          turally different (e.g., mixing rising-edge and falling-edge
+                                                                                                                                                    cluding unstructured text, and learn semantic relationships
+                                                                                                                                                                                                                                          triggered flops), leading to simulation mismatches and
+                                                                                                                                                    across text, visual, audio, and multi-modal inputs [7]. In
+                                                                                                                                                                                                                                          incorrect pattern behavior.
+                                                                                                                                                    software, LLMs enable automated code debugging through
+                                                                                                                                                    flexible and comprehensive error resolution methods [8].This                       Clock and Reset Control Violations
+                                                                                                                                                    raises a compelling question: Can the same power of LLMs be                        • Uncontrollable Clocks/Resets: Inadequate gating or
+                                                                                                                                                    used to assist hardware engineers in resolving DRC violations                         multiplexing logic for clocks and resets in test mode
+                                                                                                                                                    and optimizing scan insertion?                                                        can lead to metastability, race conditions, or unintended
+                                                                                                                                                       In this work, we propose an AI-assisted framework that                             behavior during shift/capture operations.
+                                                                                                                                                    introduces an LLM-guided loop into the insertion flow of scan                      • Clock Rule C26: Clock signals are incorrectly used as
+                                                                                                                                                    synthesis. After the initial synthesis and ATPG steps, DRC                            data inputs for stable cells that have different capture
+                                                                                                                                                    violation reports are analyzed using an LLM tool such as                              clocks, leading to unpredictable behavior during capture.
+
+
+
+                                                                                                                                                       979-8-3315-0129-7/25/$31.00 ©2025 IEEE
+                                                                                                                                                        Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 12:05:11 UTC from IEEE Xplore. Restrictions apply.
+                                                                                     •  LLM-Based Analysis and Fix Generation: Large Lan-
+                                                                                        guage Models analyze the violations against historical
+                                                                                        patterns and design rules, generating targeted fix recom-
+                                                                                        mendations. These may include:
+                                                                                          – Clock path adjustments to resolve timing conflicts
+                                                                                          – Scan chain reordering to eliminate structural issues
+                                                                                          – Scan enable signal modifications to ensure proper
+                                                                                             control
+                                                                                     • Synthesis Script Modification: Based on the LLM rec-
+                                                                                        ommendations, the original synthesis scripts are automat-
+                                                                                        ically enhanced with additional constraints and directives
+                                                                                        specifically addressing the identified violations.
+                                                                                     • Resynthesis and Verification: The modified scripts are
+                                                                                        fed back to the synthesis tool, which regenerates the
+                                                                                        netlist with implemented fixes, creating a design that
+                                                                                        adheres to the scan synthesis rules.
+                                                                                     Test Quality Assessment
+                                                                                  Once a violation-free netlist is obtained, the generated test
+                                                                                  patterns undergo quality evaluation based on critical metrics
+                Fig. 1. Flow-chart of proposed methodology
+                                                                                  including:
+                                                                                     • Stuck-at fault coverage
+  •   Clock Rule C27/C28: PLL-sourced internal clocks are                            • Transition fault coverage
+      not properly conditioned due to missing or invalid con-                        If coverage metrics fall below target thresholds, additional
+      figuration data, which disrupts clock synchronization and                   refinements are made to either the netlist structure or ATPG
+      makes internal clock domains untestable.                                    constraints, initiating another iteration of the optimization loop
+Some DFT DRC violations directly compromise the effective-                        until all quality targets are met.
+ness of ATPG thereby leading to escapes in the manufactured                          This methodology ensures systematic resolution of DFT
+silicon. These are termed critical violations and demand im-                      DRC violations while maximizing test coverage through in-
+mediate resolution.                                                               telligent analysis and targeted fixes.
+                                                                                     Iterative Optimization
+                  III. P ROPOSED M ETHODOLOGY
+                                                                                  If required, iterative optimization is performed by revisiting
+   Methodology for DfT DRC Violation Resolution The                               earlier steps (e.g., synthesis or scan insertion) based on feed-
+methodology for resolving Design-for-Testability (DFT) De-                        back from coverage metrics or unresolved violations.
+sign Rule Check (DRC) violations follows a structured, itera-                        This methodology ensures a systematic approach to resolv-
+tive approach as illustrated in Fig. 1.                                           ing DFT DRC violations while achieving high test coverage
+   The flow begins with three primary inputs fed into the                         and manufacturability in complex IC designs. The proposed
+synthesis tool:                                                                   methodology for resolving DFT (Design for Testability)
+   • RTL design files containing the functional description                       DRC (Design Rule Check) violations follows a structured
+   • Library files (.db and .lib) providing technology-specific                   flow, as illustrated in Fig. 1. Below is a detailed explanation
+      cell information                                                            of the process, supplemented with examples to clarify each
+   • Synthesis scripts containing optimization directives and                     step.
+      constraints                                                                    Example Workflow of Ethernet MAC Core DfT Synthe-
+   The synthesis tool processes these inputs to generate a scan-                  sis: To demonstrate the practical application of our method-
+inserted netlist, which incorporates DFT structures like scan                     ology, we present a synthesis script for an Ethernet MAC
+chains while maintaining functional behavior.                                     core implementation. Figure 4 and Figure 5 illustrate how
+   DFT DRC Violation Analysis:                                                    DFT structures are configured during synthesis for an Ethernet
+The scan-inserted netlist is then analyzed by the ATPG tool                       MAC core.
+along with the ATPG script to identify any DFT DRC viola-
+tions. At this stage, two paths emerge:                                                              IV. E XPERIMENTAL R ESULTS
+   Clean Netlist Path (Violation Count = 0): When no                                 The proposed methodology was evaluated on a diverse set
+violations are detected, the process proceeds directly to pattern                 of RTL designs to assess the effectiveness in resolving DfT
+generation, producing test patterns for fault detection.                          DRC violations. This section presents detailed experimental
+   Violation Resolution Path (Violation Count > 0): When                          results (the brief summary is given in Table I) focusing on
+violations are present, the methodology employs an intelligent,                   a representative case study (Ethernet MAC core) followed by
+iterative fixing mechanism:                                                       comprehensive results across other designs.
+
+
+
+
+      Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 12:05:11 UTC from IEEE Xplore. Restrictions apply.
+                             TABLE I
+ V IOLATIONS AND C OVERAGE I MPROVEMENT FOR D IFFERENT D ESIGNS
+
+ Design          No. of Violations (Before)      Rel. Improv. in Coverage
+ I2C                        376                           43.24%
+ USB                         44                           0.25%
+ SPI                         25                           0.841%
+ ETHMAC                    1194                           0.077%
+ RISCV                     3646                           1.222%
+ wbconmax                  1152                           2.529%
+ AXI DMA                    607                           1.222%
+
+
+
+
+                                                                                  Fig. 3. Fault coverage summary for the Ethernet-MAC core after ATPG
+                                                                                  analysis
+
+
+
+
+Fig. 2. Detailed violation report showing specific scan-related inconsistencies
+in the Ethernet-MAC core
+                                                                                  Fig. 4. DFT violations reported before synthesis, highlighting issues related
+                                                                                  to scan chain integrity, undriven nets, and unconnected module pins.
+   Case Study : Ethernet Media Access Controller
+(Ethernet-MAC) The Ethmac IP Core provides a robust
+Ethernet MAC (Media Access Control) interface for net-                            flip-flops, but with different capture clocks. Impact: Reduced
+work communication. It supports standard Ethernet protocols,                      controllability during test and potential timing issues.
+including 10/100/1000 Mbps (Gigabit) data rates, enabling                            C2 (528 occurrences): The identical count with S19 vi-
+connectivity for various applications. The core features FIFO                     olations suggests correlation: These unstable non-scan DFFs
+buffers for transmit and receive operations, collision detection,                 affected the same sections of the design. Impact: Prevented
+and support for full- and half-duplex modes. It is designed to                    the use of Fast-Sequential ATPG algorithms, significantly
+interface seamlessly with PHY layers and supports various                         limiting test coverage.
+frame formats, including standard Ethernet frames and VLAN                           Violation Resolution Process The violation reports, along
+tagging. The Ethmac core is suitable for integration into SoCs,                   with the corresponding synthesis scripts, were provided to the
+providing reliable network connectivity for embedded systems                      LLM. After 2 iterations, the LLM-based fixing mechanism
+and communication devices.                                                        generated targeted modifications to the synthesis script to
+   Ethernet Media Access Controller (Ethernet MAC) Case                           address the identified issues.
+Study Results The implementation of the proposed methodol-                         Figure 4 illustrates the DFT violations identified before
+ogy on the Ethernet Media Access Controller (Ethernet MAC)
+reveals significant insights into DfT DRC violations and their
+resolution. Fig. 2 shows the DfT DRC violations detected
+when the scan-inserted netlist was passed to the ATPG tool.
+    Figure 3 shows the summary of the fault coverage for
+the Ethernet-MAC core after ATPG analysis. In Fig. 2, the
+analysis of the Ethernet-MAC core shows several critical
+DRC violations: The DfT DRC analysis of the Ethernet-MAC
+controller shown in Figure 2 reveals several critical violations
+that impact the integrity and testability of the scan chain.                      Fig. 5. LLM-modified synthesis script after four iterations, incorporating
+   S19 (528 occurrences): This high number of mixed equiv-                        targeted fixes
+alent cells in scan chains represents a significant risk to test
+generation. The Ethernet-MAC implementation mixed rising-                         synthesis, while Figure 5 presents the LLM-modified syn-
+edge and falling-edge flip-flops within the same scan chains.                     thesis script incorporating fixes for the previously reported
+Impact: Potential simulation mismatches and unreliable test                       DFT violations. After applying all the fixes and rerunning the
+results during manufacturing test.                                                synthesis, a scan-inserted netlist was successfully generated.
+   C26 (138 occurrences): These violations indicated sce-                         Figure 6 illustrates the fault coverage report after fixing,
+narios where clock signals were used as data inputs to the                        highlighting the effectiveness of the modifications applied.
+
+
+
+
+     Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 12:05:11 UTC from IEEE Xplore. Restrictions apply.
+                                                                    TABLE II
+                                                   S UMMARY OF DFT DRC V IOLATIONS F IX R ESULTS
+
+                                                                                                     ATPG                ATPG
+                                                              #Violations        #Violations                                                 Violation
+         Design              #Gates       #Flip-Flops                                               Coverage            Coverage
+                                                               (Pre-Fix)          (Post-Fix)                                                   Type
+                                                                                                    %(Pre-Fix)         %(Post-Fix)
+                                                                                                                                           asynchronous
+     I2 C Protocol             826             199                 376                 0                2.26                100
+                                                                                                                                               reset
+       USB                   15,815           10,548              45                   44               79.19              99.05               reset
+       SPI                    433               132               25                   2                54.29              99.95               reset
+  ETHERNET MAC                530               98               1194                 159               92.81              99.96               clock
+     RISC-V                  10,128            2,833             3,646                992               11.02              99.95               reset
+   WBCONMAX                  34,559             818              1,152                 48               28.32              99.95               reset
+    AXI DMA                  1,627              935               607                  7                 45                 100                reset
+
+
+                                                                                 enhancements, but also highlights the effectiveness of Large
+                                                                                 Language Model (LLM)-generated scripts in automating and
+                                                                                 improving the DFT DRC rule-fixing process.
+                                                                                                             V. C ONCLUSION
+                                                                                    This paper proposed a methodology for resolving scan
+                                                                                 synthesis DRC violations with the help of large language
+                                                                                 models. This technique serves as a useful methodology to shift
+                                                                                 DFT infrastructure development in modern designs. Future
+                                                                                 work includes the development of the complete DFT synthesis
+                                                                                 script using LLM-based techniques. The technique could be
+Fig. 6. Post-fix fault coverage report highlighting increased coverage for       improved with a different strategy of shift left by performing
+stuck-at faults after resolving DFT violations.                                  the analysis at RTL step itself to make it more DFT compliant.
+                                                                                 With the integration of this LLM-based feature in the modern
+                                                                                 synthesis tools, the step of the scan insertion can be easily
+   Comprehensive Results                                                         managed by design engineers.
+   The DfT DRC analysis of the Ethernet MAC in Figure 2                                                         R EFERENCES
+reveals several critical violations that impact the integrity of
+                                                                                 [1] G. Moore, “Cramming more components onto integrated circuits,” Pro-
+the scan chain and overall testability.                                              ceedings of the IEEE, vol. 86, no. 1, pp. 82–85, 1998.
+   The results demonstrate that our proposed methodology                         [2] K. B. Sowmya and K. R. Bhavitha, “Strategic dft implementation and
+successfully resolved all DfT DRC violations across a diverse                        verification of next–gen electronics using atpg simulation,” in 2024
+                                                                                     8th International Conference on Computational System and Information
+set of designs with varying levels of complexity. The LLM-                           Technology for Sustainable Solutions (CSITSS), 2024, pp. 1–6.
+based fixing approach required an average of approximately                       [3] S. Ahlawat, J. Tudu, A. Matrosova, and V. Singh, “A high performance
+2.3 iterations to resolve all violations, significantly reducing                     scan flip-flop design for serial and mixed mode scan test,” pp. 321–331,
+                                                                                     2018.
+the manual effort typically involved in such processes.                          [4] B. Kumar, B. Nehru, B. Pandey, V. Singh, and J. Tudu, “A technique for
+   In particular, designs that exhibit clock-related violations                      low power, stuck-at fault diagnosable and reconfigurable scan architec-
+                                                                                     ture,” in 2016 IEEE East-West Design Test Symposium (EWDTS), 2016,
+(such as S19, C26, and C2, an generally required more                                pp. 1–4.
+iterations to fully address the issues due to the complexity of                  [5] S. A. Siddiqui, U. R. Patel, U. Jana, and B. Kumar, “Memfd: A multi-
+timing and gating logic involved. Despite these challenges, the                      edt multi-fault scan chain diagnosis methodology with deep learning,” in
+                                                                                     2024 IEEE 33rd Asian Test Symposium (ATS), 2024, pp. 1–6.
+methodology maintained high fault coverage in the designs.                       [6] J. Huang and K. C.-C. Chang, “Towards reasoning in large language
+The average fixed fault coverage achieved was approximately                          models: A survey,” arXiv preprint arXiv:2212.10403, 2022.
+99.90%, demonstrating that the resolution of DRC violations                      [7] M. U. Hadi, Q. Al-Tashi, R. Qureshi, A. Shah, A. Muneer, M. Irfan,
+                                                                                     A. Zafar, M. B. Shaikh, N. Akhtar, M. A. Al-Garadi et al., “Llms:
+did not compromise the overall testability of the designs.                           A comprehensive survey of applications, challenges, datasets, models,
+   Table II provides a summary of the Design Rule Check                              limitations, and future prospects.”
+(DRC) resolution results for seven RTL designs, detailing gate                   [8] W. Yang, H. Wang, Z. Liu, X. Li, Y. Yan, S. Wang, Y. Gu, M. Yu, Z. Liu,
+                                                                                     and G. Yu, “Enhancing the code debugging ability of llms via commu-
+count, flip-flop count, the number of violations before and                          nicative agent based data refinement,” arXiv preprint arXiv:2408.05006,
+after the fixes, and the test coverage numbers. These results                        2024.
+show a notable reduction in violations after the application                     [9] “Tetramax atpg user guide,” https://iccircle.com/static/upload/
+                                                                                     img20240205185250.pdf, accessed: 2025-06-03.
+of DFT fixes, along with significant improvement in the test
+coverage, achieving values close to or at 100% for all designs.
+This not only demonstrates the impact of systematic DFT
+
+
+
+
+     Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 12:05:11 UTC from IEEE Xplore. Restrictions apply.
+

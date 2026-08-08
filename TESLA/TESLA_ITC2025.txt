@@ -1,0 +1,648 @@
+                                                                                                                                                                             2025 IEEE International Test Conference (ITC)
+
+
+
+
+                                                                                                                                       TESLA: Testability Enhancement for Shift-Left
+                                                                                                                                         Automation via Multi-LLM Collaboration
+                                                                                                                                              Zhiteng Chao1,2,3 , Rengang Zhang1,2 , Feng Gu1,2 , Hongqin Lyu1,2 , Bin Sun1,2 , Wenxing Li1,2 ,
+                                                                                                                                                        Zizhen Liu∗ 1 , Jianan Mu∗ 1 , Jing Ye1,2,3 , Xiaowei Li1,2,3 , Huawei Li∗ 1,2,3
+                                                                                                                                                  1
+                                                                                                                                                      State Key Lab of Processors, Institute of Computing Technology, Chinese Academy of Sciences
+2025 IEEE International Test Conference (ITC) | 979-8-3315-7041-5/25/$31.00 ©2025 IEEE | DOI: 10.1109/ITC58126.2025.00010
+
+
+
+
+                                                                                                                                                                             2
+                                                                                                                                                                               University of Chinese Academy of Sciences
+                                                                                                                                                                                           3
+                                                                                                                                                                                             CASTEST Co., Ltd.
+
+                                                                                                                                                {chaozhiteng20g, zhangrengang, gufeng22s, hongqinlyv}@ict.ac.cn, sunbin75513285@gmail.com,
+                                                                                                                                                               {liwenxing21,liuzizhen,mujianan,yejing, lxw, lihuawei}@ict.ac.cn
+
+
+                                                                                                                                 Abstract—The “Shift-Left” Design-for-Test (DFT) paradigm has                     However, certain tasks requiring quantitative testability anal-
+                                                                                                                              gained significant attention in recent years, enabling early-stage               ysis of global design circuit, such as Partial Scan Selection
+                                                                                                                              testability enhancement at the Register Transfer Level (RTL) to                  (PSS) and Test Point Insertion (TPI), remain challenging at
+                                                                                                                              optimize Power-Performance-Area-Testability (PPAT) trade-offs
+                                                                                                                              and accelerate Time-to-Market (TTM). However, existing methods
+                                                                                                                                                                                                               the RTL design stage. During the RTL-to-netlist synthesis
+                                                                                                                              struggle to perform quantitative testability analysis at the RTL                 phase, PSS involves replacing only a subset of registers in
+                                                                                                                              stage, particularly in Partial Scan Selection (PSS) and Test Point               the netlist with scan cells, balancing area overhead and test
+                                                                                                                              Insertion (TPI), due to the lack of structured netlist represen-                 performance. After synthesis, DFT tools perform TPI, a widely
+                                                                                                                              tations and cross-stage optimization. To address this challenge,                 adopted technique for enhancing testability, aiming to improve
+                                                                                                                              we propose TESLA, a multi-LLM collaboration framework that
+                                                                                                                              autonomously performs PSS and TPI at the RTL stage. TESLA
+                                                                                                                                                                                                               random-pattern test coverage or reduce ATPG pattern count,
+                                                                                                                              leverages the semantic understanding capabilities of Large Lan-                  thus playing a crucial role in lowering overall test costs. In
+                                                                                                                              guage Models (LLMs) to analyze RTL Verilog code and optimize                     traditional gate-level DFT methodologies, these two processes
+                                                                                                                              testability without requiring synthesis. Two key data augmentation               are handled sequentially, where PSS decisions influence the
+                                                                                                                              strategies are introduced for efficient Instruction Tuning: (1) back-            decision of subsequent TPI.
+                                                                                                                              annotating heuristic PSS results from the synthesized netlist to
+                                                                                                                              RTL, and (2) utilizing advanced LLMs guided by DFT knowledge                        To fully realize the “Shift-Left” DFT paradigm, RTL-level
+                                                                                                                              to generate synthetic RTL TPI training data. Furthermore, we                     testability analysis must overcome two key challenges: effec-
+                                                                                                                              integrate Direct Preference Optimization (DPO) to refine LLM                     tively extracting representative features from RTL designs and
+                                                                                                                              decision-making, incorporating real feedback from commercial
+                                                                                                                              EDA tools to align optimization objectives with practical testability
+                                                                                                                                                                                                               capturing the interdependencies between PSS and TPI at the
+                                                                                                                              metrics. The experimental results demonstrate that our proposed                  same abstraction level. Unlike netlists, which provide a struc-
+                                                                                                                              approach achieves better test coverage compared to other RTL                     tured netlist graph, RTL contains only semantic information,
+                                                                                                                              stage PSS and TPI combination schemes on the majority of circuits                making it difficult to apply traditional heuristic algorithms
+                                                                                                                              in the RTLLM benchmark, while also reducing the number of                        effectively. Some approaches analyze the RTL control data
+                                                                                                                              patterns for a significant portion of the circuits. On the larger,
+                                                                                                                              hierarchical OpenCores benchmark, our approach surpasses the
+                                                                                                                                                                                                               flow graph (CDFG) probabilistically [7], [8], but the time
+                                                                                                                              solution combining heuristic PSS and commercial DFT tool’s TPI,                  overhead is too high. The industry has increasingly turned
+                                                                                                                              achieving improvements on the same two test metrics.                             to rapid RTL synthesis into the Logical Virtual Prototype
+                                                                                                                                 Index Terms—Design-for-Test (DFT), Shift-Left, Partial Scan                   (LVP) [3], [6], [9], enabling gate-level techniques like SCOAP
+                                                                                                                              Selection (PSS), Test Point Insertion (TPI)                                      [10]. LVP results are back-annotated to the RTL for further
+                                                                                                                                                                                                               optimization. However, rapid synthesis still requires significant
+                                                                                                                                                           I. I NTRODUCTION
+                                                                                                                                                                                                               time. Furthermore, assessing the mutual impact of PSS and
+                                                                                                                                 The exponential growth in digital circuit size and com-                       TPI remains challenging, as these tasks rely on independent
+                                                                                                                              plexity presents significant challenges for traditional Design-                  heuristics without a really synthesized netlist.
+                                                                                                                              for-Test (DFT), which is implemented at the gate level after
+                                                                                                                                                                                                                  Aiming at bridging this gap, we introduce TESLA, a multi-
+                                                                                                                              logic synthesis, but this poses challenges at advanced tech-
+                                                                                                                                                                                                               LLM collaboration framework that intelligently guides design-
+                                                                                                                              nology nodes due to its impact on designs already optimized
+                                                                                                                                                                                                               ers in adopting “Shift-Left” DFT practices at the RTL stage,
+                                                                                                                              for Power-Performance-Area-Testability (PPAT), requiring re-
+                                                                                                                                                                                                               facilitating the sequential execution and co-optimization of
+                                                                                                                              optimization and longer design cycles. To mitigate this, the
+                                                                                                                                                                                                               PSS and TPI tasks. Recent advancements in Large Language
+                                                                                                                              industry has shifted most of the DFT tasks to the Register
+                                                                                                                                                                                                               Model (LLM)-based RTL generation and modification [11]–
+                                                                                                                              Transfer Level (RTL) stage [1]–[3], allowing for earlier vali-
+                                                                                                                                                                                                               [16] have demonstrated the remarkable capability of LLMs in
+                                                                                                                              dation and insertion of scan-friendly logic and test instruments
+                                                                                                                                                                                                               understanding RTL semantics, underscoring their potential in
+                                                                                                                              like scan chains [4], [5], BIST, IJTAG, and boundary-scan [6].
+                                                                                                                                                                                                               cross-stage quantitative testability analysis. Given that RTL, as
+                                                                                                                                ∗ Corresponding authors.                                                       a high-level hardware description language, inherently influ-
+
+
+                                                                                                                            2378-2250/25/$31.00 ©2025 IEEE                                                45
+                                                                                                                            DOI 10.1109/ITC58126.2025.00010
+                                                                                                                                 Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 11:58:29 UTC from IEEE Xplore. Restrictions apply.
+ences testability due to its semantic properties [17], [18], we                                            other LLMs (e.g., ChatGPT-4) and the solution combining
+aim to leverage the potential of LLMs to provide early-stage                                               heuristic and human expertise-based methods.
+insights into the impact of RTL structures on testability. To                                                                II. P RELIMINARIES
+achieve this, we leverage the differences in metrics of EDA tool
+                                                                                                      A. Partial Scan Selection (PSS) and Test Point Insertion (TPI)
+reports under the same scheme as valuable feedback signals for
+LLMs, employing a two-stage fine-tuning process to align RTL                                             Partial Scan Selection (PSS) [19] is a testability enhancement
+semantics with testability objectives.                                                                technique that selectively converts certain flip-flops into scan
+                                                                                                      cells, reducing feedback loops and simplifying test generation.
+                                                                                                      Instead of including all flip-flops in the scan chain, PSS only
+   ① Cross-stage optimization accounting for the impact of previous stages                            modifies a subset, balancing test coverage and hardware over-
+      RTL Design           TESLA: fully automatic       Synthesized Netlist                           head compared to full scan design. Test Point Insertion (TPI)
+                          DFT Shift-Left framework
+                                                             Combinational Cloud                      enhances circuit testability by adding control and observe points
+ module Top(……);             Partial Scan Selection     TP                     TP                     to improve the controllability and observability of internal
+ ……                          Annotation Output：
+ reg [2:0] reg_a;              Non-Scan: reg_a
+                                                                                         reg_a
+                                                                                                      nodes. Control points set specific values during testing, while
+                                 Scan: reg_b                 Combinational Cloud
+ reg [2:0] reg_b;                                                                                     observe points enable monitoring of internal signals at the
+ ……
+ wire w0, w1, w2;                                                                        reg_b        outputs. TPI reduces the number of test patterns and increases
+ assign o1 = (w1 & w0);       Test Point Insertion                                                    test coverage, but incurs additional hardware overhead. The
+                                                              Local Fanout Cone
+ assign o2 = (w2 | w0);    RTL modification to insert
+ ……                        TPs on logic blocks about
+                                                                o1                  o2
+                                                                                                      optimization of TPI is an NP-hard problem [20].
+ endmodule                  non-scan cell reg_a and     w1
+                                                                     TP
+                                                                                         w2
+
+                             multi-fanout line w0                         w0
+                                                                                                      B. Low-Rank Adaptation (LoRA)
+                                                                                                         Low-Rank Adaptation (LoRA) [21] is a parameter-efficient
+ ② Directly analyze the impact on test metrics from the functional description
+                                                                                                      fine-tuning method that reduces the number of trainable param-
+                     Fig. 1: Motivation of TESLA.                                                     eters by approximating weight updates with low-rank matrices.
+                                                                                                      For a pre-trained weight matrix W0 ∈ Rd×k , the weight update
+                                                                                                      ∆W is factorized as:
+   Our motivation is illustrated in Fig. 1, where we assume the
+presence of two dedicated LLMs, each specifically designed for
+PSS and TPI, respectively: ⃝  1 Through the collaboration of the                                       ∆W = AB,        A ∈ Rd×r , B ∈ Rr×k , where r ≪ min(d, k)
+two LLMs, decision-making information from the PSS phase                                                 LoRA reduces the number of updated parameters from d × k
+can be communicated to the TPI phase, which makes cross-                                              to (d+k)×r, significantly lowering memory and computational
+stage optimization possible. For example, if we select reg a                                          requirements.
+as non-scan cells, it may be necessary to analyze the negative                                        C. Instruction Tuning
+impact of reg a on test metrics and how this can be mitigated
+during the TPI phase. ⃝     2 By utilizing LLMs, the impact                                              Instruction tuning [22] is a technique to improve a model’s
+on test metrics can be directly analyzed from the functional                                          ability to follow natural language instructions by fine-tuning it
+description. For common hard-to-test multi-fanout structures in                                       on instruction-response pairs. The model is trained to map an
+circuits, potential regions and the number of test points (TPs)                                       instruction I to the desired response R, and this is achieved by
+to be inserted can be captured at the RTL stage, enabling early                                       minimizing the following loss function:
+assessment of the associated overhead. Finally, we achieve the                                                                      N
+                                                                                                                                 1 X
+establishment of a fully automatic “Shift-Left” DFT workflow                                                            L(θ) =         L(fθ (Ii ), Ri )
+for quantitative testability analysis and improvement.                                                                           N i=1
+   The main contributions are summarized as follows:                                                     where fθ is the model with parameters θ, and L represents
+                                                                                                      the loss function between the model’s predicted and true
+  •   We have developed a fully automated multi-LLM col-
+                                                                                                      responses. This process helps the model generalize across a
+      laboration flow capable of autonomously performing PSS
+                                                                                                      wide range of tasks by learning from diverse instructions.
+      and TPI in the RTL design stage with user specifications,
+      utilizing specialized fine-tuned LLMs for each task.                                            D. Direct Preference Optimization (DPO)
+  •   To enhance the LLM’s understanding of testability metrics                                         Direct Preference Optimization (DPO) [23] aligns language
+      and generalization, we apply Direct Preference Optimiza-                                        models with human preferences. Given feedback pairs P =
+      tion (DPO), assessing PSS and TPI strategies based on                                           {(xi , yi+ , yi− )}M            +
+                                                                                                                         i=1 , where yi is preferred, the model maximizes
+      EDA tool feedback to establish response preferences.                                            the likelihood of preferred choices:
+  •   We designed two data augmentation methods to generate
+      response data for Instruction Tuning. Leveraging heuristic                                                               M
+                                                                                                                            1 X              Pθ (yi+ |xi )
+      algorithms to back-annotate gate-level netlist results to                                              LDPO (θ) = −         log
+      RTL and using advanced LLMs to generate synthetic data,
+                                                                                                                            M i=1     Pθ (yi |xi ) + Pθ (yi− |xi )
+                                                                                                                                           +
+
+      we produce diverse and high-quality responses.                                                     DPO improves model alignment with human values, and
+  •   Experimental results show that our intelligent “Shift-Left”                                     like Instruction Tuning, can benefit from LoRA for efficient
+      DFT approach achieves superior testability, comparable to                                       parameter updates.
+
+
+
+
+                                                                                                 46
+
+  Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 11:58:29 UTC from IEEE Xplore. Restrictions apply.
+  III. TESLA: T ESTABILITY E NHANCEMENT S HIFT-L EFT                            to identify key RTL structures. We then randomly generate user
+        AUTOMATION POWERED BY M ULTI -LLM S                                     specifications, such as the number of test points and scan cells.
+A. Overview                                                                     This dataset, consisting of RTL modules and user specifications,
+                                                                                serves as the ”instructions” for response generation.
+
+                             RTL + User specification                           C. Response Data Generation and Augmentation
+                                                                                   The response in Instruction Tuning is the output generated
+                                                                Fine-           by the model in reaction to the given instruction. This can
+                            AutoPSS       AutoTPI
+                                                               tuning           range from a brief summary or a translation to a more complex
+                                                                                answer, depending on the nature of the instruction.
+             Task    Selected cells      RTL after TPI                             In our task, to fine-tune AutoPSS and AutoTPI, we require
+           Execution                                                            responses in different formats. For PSS, the response involves
+ChatGPT                       Design Compiler
+                                                                                selecting specific register variables from the RTL to serve as
+                                                          Timing Report         scan cells. For instance, in the RTL shown in Listing 1, we
+                                                                +               select the single-bit register data out[0] to be transformed
+                                                             Netlist            into a scan cell. For TPI, we need to modify the RTL to
+                                  TetraMAX
+                                                                                incorporate the inserted test points, following the format il-
+                                                                                lustrated in Listing 2, which demonstrates how the variables
+                                  ATPG QoR                                      and expressions from Listing 1 appear after the test points
+                                                                                have been added. Our method for inserting test points into the
+Fig. 2: Overview of TESLA powered by two task-specific
+                                                                                RTL and the file format are derived from [6], specifically by
+fine-tuned LLMs: AutoPSS and AutoTPI, with task execution
+                                                                                converting the test points inserted for single-bit variables or
+processes controlled by ChatGPT.
+                                                                                expressions into a function or a module instance. We insert two
+                                                                                test points within the top module: one observe point is placed
+   The overall framework of TESLA is illustrated in Fig 2. We                   on the register reset case[0], represented by an additional
+fine-tune two dedicated LLMs for PSS and TPI tasks, referred                    instance op reset case instance 0; the other is an AND type
+to as AutoPSS and AutoTPI, respectively. The external inputs                    control point placed on the output of the expression (data in1
+to the models consist of two components: the RTL Verilog                        ˆ data in2), described using the function, which is a kind of
+code and user-specified parameters, such as the number of scan                  procedural construct in Verilog syntax.
+cells or the number of test points to be inserted. The output
+of AutoPSS serves as additional input for AutoTPI, aiding in
+                                                                                       Listing 1: An RTL module Verilog code example
+better decision-making. Both LLMs autonomously perform PSS
+                                                                                 module top ( input wire clk, input wire [1:0]
+and TPI, respectively, outputting the selected candidate scan                        reset_case, input wire [1:0] data_in1, input wire
+cells’ register names and the Verilog code after TPI, formatted                       [1:0] data_in2, input wire data_in3, output reg
+according to the template specified in [6]. Finally, Design                          [1:0] data_out );
+                                                                                     always @(posedge clk) begin
+Compiler and TetraMAX are invoked to complete synthesis                                  case (reset_case)
+and ATPG, resulting in the DFT-processed netlist and test                                    2’b00: data_out <= 2’b00;
+                                                                                             2’b01: begin
+report. The entire process can be autonomously executed by a                                     data_out <= (data_in1 ˆ data_in2) |
+simple agent based on ChatGPT, utilizing prompt engineering                                          {1’b0, data_in3}; end
+to invoke tools or models at each stage, like ChatEDA [24],                                  2’b10: begin
+                                                                                                 data_out <= (data_in1 & data_in2) ˆ {
+without the need for human intervention.                                                             data_in3, data_in3}; end
+   The core of TESLA is the fine-tuning of specialized                                       2’b11: begin
+                                                                                                 data_out <= (data_in1 | data_in2) &
+LLMs, AutoPSS and AutoTPI. First, we collect a large number                                          {1’b1, data_in3}; end
+of RTL designs to perform data generation and augmentation.                              endcase
+Using test metrics obtained from EDA tools, we design a rule to                      end
+                                                                                 endmodule
+automatically generate preferences based on different responses
+to the same instruction. Finally, we perform a two-stage fine-
+                                                                                   However, in the context of Instruction Tuning, generating
+tuning process to align the model with test metrics and RTL
+                                                                                high-quality response data is crucial, as it significantly influ-
+semantics. The following sections describe in detail.
+                                                                                ences the upper limits of model performance. Two approaches
+B. Instruct-Tuning Data-Processing                                              have been adopted as shown in Fig 3: for PSS, heuristic algo-
+   In the context of Instruction Tuning, the instruction refers to              rithms applied at the netlist level yield register variable results
+a specific command or query provided to an LLM. It typically                    that are then back-annotated to the RTL; for TPI, advanced
+outlines a task or desired output.                                              LLM such as ChatGPT-4, enhanced by domain-specific prompt
+   We collect open-source RTL Verilog modules from GitHub.                      engineering in the DFT field, is utilized to generate the RTL
+Files that are too short or too long are removed for consistency.               Verilog code after TPI insertion.
+Verilog modules are extracted using custom regular expressions                  Netlist Results Back-annotation for PSS.
+
+
+
+
+                                                                           47
+
+  Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 11:58:29 UTC from IEEE Xplore. Restrictions apply.
+   Listing 2: An RTL module Verilog code example after TPI                       fine-tuning, specifically selecting the register variables that need
+ module top ( input wire clk, input wire [1:0]                                   to be converted to scan cells at the RTL stage.
+     reset_case, input wire [1:0] data_in1, input wire
+      [1:0] data_in2, input wire data_in3, input wire                            LLM Assisted Data Augmentation for TPI.
+     cp_en, output reg [1:0] data_out, output                                       For TPI, back-annotation is particularly challenging because
+     reset_case_observed_0 );
+     function [1:0] InsertTestPointANDType;                                      it is difficult to map combinational logic standard cells in
+         input [1:0] sig_in; input test_in;                                      the netlist back to RTL variables or expressions. In [6], a
+         begin
+             InsertTestPointANDType = {test_in &                                 complex back-annotation engine is designed, which utilizes
+                 sig_in[1], sig_in[0]}; end                                      rapid synthesis techniques to map test points derived from
+     endfunction                                                                 controllability analysis on LVP back to RTL, modifying the
+     InsertTestPointOBType op_reset_case_instance_0 (
+         .funcin(reset_case[0]), .tp_out(                                        original RTL through parsing the Verilog syntax tree. We have
+         reset_case_observed_0) );                                               not yet encountered a publicly available commercial version
+     always @(posedge clk) begin
+         case (reset_case)                                                       equipped with this technique.
+             2’b00: data_out <= 2’b00;                                              We employ the advanced language model ChatGPT-4 to
+             2’b01: begin
+                 data_out <= InsertTestPointANDType((
+                                                                                 directly analyze the functionality of the RTL to determine
+                     data_in1 ˆ data_in2), cp_en) |                              the positions and types of test points for insertion and to
+                     {1’b0, data_in3}; end                                       modify the RTL accordingly, as illustrated in Fig. 3. First,
+             ... ...
+             ... ...                                                             we gather domain knowledge regarding TPI in the DFT field
+         endcase                                                                 as a system prompt, which includes information on test point
+     end
+ endmodule
+                                                                                 types, functionality, structural overviews, SCOAP testability
+ module InsertTestPointOBType( input wire funcin,                                analysis heuristic rules [10], partial scan cell selection results,
+     output wire tp_out );                                                       and modified RTL templates after inserting test points into RTL
+     assign tp_out = funcin;
+ endmodule                                                                       variables and expressions. Next, we guide ChatGPT-4 using
+                                                                                 user instructions for autonomous analysis of specific RTL,
+                                                                                 inserting a user-specified number of test points, and outputting
+  Listing 3: A netlist example synthesized by Design Compiler                    the modified RTL Verilog according to the provided template.
+ module top ( clk, reset_case, data_in1, data_in2,                               We utilize an equivalence analysis tool, Formality, to verify
+     data_in3, data_out );                                                       the equivalence of the Verilog before and after TPI. Finally,
+   input [1:0] reset_case; input [1:0] data_in1; input
+        [1:0] data_in2; output [1:0] data_out; input
+                                                                                 manual corrections are applied to erroneous samples to ensure
+       clk, data_in3;                                                            the reliability of the data.
+   wire N18, N19, n24, n25, n26, n27, n28, n29, n30,
+       n31, n32, n33, n34, n35, n36, n37, n38, n39,                              D. Preference Collection from EDA Tools’ Feedback
+       n40, n41, n42;
+   DFFHQX1 data_out_reg[1] ( .D(N19), .CK(clk), .Q(                                 Preference response data collection is a crucial step in op-
+       data_out[1]) );
+   DFFHQX1 data_out_reg[0] ( .D(N18), .CK(clk), .Q(                              timizing LLMs to align their outputs with human preferences.
+       data_out[0]) );                                                           This process involves collecting pairs of model-generated re-
+   ... ...
+   ... ...
+                                                                                 sponses, where users or annotators express a preference for
+ endmodule                                                                       one response over another. These preference judgments form
+                                                                                 the foundation for techniques like DPO, ultimately improving
+                                                                                 the quality and user satisfaction of the model’s outputs.
+  Currently, common heuristic PSS algorithms rely on loop                           This paper constructs a preference-response pair in a straight-
+analysis of the netlist flip-flops and controllability analysis of               forward manner, as shown on the right side of Fig. 3. First, we
+the circuit [19], [25], [26]. Based on the characteristics of                    constrain each data pair to share the same user specifications,
+register naming derived from the netlist synthesized by the                      such as an identical number of inserted test points or replaced
+commercial synthesis tool Design Compiler, we can back-                          scan cells. Next, we use EDA tools to verify the correctness
+annotate the results obtained from the netlist algorithms to the                 of the response data. For PSS, we utilize Design Compiler to
+register variables in the RTL. As shown in Listing 3, assuming                   check whether the selected scan cells actually exist. For TPI,
+the heuristic algorithm processes the netlist synthesized by                     we use Design Compiler to detect whether there are syntax
+Design Compiler from the RTL in Listing 1 and choose to                          errors leading to synthesis failures and Formality to verify the
+convert only the sequential standard cell data out reg[0] into                   equivalence of RTL before and after TPI. For a pair of data,
+a scan cell, we can back-annotate using the consistent nam-                      A and B, if A passes the EDA tool check but B does not,
+ing convention between variables and cells. The register-type                    A is preferred. Data pairs where neither passes the check are
+variables in the RTL are expanded and suffixed with “ reg”                       discarded. Finally, we need to perform a quality comparison
+by Design Compiler to correspond to the standard library cell                    of the response data pairs. We compare three metrics within
+DFFHQX1, such as mapping data out reg[0] to data out[0],                         each pair: data arrival time from the Design Compiler timing
+thereby establishing a one-to-one correspondence. Therefore,                     report, test coverage, and pattern count from the TetraMAX test
+we can generate the response data of Listing 1 for AutoPSS                       report. Under the given user specifications, the evaluation of the
+                                                                                 three metrics for assessing DFT quality is as follows: a smaller
+
+
+
+
+                                                                            48
+
+   Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 11:58:29 UTC from IEEE Xplore. Restrictions apply.
+      Netlist Results Back-annotation                    Instruction Tuning for AutoPSS                              Direct preference optimization
+    Heuristic                                            System prompt: You are an expert in DFT                  Response:                   Response:
+    algorithm                                            engineering, partial scan selection is.......           data_out[0]                 data_out[0]
+                                                                                                                          Response:                   Response:
+                                                         Instruction:                                                    data_out[1]                 data_out[1]
+  Select scan cells:
+                                                       Please identify
+  data_out_reg[0]               netlist                                                                             Partial scan cell           Partial scan cell
+                                                          the proper
+                                                           single-bit                                             selection pair for an      selection preference
+     Back-                                               variables of                                                     RTL                       (y+, y-)
+   annotation                                            type reg as
+                                                        scan cells......                 RTL
+                                                                                                                   EDA tool actual              Direct
+                                                          Response:           User specification: select
+    Reg in RTL:                                                                                                      feedback                alignment
+    data_out[0]                                          data_out[0]                one scan cell                                               from
+                                                                                                                                                        AutoPSS
+                                  RTL
+                                                                                                                  Design Compiler           preference
+                                                                                                                   timing report               for the
+     LLM Assisted Data Augmentation                       Instruction Tuning for AutoTPI                                                        same
+                                                                                                                                                        AutoTPI
+                                                           Instruction:                                            TetraMAX ATPG            instruction
+  Prompt-engineering                                                                                                    report                  input
+                                                        Please insert the
+   Types and definitions                                proper test points
+      of test points
+                                                           into RTL......
+   Syntax template for                                      Response:
+      RTL test point                                                                           RTL
+        insertion.                                                                  Selected scan cells’
+  DFT testability domain                                                              instance names                  RTL after TPI              RTL after TPI
+       knowledge                                                                    User specification:
+                                  RTL after TPI                                                                             RTL after TPI               RTL after TPI
+                                                              RTL after TPI
+                               with EDA tool check                                      TPs number                   RTL pair after          RTL preference after
+                               and human-manual                                                                      different TPI               different TPI
+                                                         System prompt: You are an expert in DFT
+       ChatGPT                      correction
+                                                          engineering, test point insertion is.......             strategy for an RTL          strategy (y+, y-)
+
+                       Fig. 3: Response data augmentation flow and two-stage fine-tuning flow of AutoPSS and AutoTPI.
+
+
+data arrival time (DAT) is preferable, a higher test coverage                                              IV. E XPERIMENTAL R ESULTS
+(TC) is more desirable, and a smaller pattern count (PC) is
+advantageous. However, in actual production, the following                             A. Experimental Setup
+priority is generally followed: test coverage takes precedence
+                                                                                       Dataset. Using the method described in Section III-B, we
+over the number of patterns, which in turn takes precedence
+                                                                                       collected a total of 7842 single-module RTL Verilog code
+over data arrival time. Therefore, we adopt the following rule
+                                                                                       samples. For PSS, we followed the back-annotation approach
+to determine the preference between a pair of response data:
+                                                                                       outlined in Section III-C to obtain response data for instruction
+   1 TC Comparison: If |T CA − T CB | ≤ 0.1 ×
+                                                                                       fine-tuning. For TPI, we used OpenAI’s ChatGPT-4 API to
+max(T CA , T CB ), Then proceed to the next comparison. Oth-
+                                                                                       generate instruction responses following the approach outlined
+erwise, select the data point with the higher T C.
+                                                                                       in Section III-C. Due to the high costs, we only applied
+   2 PC Comparison: If |P CA − P CB | ≤ 0.1 ×                                          TPI transformations to 800 carefully selected, more complex
+max(P CA , P CB ), Then proceed to the next comparison. Oth-                           RTL Verilog code samples. For preference response pairs, we
+erwise, select the data point with the lower P C.                                      generated them by randomly pairing the model outputs after
+   3 DAT Comparison: Select the data point with the smaller                            instruction fine-tuning with the original responses we provide,
+data arrival time DAT : Select min(DATA , DATB ).                                      followed by the comparison method described in Section III-D.
+   A clear human preference is established through such a rule                            The dataset is divided into training, validation, and test sets
+applied to EDA tools’ reports.                                                         in a 7:2:1 ratio for both PSS and TPI.
+E. Domain-specific Instruct Tuning and DPO                                             Benchmark. To ensure a fair comparison, we choose a subset
+                                                                                       of the Verilog design codes benchmark from RTLLM [27] as
+   The Instruction Tuning process for AutoPSS and AutoTPI
+                                                                                       our evaluation benchmark, and the circuits of this benchmark
+is illustrated in the center of Fig. 3. A complete tuning
+                                                                                       did not participate in model training.
+sequence includes a system prompt to provide the LLM with
+an initial understanding of the specified task, an instruction                         Model Selection. In selecting the most suitable LLM for
+that encompasses RTL Verilog code, user-specified parameters,                          our experiments, the initial consideration is the limitation of
+and a natural language description outlining the output data re-                       computational resources. Given that this research is equipped
+quirements. The response, which is the expected output, is pre-                        with only 8 A100 GPUs, training larger-scale models would
+prepared as well. Building on instruction tuning, DPO provides                         incur significant computational overhead and training time. As
+two responses for a set of system prompts and instructions, with                       such, we decide to select a model with 7B parameters, striking
+one response manually designated as aligning more closely with                         a balance between high performance and efficient resource
+human preferences.                                                                     utilization. Among the available open-source 7B models, we
+
+
+
+
+                                                                                  49
+
+  Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 11:58:29 UTC from IEEE Xplore. Restrictions apply.
+also evaluated alternatives, such as LLaMA 7B and Mistral 7B,                    TABLE II: Performance metrics of non-fine-tuning and post-
+which are widely used in the open-source community and have                      fine-tuning models on the TPI (Unit: %)
+a solid research foundation. However, after careful comparison,                      Model                  P@5      Best  in     Best       Best in
+Qwen2.5-Coder 7B demonstrated exceptional capabilities in                                                            TC Imp.      in PC      DAT
+code generation, reasoning, and fixing, particularly excelling in                    AutoTPI (SFT+DPO)      93.75    63.75        55         67.5
+                                                                                     AutoTPI (SFT)          88.75    47.5         66.25      65
+the generation of Verilog code. Qwen2.5-Coder, the latest series                     Qwen                   7.5      1.25         6.25       6.25
+of Code-Specific Qwen models, has been specifically optimized
+for coding tasks. Notably, Qwen2.5-Coder 7B balances the
+model size with performance, achieving superior coding abili-                       To separately evaluate the performance of fine-tuned Au-
+ties that rival those of advanced models like GPT-4, particularly                toPSS and AutoTPI after Instruction Tuning and DPO, we
+in specialized tasks such as Verilog generation [28], [29].                      conducted independent ablation experiments.
+Fine-tuning Setting. We utilize the LoRA technique to fine-                         First, for the circuits in the PSS test set, only scan cell
+tune Qwen2.5-Coder-7B on the datasets, following the guide-                      replacement is performed, followed by synthesis and ATPG
+lines from the Qwen-recipes repository. The model is a 7.61                      to obtain timing and testing reports. The pass@5 metric (the
+billion-parameter causal language model optimized for code                       number of passes in 5 identical sample tests) for the follow-
+generation and understanding tasks. To ensure consistency,                       ing three models and the proportion of their best-performing
+all experiments are conducted using the same hyperparameter                      samples across the entire test set are shown in TABLE I. The
+settings: a learning rate of 5e-6, a batch size of 8, and for the                following approach is to determine whether a model performs
+SFT-only model, the training epochs are set to 2, while for                      best on a metric for a given circuit: the output results that pass
+the SFT+DPO model, the training epochs are set to 1 for each                     from a model are compared using the preference evaluation
+stage. We leverage the comprehensive language library trans-                     method of Section III-D to select the best one. This result is
+formers and trl library, which fine-tunes language models using                  then compared to see if it is superior to or equal to the preferred
+reinforcement learning techniques, both of which are built on                    results of the other models on each of the three metrics. For the
+top of the PyTorch platform. Our hardware platform includes                      PSS task, a pass is defined as the ability to accurately output
+an Intel Xeon CPU and a cluster of 8 NVIDIA A100 GPUs                            the correct number of single-bit registers specified by the user,
+connected via NvLink, each with 80GB of memory.                                  with successful partial scan synthesis.
+Baseline. We choose ChatGPT-4 as the primary baseline model                         Second, for the circuits in the TPI test set, we conducted
+to assess the capabilities of our model. We also compared the                    comparative experiments using the same metrics under a con-
+netlist-level heuristic PSS method [19] back-annotated to RTL                    sistent heuristic PSS strategy to exclusively evaluate the per-
+with the combination of manual expertise in RTL TPI methods.                     formance of AutoTPI. The results are presented in TABLE II.
+Models for comparison are here.                                                  For the TPI task, a pass is defined as the accurate insertion of
+   Qwen2.5-Coder-7B: Qwen is an open-source large model                          the user-specified number of test points, followed by successful
+provided by Alibaba. We perform two independent calls to                         synthesis and equivalence checking.
+execute PSS and TPI separately.                                                     From TABLE I and TABLE II, it is evident that fine-tuning
+   Qwen2.5-Coder-7B-SFT (ours): Two original Qwen models                         significantly improves the pass@5 success rate and enhances
+are separately subjected to PSS (AutoPSS) and TPI (AutoTPI)                      the test metrics. The strategy of combining SFT with DPO
+supervised instruction fine-tuning.                                              further improves the accuracy of the model’s outputs compared
+   Qwen2.5-Coder-7B-SFT-DPO (ours): The two instruction                          to using only SFT. Additionally, it increases the test coverage
+fine-tuned models ( AutoPSS and AutoTPI) are further fine-                       improvements compared to non-scan netlists’ sequential ATPG
+tuned with DPO separately.                                                       reports, which aligns closely with our preference for prioritizing
+   ChatGPT-4: ChatGPT-4 is a state-of-the-art large language                     test coverage mentioned in Section III-D.
+model designed by OpenAI. We perform two independent calls                       Evaluation of the Entire Framework on the RTLLM.
+to execute PSS and TPI separately.                                                  The entire PSS + TPI process is evaluated under different
+TABLE I: Performance metrics of non-fine-tuning and post-                        methodological frameworks using consistent user-defined pa-
+fine-tuning models on the PSS (Unit: %)                                          rameters. In addition to pass@5, we select the best-performing
+                                                                                 configurations (best PSS + best TPI) for each circuit to compare
+    Model                    P@5     Best  in     Best       Best in
+                                     TC Imp.      in PC      DAT                 final timing and testing metrics, as shown in TABLE III.
+    AutoPSS (SFT+DPO)        95.1    70.7         64.9       69.5                   The results demonstrate that our fine-tuned AutoPSS and Au-
+    AutoPSS (SFT)            91.8    42.4         71.2       70.3                toTPI models achieve higher pass rates and improved test
+    Qwen                     11.7    4.1          9.4        9.8
+                                                                                 coverage compared to both heuristic approaches and exist-
+   P@5 represents the metric pass@5, as the same as followings.
+   TC Imp. is test coverage improvement percent, PC is pattern count, DAT        ing LLM baselines. The non-fine-tuned Qwen model exhibits
+   is data arrive time, and repeated occurrences below are consistent.           significant limitations, as it fails to consider the number of
+                                                                                 scan cells or test points, struggles with understanding single-
+B. Experimental Results                                                          bit register variables, and frequently produces syntactically
+                                                                                 incorrect Verilog after TPI. Although ChatGPT-4 adheres well
+Test Set Performance Evaluation.                                                 to PSS requirements, its TPI-generated Verilog, despite being
+
+
+
+                                                                            50
+
+  Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 11:58:29 UTC from IEEE Xplore. Restrictions apply.
+                               TABLE III: Comparison of different methodologies based on several metrics.
+                                  Ours (SFT+DPO)                    Ours (SFT)                 Qwen               ChatGPT-4                 Heur. + Exp.
+                     PSS TPI
+      Design                   PSS TPI TC Imp. PC DAT         PSS TPI TC Imp. PC DAT          PSS TPI      PSS TPI TC Imp. PC DAT          TC Imp. PC DAT
+                     (#) (#)   P@5 P@5 (%) (#) (ns)           P@5 P@5 (%) (#) (ns)            P@5 P@5      P@5 P@5 (%) (#) (ns)              (%) (#) (ns)
+         accu         2 2       5   5    9.67   6 0.29         5   5    9.87   6 0.3           0   4        5   0      \    \ \              8.3    8 0.33
+    adder 64bit      36 5       5   3   50.98 56 0.24          2   2   49.06 34 0.22           0   0        4   0      \    \ \             90.96 5 0.22
+       calendar       2 4       5   5    9.28   8 0.37         5   5    8.94   6 0.34          0   0        5   0      \    \ \             9.14    8 0.36
+     counter 12       2 2       5   5   53.85 11 0.29          5   5   50.77 10 0.29           0   0        5   0      \    \ \             51.07 9 0.29
+       freq div       2 3       5   5   14.92 8 0.37           5   5   13.47 6 0.38            0   0        5   0      \    \ \             13.66 6 0.4
+  freq divbyeven      2 1       5   5   73.42 8 0.3            5   5   55.84 5 0.24            0   2        5   0      \    \ \             70.13 8 0.25
+       instr reg      2 2       5   5   23.37 11 0.24          5   5   21.74 11 0.24           0   0        5   5    13.16 8 0.23           19.58 11 0.24
+     JC counter       7 1       5   5   14.25 7 0.24           5   0     \     \ \             4   0        5   5    15.34 9 0.24           13.09 6 0.24
+     multi 16bit      7 4       5   5   21.75 14 0.45          5   0     \     \ \             0   0        5   0      \    \ \             28.19 37 0.26
+  multi pipe 4bit     2 3       5   0     \     \ \            5   5   22.63 19 0.24           0   0        3   0      \    \ \             19.69 16 0.22
+  multi pipe 8bit    10 4       5   5    5.05 11 0.27          5   5    6.34 14 0.45           0   2        2   0      \    \ \             7.11 14 0.22
+           pe         4 6       5   5    63.4 107 0.33         5   0     \     \ \             0   0        5   0      \    \ \             94.34 7 0.24
+    pulse detect      1 3       5   5   51.19 5 0.54           5   5   51.16 6 0.54            0   0        5   5    46.25 5 0.54           48.89 7 0.55
+      radix2 div      4 5       5   0     \     \ \            5   0     \     \ \             0   3        5   0      \    \ \             72.57 9 0.9
+    ring counter      2 2       5   5    37.4   7 0.22         5   5   33.33 4 0.24            0   2        5   0      \    \ \             35.97 5 0.22
+ sequence detector    2 3       5   5   32.31 5 0.51           5   5   21.63 6 0.58            0   0        5   0      \    \ \             18.94 5 0.58
+     traffic light    2 4       5   5 7.92% 6 0.29             5   5    9.04   8 0.29          0   0        5   0      \    \ \             7.65    6 0.3
+ up down counter      2 3       5   5    8.52   8 0.38         5   5    8.19   8 0.38          0   0        5   0      \    \ \             13.58 14 0.38
+    width 8to16       3 4       5   5    18.7 12 0.22          5   3   18.03 11 0.22           0   2        5   0      \    \ \             17.72 9 0.23
+    \: represents the RTL that fails to successfully synthesize and complete ATPG, Qwen fails in every circuit so the test metrics are not shown.
+
+
+largely syntactically correct, often lacks functional equivalence                 get the netlist synthesized using Design Compiler, and run
+to the original RTL or contains subtle syntax errors, leading                     ATPG using TetraMAX’s TPI scheme. TESLA, under the same
+to a low overall pass rate. In contrast, our approach exhibits                    constraints of non-scan cells and test points as TetraMAX,
+greater robustness, consistently generating both structurally and                 performs autonomous PSS and TPI at RTL stage. For hier-
+functionally valid Verilog. This results in higher synthesis                      archical designs, the challenge lies in balancing the number
+success rates and more reliable testing outcomes. Furthermore,                    of non-scan cells and test points across modules. Since our
+fine-tuning with SFT and DPO enhances performance beyond                          specialized model AutoTPI and AutoPSS, trained for individual
+SFT-only models, achieving higher pass rates and better test                      modules, requires specific number inputs, we let ChatGPT
+metrics.                                                                          autonomously allocate the number of non-scan cells and test
+   Our models also outperform the heuristic PSS + human-                          points based on module code length and register variable
+expertise-driven TPI strategy in test coverage for most circuits.                 count. The final comparison results are shown in TABLE IV.
+However, a few cases, such as adder 64bit and pe, present no-                     Under the same number constraints of non-scan cells and
+table discrepancies. Upon analyzing the Verilog code, we found                    test points, TESLA significantly improves test coverage while
+that for circuits like wide adders and pe, which consist primarily                achieving the same or fewer ATPG patterns in aes cipher top
+of a single a*b, the RTL description deviates substantially                       and sasc top. Compared to the heuristic PSS combined with
+from the synthesized circuit structure. This poses challenges                     the commercial DFT tool’s TPI scheme based on the gate-level
+for LLMs trained purely on semantic representations, leading to                   netlist, TESLA’s “Shift-Left” intelligent DFT approach at RTL
+inferior PSS performance compared to heuristics that leverage                     stage demonstrates superior performance.
+netlist graph analysis. In contrast, circuits where semantic
+                                                                                  Discussion.
+information aligns more closely with the actual implementation
+are better suited for direct LLM-based optimization.                                 In the early stages of RTL design, the proposed approach of
+                                                                                  enhancing testability through “Shift-Left” offers a promising
+Comparison with the Commercial Tool on OpenCores.                                 solution that is seamlessly compatible with traditional EDA
+   To validate the scalability of TESLA in hierarchical designs                   workflows. This method complements traditional gate-level
+of moderately large circuits and compare it with the commercial                   DFT techniques. This integration allows the strengths of both
+tool TetraMAX, we selected several hierarchical designs from                      approaches to work synergistically within the entire IC design
+the moderately large academic benchmark OpenCores [30] for                        process: TESLA can perform high-level functional analysis on
+comparison. We did not conduct experiments on commercial                          early-stage RTL to evaluate and improve testing metrics, while
+tools using the RTLLM benchmark because TetraMAX typi-                            complex mathematical operators are processed at the gate level
+cally does not provide TPI solutions for small-scale circuits.                    through traditional DFT tools.
+As far as we know, the latest version of TetraMAX supports                           Furthermore, the scalability of this approach is inherently
+TPI at the RTL stage. However, due to licensing restrictions                      suited for early-stage design, where designers are typically
+at our institution, we conducted comparison experiments using                     dealing with only a few modules. There is no immediate need
+the previous version’s gate-level DFT flow.                                       to apply this method to large-scale circuits at this stage. Instead,
+   First, as TetraMAX does not provide PSS solutions, we use                      by evaluating the testability of smaller components in the early
+the heuristic PSS algorithm to obtain non-scan cells, then we                     design phase, TESLA helps identify potential obstacles that
+
+
+
+                                                                             51
+
+  Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 11:58:29 UTC from IEEE Xplore. Restrictions apply.
+                   TABLE IV: Performance metrics comparison between TESLA and heuristic PSS + TetraMAX TPI
+                                                                              Heuristic +     TetraMAX                    TESLA
+                      Design             non-scan (#)     test point (#)
+                                                                           TC Imp. (%)         PC (#)            TC Imp. (%)  PC (#)
+                      aes cipher top     142              165              24.55               238               38.06        238
+                      simple spi top     67               6                19.95               6                 42.28        29
+                      sasc top           34               4                46.20               18                46.52        17
+                      spi top            59               23               54.92               36                65.96        70
+
+
+
+may hinder ATPG in gate-level DFT stages. Additionally, it                             [14] Z. Pei, H.-L. Zhen, M. Yuan, Y. Huang, and B. Yu, “Betterv: Con-
+offers an early estimation of the costs associated with DFT,                                trolled verilog generation with discriminative guidance,” arXiv preprint
+                                                                                            arXiv:2402.03375, 2024.
+such as the number of test points to be inserted, while providing                      [15] Y. Zhao, D. Huang, C. Li, P. Jin, Z. Nan, T. Ma, L. Qi, Y. Pan, Z. Zhang,
+greater exploration opportunities for PPAT optimization during                              R. Zhang et al., “CodeV: Empowering LLMs for Verilog Generation
+synthesis for backend designers.                                                            through Multi-Level Summarization,” arXiv preprint arXiv:2407.10424,
+                                                                                            2024.
+                            V. C ONCLUSION                                             [16] M. Liu, Y.-D. Tsai, W. Zhou, and H. Ren, “Craftrtl: High-quality synthetic
+                                                                                            data generation for verilog code models with correct-by-construction
+  In this paper, we leverage the collaboration of multiple                                  non-textual representations and targeted code repair,” arXiv preprint
+LLMs to develop an intelligent and automated “Shift-Left”                                   arXiv:2409.12993, 2024.
+                                                                                       [17] Y. Huang, C.-C. Tsai, N. Mukherhee, W.-T. Cheng, and S. Reddy, “Effect
+DFT process. We fine-tuned two LLMs, AutoPSS and AutoTPI,                                   of RTL coding style on testability,” in Proceedings of the IEEE 2001
+to autonomously perform PSS and TPI on RTL, aligning                                        Custom Integrated Circuits Conference (Cat. No.01CH37169), 2001, pp.
+RTL semantics with DFT test metrics. Experimental results                                   255–258.
+                                                                                       [18] E. Moghaddam, N. Mukherjee, J. Rajski, J. Tyszer, and J. Zawada, “Test
+demonstrate that our approach outperforms both ChatGPT-4                                    point insertion in hybrid test compression/lbist architectures,” in 2016
+and traditional non-LLM methods, as well as the schemes from                                IEEE International Test Conference (ITC), 2016, pp. 1–10.
+commercial DFT tool TetraMAX.                                                          [19] M. Abramovici, J. Kulikowski, and R. Roy, “The Best Flip-Flops to
+                                                                                            Scan,” in 1991, Proceedings. International Test Conference, 1991, pp.
+                               R EFERENCES                                                  166–.
+                                                                                       [20] N. Rao and S. Toida, “Computational Complexity of Test-Point Insertions
+ [1] D. Caporossi, F. Marschner, and S. Read, “Rule checking at the register                and Decompositions,” in The Fifth International Conference on VLSI
+     level,” IEEE Spectrum, vol. 33, no. 6, pp. 72–73, 1996.                                Design, 1992, pp. 233–238.
+ [2] H. Singh, G. Patankar, and J. Beausang, “A symbolic simulation-based              [21] E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and
+     ANSI/IEEE Std 1149.1 compliance checker and BSDL generator,” in                        W. Chen, “Lora: Low-rank adaptation of large language models,” arXiv
+     Proceedings International Test Conference 1997, 1997, pp. 256–264.                     preprint arXiv:2106.09685, 2021.
+ [3] C. Kumar, F. Maamari, K. Vittal, W. Pradeep, R. Tiwari, and S. Ravi,              [22] J. Wei, M. Bosma, V. Y. Zhao, K. Guu, A. W. Yu, B. Lester, N. Du, A. M.
+     “Methodology for Early RTL Testability and Coverage Analysis and                       Dai, and Q. V. Le, “Finetuned language models are zero-shot learners,”
+     Its Application to Industrial Designs,” in 2014 IEEE 23rd Asian Test                   arXiv preprint arXiv:2109.01652, 2021.
+     Symposium, 2014, pp. 125–130.                                                     [23] R. Rafailov, A. Sharma, E. Mitchell, S. Ermon, C. D. Manning, and
+ [4] Y. Huang, C.-C. Tsai, N. Mukherjee, O. Samman, D. Devries, W.-T.                       C. Finn, “Direct preference optimization: your language model is secretly
+     Cheng, and S. Reddy, “On RTL scan design,” in Proceedings Interna-                     a reward model,” in Proceedings of the 37th International Conference on
+     tional Test Conference 2001 (Cat. No.01CH37260), 2001, pp. 728–737.                    Neural Information Processing Systems, ser. NIPS ’23. Red Hook, NY,
+ [5] H. F. Ko, Q. Xu, and N. Nicolici, “Register-transfer level functional scan             USA: Curran Associates Inc., 2024.
+     for hierarchical designs,” in Proceedings of the ASP-DAC 2005. Asia and           [24] H. Wu, Z. He, X. Zhang, X. Yao, S. Zheng, H. Zheng, and B. Yu,
+     South Pacific Design Automation Conference, 2005., vol. 2, 2005, pp.                   “ChatEDA: A Large Language Model Powered Autonomous Agent for
+     1172–1175 Vol. 2.                                                                      EDA,” IEEE Transactions on Computer-Aided Design of Integrated
+ [6] H. Iwata, Y. Maeda, J. Matsushima, O. Laouamri, N. Khanna, J. Mayer,                   Circuits and Systems, 2024.
+     and N. Mukherjee, “A New Framework for RTL Test Points Insertion                  [25] T. Li and Q. Liu, “A low cost partial scan approach based on balanced
+     Facilitating a “Shift-Left DFT” Strategy,” in 2023 IEEE International                  sequential graph transformation,” IEEE Transactions on Computer-Aided
+     Test Conference (ITC), 2023, pp. 1–10.                                                 Design of Integrated Circuits and Systems, vol. 37, no. 5, pp. 1109–1113,
+ [7] J. M. Fernandes, M. B. Santos, A. L. Oliveira, and J. C. Teixeira, “DFT                2017.
+     and Probabilistic Testability Analysis at RTL,” in 2006 IEEE International        [26] D. Xiang and J. H. Patel, “Partial scan design based on circuit state
+     High Level Design Validation and Test Workshop, 2006, pp. 41–47.                       information and functional analysis,” IEEE Transactions on Computers,
+ [8] J. Fernandes, M. Santos, A. Oliveira, and J. Teixeira, “A probabilistic                vol. 53, no. 3, pp. 276–287, 2004.
+     method for the computation of testability of RTL constructs,” in Proceed-         [27] Y. Lu, S. Liu, Q. Zhang, and Z. Xie, “RTLLM: An Open-Source
+     ings Design, Automation and Test in Europe Conference and Exhibition,                  Benchmark for Design RTL Generation with Large Language Model,” in
+     vol. 1, 2004, pp. 176–181 Vol.1.                                                       2024 29th Asia and South Pacific Design Automation Conference (ASP-
+ [9] Y. Huang, N. Mukherjee, W.-T. Cheng, and G. Aldrich, “A rtl testability                DAC). IEEE, 2024, pp. 722–727.
+     analyzer based on logical virtual prototyping,” in 16th Asian Test Sym-           [28] B. Hui, J. Yang, Z. Cui, J. Yang, D. Liu, L. Zhang, T. Liu, J. Zhang,
+     posium (ATS 2007). IEEE, 2007, pp. 121–124.                                            B. Yu, K. Dang et al., “Qwen2. 5-coder technical report,” arXiv preprint
+[10] L. Goldstein and E. Thigpen, “SCOAP: Sandia Controllability/Observ-                    arXiv:2409.12186, 2024.
+     ability Analysis Program,” in 17th Design Automation Conference, 1980,            [29] A. Yang, B. Yang, B. Hui, B. Zheng, B. Yu, C. Zhou, C. Li, C. Li, D. Liu,
+     pp. 190–196.                                                                           F. Huang, G. Dong, H. Wei, H. Lin, J. Tang, J. Wang, J. Yang, J. Tu,
+[11] M. Liu, T.-D. Ene, R. Kirby, C. Cheng, N. Pinckney, R. Liang, J. Alben,                J. Zhang, J. Ma, J. Xu, J. Zhou, J. Bai, J. He, J. Lin, K. Dang, K. Lu,
+     H. Anand, S. Banerjee, I. Bayraktaroglu et al., “Chipnemo: Domain-                     K. Chen, K. Yang, M. Li, M. Xue, N. Ni, P. Zhang, P. Wang, R. Peng,
+     adapted llms for chip design,” arXiv preprint arXiv:2311.00176, 2023.                  R. Men, R. Gao, R. Lin, S. Wang, S. Bai, S. Tan, T. Zhu, T. Li, T. Liu,
+[12] K. Chang, K. Wang, N. Yang, Y. Wang, D. Jin, W. Zhu, Z. Chen, C. Li,                   W. Ge, X. Deng, X. Zhou, X. Ren, X. Zhang, X. Wei, X. Ren, Y. Fan,
+     H. Yan, Y. Zhou et al., “Data is all you need: Finetuning LLMs for Chip                Y. Yao, Y. Zhang, Y. Wan, Y. Chu, Y. Liu, Z. Cui, Z. Zhang, and Z. Fan,
+     Design via an Automated design-data augmentation framework,” arXiv                     “Qwen2 technical report,” arXiv preprint arXiv:2407.10671, 2024.
+     preprint arXiv:2403.11202, 2024.                                                  [30] C. Albrecht, “IWLS 2005 benchmarks,” in International Workshop for
+[13] M. DeLorenzo, A. B. Chowdhury, V. Gohil, S. Thakur, R. Karri, S. Garg,                 Logic Synthesis (IWLS), vol. 9, 2005.
+     and J. Rajendran, “Make every move count: Llm-based high-quality rtl
+     code generation using mcts,” arXiv preprint arXiv:2402.03289, 2024.
+
+
+
+
+                                                                                  52
+
+   Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 11:58:29 UTC from IEEE Xplore. Restrictions apply.
+

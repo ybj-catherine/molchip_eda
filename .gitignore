@@ -4,3 +4,12 @@ __pycache__/
 *.swp
 *.swo
 *~
+
+# 未开源论文 PDF（仅保留链接，不上传 PDF）
+ARCADE/ARCADE_VTS2026.pdf
+DREAMPlace/DAC2019_DREAMPlace.pdf
+ResBench/HEART2025_ResBench.pdf
+RTL-Coder/TCAD2025_RTLCoder.pdf
+DFT-AI/DFT-AI_ICAIC2026.pdf
+LLMCov/LLMCov_ITC-India2025.pdf
+TESLA/TESLA_ITC2025.pdf

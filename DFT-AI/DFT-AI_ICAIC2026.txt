@@ -1,0 +1,406 @@
+                                                                                                                                                                 5th IEEE International Conference on AI in Cybersecurity (ICAIC), 18–20 February 2026, University of Houston, Houston, United States
+
+
+
+
+                                                                                                                                                               DFT AI: Machine Learning–Guided Test Point
+                                                                                                                                                              Insertion for Pre-Silicon Debug and Post-Silicon
+                                                                                                                                                                    Diagnosis in Complex VLSI Systems
+2026 IEEE 5th International Conference on AI in Cybersecurity (ICAIC) | 978-1-6654-7761-1/26/$31.00 ©2026 IEEE | DOI: 10.1109/ICAIC67076.2026.11395827
+
+
+
+
+                                                                                                                                                                                                                             Deepika Bhatia
+                                                                                                                                                                                                                       San Jose State University
+                                                                                                                                                                                                                           San Jose, USA
+                                                                                                                                                                                                                   reachdeepikabhatia@gmail.com
+
+
+                                                                                                                                                            Abstract—The rising complexity of modern System-on-Chip                       cessive area, power, or timing overhead [3]. Existing academic
+                                                                                                                                                         (SoC) designs has made it increasingly important to deploy                       and industrial flows address this problem through structural
+                                                                                                                                                         intelligent Design-for-Testability (DFT) strategies that support                 analysis or ATPG-guided strategies, but they typically lack
+                                                                                                                                                         both pre-silicon debug and post-silicon fault diagnosis. Conven-
+                                                                                                                                                         tional test point insertion (TPI) techniques are typically driven                the adaptivity needed to handle IP reuse, complex interactions
+                                                                                                                                                         by static heuristics or ATPG-based analyses, and often struggle                  between functional blocks, and incomplete specifications.
+                                                                                                                                                         to scale in the presence of diverse microarchitectures, tight                       In parallel, machine learning (ML) and graph-based mod-
+                                                                                                                                                         timing budgets, and strict area constraints. This paper introduces               eling have begun to reshape parts of the electronic design
+                                                                                                                                                         DFT AI, a machine learning–guided framework that automates                       automation (EDA) landscape. ML has been successfully ap-
+                                                                                                                                                         TPI using data-driven reasoning and structural learning. The
+                                                                                                                                                         approach combines gradient-boosted decision trees with graph                     plied to placement [4], routing [5], and fault localization [6],
+                                                                                                                                                         neural networks (GNNs) to estimate signal importance from                        among other tasks, by extracting latent structure from design,
+                                                                                                                                                         structural, dynamic, and contextual features extracted from                      timing, and coverage data. These advances suggest that ML
+                                                                                                                                                         synthesized RTL designs. A constraint-aware selector ensures                     models can learn non-trivial relationships between structural
+                                                                                                                                                         that only high-impact, timing-safe test points are chosen. We                    properties and testability metrics. However, relatively little
+                                                                                                                                                         evaluate DFT AI on ITC’99 and OpenCores benchmark suites
+                                                                                                                                                         and observe up to 28% improvement in observability gain and                      work has explored the use of ML, and GNNs in particular,
+                                                                                                                                                         a 27% reduction in diagnostic ambiguity over state-of-the-art                    to directly guide TPI decisions by learning signal importance
+                                                                                                                                                         methods, with modest area penalty and significantly reduced                      from data [7].
+                                                                                                                                                         runtime. The framework generalizes well across heterogeneous                        This paper proposes DFT AI, an ML-guided framework that
+                                                                                                                                                         designs and provides interpretability via SHAP-based signal                      links DFT optimization with learned reasoning over design
+                                                                                                                                                         analysis, offering a scalable and trustworthy solution for lifecycle-
+                                                                                                                                                         wide DFT automation.                                                             structures. Rather than relying solely on rule-based ranking,
+                                                                                                                                                                                                                                          DFT AI learns from RTL- and netlist-level features such
+                                                                                                                                                                                I. I NTRODUCTION                                          as toggle activity, fan-in/fan-out, logic depth, and structural
+                                                                                                                                                            The continued scaling of semiconductor technology and the                     entropy to identify nodes that provide the greatest diagnostic
+                                                                                                                                                         growing complexity of System-on-Chip (SoC) architectures                         value when instrumented. The framework combines gradient-
+                                                                                                                                                         have substantially raised the bar for design validation and                      boosted trees and GNNs trained on a curated set of industrial
+                                                                                                                                                         manufacturing testability. With billions of transistors inte-                    and academic designs to deliver high coverage, low overhead,
+                                                                                                                                                         grated into a single device, ensuring functional correctness                     and improved generalization across design topologies.
+                                                                                                                                                         after fabrication and enabling rapid debug is no longer fea-                        We evaluate DFT AI on ITC’99 and OpenCores benchmarks
+                                                                                                                                                         sible using traditional Design-for-Testability (DFT) practices                   under realistic industrial constraints. The results show notable
+                                                                                                                                                         alone [1]. Test Point Insertion (TPI) is a key DFT technique                     gains in observability, diagnostic resolution, and cost efficiency
+                                                                                                                                                         that enhances internal signal observability and controllability                  compared to ATPG-based and heuristic TPI methods. In ad-
+                                                                                                                                                         without resorting to full-scan insertion in every node. However,                 dition, the framework provides interpretable explanations of
+                                                                                                                                                         classical TPI flows are largely driven by static heuristics                      its decisions, making it suitable for use in safety-critical and
+                                                                                                                                                         or simple coverage metrics and frequently yield suboptimal                       regulated domains.
+                                                                                                                                                         results in hierarchical, timing-critical designs [2].                               The remainder of this paper is organized as follows. Sec-
+                                                                                                                                                            During the pre-silicon phase, access to internal signals is                   tion II surveys related work on test point insertion and the
+                                                                                                                                                         essential for debugging logic bugs, exercising corner cases,                     use of machine learning in DFT. Section III describes the
+                                                                                                                                                         and gaining visibility into rarely activated paths. After silicon                system architecture of DFT AI. Section IV details the learning-
+                                                                                                                                                         bring-up, suitably placed test points are equally valuable as                    based methodology, including graph modeling, optimization
+                                                                                                                                                         anchors for error diagnosis, yield ramp-up, and in-field failure                 constraints, and inference. Section V presents experimental
+                                                                                                                                                         analysis. The central challenge is to determine where to place                   results and comparisons to state-of-the-art techniques. Sec-
+                                                                                                                                                         test points and how many to insert so that the resulting infras-                 tion VI discusses observed trends, key trade-offs, and future
+                                                                                                                                                         tructure improves debug and diagnosis without imposing ex-                       directions.
+
+
+
+                                                                                                                                                         978-1-6654-7761-1/26/$31.00 © 2026 IEEE
+                                                                                                                                                              Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 12:05:51 UTC from IEEE Xplore. Restrictions apply.
+       5th IEEE International Conference on AI in Cybersecurity (ICAIC), 18–20 February 2026, University of Houston, Houston, United States
+
+
+
+                       II. R ELATED W ORKS                                      adaptive solution that integrates structural learning and signal
+                                                                                activity analysis for both debug and diagnosis, while remaining
+   Design-for-Testability (DFT) has long been central to dig-                   practical for industrial deployment.
+ital design methodology, with the primary goal of achieving
+high post-manufacturing fault coverage and efficient debug.                                        III. S YSTEM A RCHITECTURE
+Classical DFT techniques include scan chains, built-in self-                      The DFT AI architecture is designed to support intelligent,
+test (BIST), and logic BIST (LBIST) [1]. Within this toolbox,                   scalable test point insertion across both pre-silicon debug-
+Test Point Insertion (TPI) plays a critical role by improving                   ging and post-silicon diagnosis. The framework is modular
+internal observability and controllability while avoiding the                   and consists of five interconnected components: (i) RTL and
+cost of full-scan architectures, which can be expensive in area                 Netlist Extraction Module, (ii) Feature Construction Unit, (iii)
+and power [2].                                                                  Learning-Based TPI Predictor, (iv) Constraint-Aware Opti-
+   Traditional TPI methods rely on metrics such as signal                       mizer, and (v) Test Point Integration Engine. The complete
+observability, controllability, or ATPG feedback to identify                    end-to-end flow is shown in Fig. 1, illustrating how traditional
+suitable locations for control and observation points [3]. Ap-                  EDA steps are combined with machine learning models.
+proaches such as partial scan [8] and assertion-based coverage
+analysis [9] have been used to boost test coverage while
+keeping scan overhead manageable. Despite their effectiveness
+in many scenarios, these rule-based approaches are fundamen-
+tally limited in adaptability and often struggle to scale for
+large SoC designs with heterogeneous IP blocks and complex
+interactions.
+   To improve TPI quality, several works have proposed
+more sophisticated ranking metrics, including structural en-
+tropy [10], toggle rates [11], and fan-in/fan-out scores [12].
+While these techniques can outperform purely static heuristics,
+they still find it difficult to handle deeply pipelined datap-
+aths, cross-clock-domain structures, and control-heavy designs
+where signal importance depends on subtle architectural con-
+text.
+   The recent intersection of machine learning (ML) and
+                                                                                Fig. 1. System architecture of DFT AI, showing the pipeline from RTL
+electronic design automation (EDA) has opened new possi-                        parsing and feature extraction to ML-based prediction and test point insertion.
+bilities. Supervised learning has been applied to functional
+verification [13], RTL-level optimization [14], and power esti-
+mation [15]. Reinforcement learning and decision-tree models                    A. RTL and Netlist Extraction Module
+have also been explored for placement and routing, showing                         The flow starts from the RTL description (e.g., Verilog or
+strong generalization and runtime benefits [4], [5].                            VHDL). A synthesis tool generates a gate-level netlist that
+   Graph Neural Networks (GNNs) have emerged as particu-                        contains structural information such as gates, flip-flops, control
+larly well-suited to modeling design structures, since they can                 signals, and clock domains. From this netlist, we construct a
+capture connectivity and data/control flow in a compact repre-                  directed graph G = (V, E) where nodes v ∈ V represent logic
+sentation. Sharma et al. [6] used GNNs for fault localization by                elements or nets, and edges e ∈ E represent connectivity and
+learning fault propagation characteristics over netlist graphs.                 logic dependencies.
+Xu et al. [7] proposed a GNN-based framework for selecting                         This graph serves as the foundation for GNN-based learn-
+test points using graph embeddings, demonstrating improved                      ing. In parallel, dynamic information such as toggle activity,
+performance over heuristic ranking on several benchmarks.                       switching probability, and signal depth is obtained via RTL
+   In the post-silicon domain, debug and diagnosis largely                      simulation using tools like ModelSim or QuestaSim. These
+depend on the visibility provided by test points. Industrial                    traces provide the temporal context that complements the
+flows typically rely on pattern matching, signature-based di-                   structural view.
+agnosis, or expert-driven refinement [16]. Some recent work
+has applied statistical learning to failure clustering and defect               B. Feature Construction Unit
+localization [17], but the underlying TPI process often remains                    The Feature Construction Unit computes a diverse set of
+driven by manual rules or static analysis.                                      attributes for each node in the netlist graph. The features
+   Overall, ML-assisted TPI is still at an early stage. Existing                include:
+proposals often target either pre-silicon or post-silicon phases                   • Structural: fan-in/fan-out counts, logic level, gate type,
+in isolation, or require substantial retraining when applied                          and position in the control/data path.
+to new designs. The DFT AI framework presented in this                             • Dynamic: toggle activity, switching entropy, and corre-
+paper aims to address these limitations by providing a unified,                       lation with primary outputs or key internal signals.
+
+
+
+
+    Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 12:05:51 UTC from IEEE Xplore. Restrictions apply.
+         5th IEEE International Conference on AI in Cybersecurity (ICAIC), 18–20 February 2026, University of Houston, Houston, United States
+
+
+
+  •   Contextual: proximity to I/O boundaries, involvement
+      in clock-domain crossings, and association with specific
+      functional modules.
+   These attributes are normalized and concatenated to form a
+feature vector xi for each node i, which serves as the input
+to the learning models.
+
+C. Learning-Based TPI Predictor
+   The TPI Predictor uses a hybrid architecture combining
+Gradient-Boosted Decision Trees (GBDT) and Graph Neural
+Networks (GNNs). The GBDT component operates on hand-
+crafted features to produce an initial ranking of signals, while
+the GNN leverages the full graph structure to refine these
+rankings based on connectivity and context.                                       Fig. 2. Illustrative test point selection and integration flow within DFT AI.
+   The GNN follows a message-passing paradigm:
+                                                                                F. Pre- and Post-Silicon Support
+            (l+1)                        (l)
+                          X
+           hi     = σ         W(l) · hj + b(l)  ,                                  DFT AI is designed to support both pre-silicon and post-
+                              j∈N (i)                                             silicon use cases. During pre-silicon, inserted test points
+                                                                                  improve waveform visibility in simulation-based debug and
+where N (i) is the neighborhood of node i, W(l) and b(l) are                      formal analysis. Post-silicon, the same test points feed data
+learnable parameters at layer l, and σ is a nonlinear activation                  into embedded logic analyzers or debug ports (such as ARM
+function. After L layers, the final node embedding is passed                      CoreSight), enabling faster failure localization and yield anal-
+through an output layer to produce a score ŷi , representing the                 ysis. This dual-phase capability makes DFT AI suitable for
+predicted benefit of inserting a test point at node i.                            end-to-end, lifecycle-wide test enhancement.
+
+                                                                                                    IV. P ROPOSED M ETHODOLOGY
+D. Constraint-Aware Optimizer
+                                                                                    The DFT AI methodology combines machine learning and
+   Given the prediction scores ŷi , the Constraint-Aware Opti-
+                                                                                  graph-based reasoning to perform test point insertion by
+mizer selects a subset of candidate signals that satisfies area,
+                                                                                  analyzing RTL-level structures, dynamic activity, and design
+timing, and routing budgets. The optimizer uses synthesis-
+                                                                                  constraints. This section formalizes the learning problem and
+derived cost models and timing reports to rule out signals
+                                                                                  describes the optimization process.
+on critical paths or in congested regions. A greedy selection
+process, guided by a benefit-to-cost ratio, identifies nodes that                 A. Problem Formulation
+offer the highest observability improvement per unit area.
+   To enhance transparency, SHAP (SHapley Additive ex-                               Let G = (V, E) denote the structural netlist graph, where
+Planations) values are computed for the GBDT component,                           V is the set of nodes (signals) and E represents logical
+revealing which features contributed most to each node’s score.                   connections. Each node vi ∈ V is associated with a feature
+These insights help designers understand and validate the ML-                     vector xi ∈ Rd capturing structural and dynamic properties,
+driven decisions.                                                                 for example:
+
+                                                                                  xi = [fan ini , fan outi , togglei , depthi , entropyi , proximityi , coveragei ].
+E. Test Point Integration Engine
+                                                                                    The goal is to learn a function f : Rd → {0, 1} that
+   The Test Point Integration Engine applies the selected TPI                     predicts whether a test point should be inserted at node vi ,
+decisions to the RTL. For observation points, multiplexers                        while respecting area and timing constraints.
+or scan buffers are instantiated to route internal signals to
+existing scan chains or debug interfaces. For control points,                     B. Graph-Based Representation Learning
+controllable registers are added into enables or feedback paths.
+The resulting RTL is fed back into the synthesis flow (e.g.,                        To capture structural context, we apply a multi-layer GNN
+                                                                                                                            (l)
+Synopsys Design Compiler or Cadence Genus), where timing                          on G. At each layer l, node embeddings hi are updated via
+closure and physical feasibility are verified.                                    neighborhood aggregation:
+   An example of the selection and insertion process is shown
+                                                                                                                                
+                                                                                             (l+1)                      (l)
+                                                                                                           X
+in Fig. 2, which illustrates how signals are chosen, justified,                            hi      = σ         W(l) · hj + b(l)  ,
+and wired into the existing DFT infrastructure.                                                                 j∈N (i)
+
+
+
+
+      Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 12:05:51 UTC from IEEE Xplore. Restrictions apply.
+       5th IEEE International Conference on AI in Cybersecurity (ICAIC), 18–20 February 2026, University of Houston, Houston, United States
+
+
+
+where σ is a nonlinear activation (e.g., ReLU). After L                                         V. E XPERIMENTAL R ESULTS
+layers, the final embedding is used to compute the insertion                      We evaluate DFT AI on a set of designs from the
+probability:                                                                    ITC’99 [18] and OpenCores [19] benchmark suites. These
+                               T            (L)                                 designs span a range of structural complexity and include both
+                ŷi = sigmoid(wout · hi           + bout ).                     control-centric and datapath-heavy modules. All designs are
+                                                                                synthesized using Synopsys Design Compiler with a 65 nm
+C. Training Procedure
+                                                                                PDK, and simulations are carried out with ModelSim.
+   We train the model in a supervised fashion using binary                      A. Evaluation Metrics
+labels yi ∈ {0, 1} that indicate whether a test point was
+inserted in a reference DFT-optimized design. The primary                         We use the following metrics for quantitative evaluation:
+                                                                                  • Observability Gain (OG): Fraction of internal nets
+loss is binary cross-entropy:
+                                                                                    whose toggling becomes visible at scan outputs or debug
+                X
+         L=−        [yi log(ŷi ) + (1 − yi ) log(1 − ŷi )] .                      ports after TPI.
+                   i                                                              • Diagnosis Resolution (DR): Average number of candi-
+                                                                                    date nodes associated with each detected fault (lower is
+   To bias the model against costly insertions, we add a soft                       better).
+constraint penalty term C(xi ) that reflects area and timing                      • Test Point Utilization Efficiency (TPUE): OG per test
+criticality:                                                                        point, normalized across designs.
+                               X
+                Ltotal = L + λ     ŷi · C(xi ),                                  • Area Overhead (AO): Percentage increase in area due
+                                       i                                            to test point insertion.
+                                                                                  • Inference Time (IT): Time required by the ML model
+where λ controls the trade-off between accuracy and cost-
+                                                                                    to rank signals for TPI.
+awareness.
+                                                                                B. Comparative Methods
+D. Constraint-Aware Test Point Selection                                          DFT AI is compared against:
+                                                                                  • Static-Heuristic: Fan-in/fan-out-based ranking [12].
+   At inference time, predicted probabilities ŷi are ranked, and
+                                                                                  • Entropy-TPI: Signal entropy-based ranking [10].
+a constrained subset S ⊂ V of nodes is selected. The selection
+                                                                                  • ATPG-Guided:         TPI      driven  by      observabil-
+must satisfy:
+                                                                                    ity/corruptibility metrics from ATPG tools [1].
+                                                                                  • GNN-DAG: GNN-based signal ranking following [7].
+                 X
+                     Area(vi ) ≤ α · TotalArea,
+                  vi ∈S                                                         C. Quantitative Results
+and no node in S may reside on a critical timing path. A greedy                    Table I summarizes the results on ITC’99 designs. DFT
+algorithm that prioritizes ŷi /Area(vi ) is used to construct S,               AI achieves the highest observability gain, the best diagnosis
+ensuring high benefit per unit overhead.                                        resolution, and the highest TPUE, while keeping area overhead
+                                                                                comparable to simpler methods and significantly lower than
+E. Hybrid Learning Enhancement (Optional)                                       ATPG-heavy flows.
+
+   To improve interpretability and robustness, we train a                                                    TABLE I
+parallel GBDT model using the same feature vectors xi .                               C OMPARISON OF O BSERVABILITY G AIN (OG) AND D IAGNOSIS
+                                                                                             R ESOLUTION (DR) ON ITC’99 B ENCHMARKS
+SHAP values derived from this model provide a feature-based
+explanation of TPI decisions, indicating which attributes (e.g.,                  Method                  OG (%)      DR (↓)      TPUE      AO (%)         IT (s)
+toggle activity, fan-out) drive the ranking. These explanations
+                                                                                  Static-Heuristic [12]     47.5         6.2       0.87        3.9           0.0
+are used to refine feature engineering and to build designer                      Entropy-TPI [10]          55.1         5.6       0.91        4.8           0.0
+trust in the ML system.                                                           ATPG-Guided [1]           59.4         5.1       0.95        5.6         120.5
+                                                                                  GNN-DAG [7]               66.2         4.2       1.12        4.3          15.8
+                                                                                  DFT-AI                    72.8         3.7       1.28        3.9           4.3
+F. Flow Summary
+  For a new design, the TPI process proceeds as follows:                          Table II shows a per-design breakdown for several Open-
+  1) Extract the graph G and feature vectors xi for all vi ∈ V.                 Cores modules. Across AES, UART, RISC, and JPEG decoder
+  2) Use the trained GNN to infer ŷi for each node.                            designs, DFT AI maintains strong observability gains with
+  3) Apply the constraint-aware selector to obtain the final                    modest area overhead and low inference time.
+     TPI set S.                                                                 D. Performance Graphs
+  4) Modify RTL to insert test points at nodes in S and verify                     Fig. 3 compares observability gain for all methods on
+     synthesis and timing closure.                                              ITC’99 benchmarks. Fig. 4 illustrates the trade-off between
+This methodology enables fast, generalizable, and explainable                   area overhead and TPUE. Fig. 5 reports inference time across
+TPI across a range of SoC designs.                                              ML-based and non-ML approaches.
+
+
+
+
+    Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 12:05:51 UTC from IEEE Xplore. Restrictions apply.
+        5th IEEE International Conference on AI in Cybersecurity (ICAIC), 18–20 February 2026, University of Houston, Houston, United States
+
+
+
+                           TABLE II
+    DFT-AI P ERFORMANCE B REAKDOWN ON O PEN C ORES M ODULES
+
+        Design            OG (%)       AO (%)      TPUE       IT (s)
+        AES Core             74.6         3.5        1.33      3.1
+        UART Lite            70.2         3.2        1.29      2.4
+        Simple RISC          69.8         4.1        1.21      4.0
+        JPEG Decoder         75.3         4.5        1.35      4.7
+        Average              72.5         3.8        1.29      3.6
+
+
+
+
+                                                                                 Fig. 4. Trade-off between TPUE and area overhead for different TPI
+                                                                                 strategies.
+
+
+
+
+Fig. 3. Observability gain comparison across methods on ITC’99 benchmarks.
+
+
+
+              VI. D ISCUSSION AND C ONCLUSION
+   The results demonstrate that DFT AI delivers clear benefits
+over both traditional heuristic TPI and recent GNN-based
+approaches. It consistently improves observability, diagnosis                      Fig. 5. Inference time comparison for ML-based and non-ML methods.
+resolution, and test point utilization efficiency while keeping
+area overhead low and inference time short.
+   A key strength of DFT AI is its ability to generalize                            In summary, this paper presented DFT AI, a machine
+across heterogeneous designs. The hybrid architecture that                       learning–guided framework for test point insertion that sup-
+combines feature-based models with structural GNNs allows                        ports both pre-silicon debug and post-silicon diagnosis. By
+the framework to capture both local signal properties and                        coupling structural learning with constraint-aware optimiza-
+global design context. This combination leads to more in-                        tion, DFT AI advances the state of the art in TPI automation
+formed TPI decisions in control-heavy as well as datapath-                       and provides a practical solution for complex VLSI systems.
+dominated modules.                                                               Extensive experiments on ITC’99 and OpenCores benchmarks
+   DFT AI also offers practical runtime advantages. ATPG-                        show that DFT AI not only competes with but often surpasses
+guided TPI can require minutes or hours for large designs,                       existing techniques across multiple metrics.
+                                                                                    Future work will investigate reinforcement learning for dy-
+whereas DFT AI ranks signals in a few seconds for typical
+                                                                                 namic TPI placement, automated feature pruning for ultra-low-
+modules. This makes it well-suited for integration into rapid,
+                                                                                 power designs, and tighter integration with layout-aware mod-
+iterative development flows and nightly regressions.
+                                                                                 els to jointly optimize testability, performance, and routability.
+   Interpretability is another important benefit. SHAP-based
+analysis provides insight into why certain signals are selected,                                               R EFERENCES
+helping designers validate and trust ML-driven decisions. This                    [1] L.-T. Wang, C.-W. Wu, and X. Wen, VLSI Test Principles and Architec-
+transparency is especially valuable in safety-critical domains                        tures: Design for Testability. Morgan Kaufmann, 2006.
+such as automotive and aerospace, where DFT decisions may                         [2] M. L. Bushnell and V. D. Agrawal, Essentials of electronic testing for
+                                                                                      digital, memory and mixed-signal VLSI circuits. Springer, 2002.
+be subject to audit or certification.                                             [3] Y. Zorian, “Test requirements for embedded core-based systems and ieee
+   Nonetheless, the framework has limitations. Its performance                        p1500,” in Proceedings International Test Conference 1997. IEEE,
+depends on the representativeness of the training data, and                           1997, pp. 191–199.
+                                                                                  [4] A. Goldie and A. Mirhoseini, “Reinforcement learning for placement
+designs that deviate substantially from the training distribution                     optimization,” in Proceedings of the 2021 International Symposium on
+may require additional fine-tuning. Furthermore, the current                          Physical Design, 2021, pp. 5–5.
+implementation focuses on pre-layout netlists; integrating post-                  [5] Z. Zhuang, J. Wang, Q. Qi, H. Sun, and J. Liao, “Graph-aware
+                                                                                      deep learning based intelligent routing strategy,” in 2018 IEEE 43rd
+layout timing and congestion data into the selection loop                             Conference on Local Computer Networks (LCN). IEEE, 2018, pp.
+represents an important avenue for future work.                                       441–444.
+
+
+
+
+     Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 12:05:51 UTC from IEEE Xplore. Restrictions apply.
+         5th IEEE International Conference on AI in Cybersecurity (ICAIC), 18–20 February 2026, University of Houston, Houston, United States
+
+
+
+ [6] Z. Xu, “An intelligent fault detection approach for digital integrated
+     circuits through graph neural networks,” Mathematical Biosciences and
+     Engineering, vol. 20, no. 6, pp. 9992–10 006, 2023.
+ [7] Y. Yu, J. Chen, T. Gao, and M. Yu, “Dag-gnn: Dag structure learning
+     with graph neural networks,” in International conference on machine
+     learning. PMLR, 2019, pp. 7154–7163.
+ [8] V. Chickermane and J. H. Patel, “An optimization based approach to
+     the partial scan design problem,” in Proceedings. International Test
+     Conference 1990. IEEE, 1990, pp. 377–386.
+ [9] H. Foster, A. Krolnik, and D. Lacey, Assertion-based design. Springer,
+     2005.
+[10] Y. Gao, C. Yang, S. Tian, and F. Chen, “Entropy based test point
+     evaluation and selection method for analog circuit fault diagnosis,”
+     Mathematical Problems in Engineering, vol. 2014, no. 1, p. 259430,
+     2014.
+[11] C. Ravikumar, M. Hirech, and X. Wen, “Test strategies for low power
+     devices,” in Proceedings of the conference on Design, automation and
+     test in Europe, 2008, pp. 728–733.
+[12] H.-C. Tsai, K.-T. Cheng, C.-J. Lin, and S. Bhawmik, “Efficient test-
+     point selection for scan-based bist,” IEEE transactions on very large
+     scale integration (VLSI) systems, vol. 6, no. 4, pp. 667–676, 1998.
+[13] K. A. Ismail and M. A. A. E. Ghany, “Survey on machine learning
+     algorithms enhancing the functional verification process,” Electronics,
+     vol. 10, no. 21, p. 2688, 2021.
+[14] B. Li, X. Zhang, H. You, Z. Qi, and Y. Zhang, “Machine learning based
+     framework for fast resource estimation of rtl designs targeting fpgas,”
+     ACM Transactions on Design Automation of Electronic Systems, vol. 28,
+     no. 2, pp. 1–16, 2022.
+[15] M. Srour, “Data-dependent cycle-accurate power modeling of rtl-level
+     ips using machine learning,” Ph.D. dissertation, 2018.
+[16] P. Mishra and F. Farahmandi, Post-Silicon Validation and Debug.
+     Springer, 2019, vol. 301.
+[17] A. DeOrio, Q. Li, M. Burgess, and V. Bertacco, “Machine learning-
+     based anomaly detection for post-silicon bug diagnosis,” in 2013 Design,
+     Automation & Test in Europe Conference & Exhibition (DATE). IEEE,
+     2013, pp. 491–496.
+[18] I. T. Conference, “Itc’99 benchmark circuits,” http://www.cad.polito.it/
+     tools/itc99.html.
+[19] OpenCores, “Opencores benchmark suite,” https://opencores.org/.
+
+
+
+
+     Authorized licensed use limited to: East China Normal University. Downloaded on August 08,2026 at 12:05:51 UTC from IEEE Xplore. Restrictions apply.
+

@@ -1,0 +1,1330 @@
+                                                                                                                                                                                                                                                                                                              1
+
+
+
+
+                                           FT-Pilot: Automated Fault-Tolerant RTL Rewriting
+                                                     via Vulnerability-Guided LLMs
+                                                 Weixing Liu, Zizhen Liu, Member, IEEE, Jing Ye, Member, IEEE, Naixing Wang, Cheng Liu, Senior
+                                                   Member, IEEE, Huawei Li, Senior Member, IEEE, and Xiaowei Li, Senior Member, IEEE
+
+
+
+                                                                                                                                            Automation Bottleneck                                                                                Efficiency Bottleneck
+                                             Abstract—As integrated circuit technologies continue to scale
+                                                                                                                     1. Vulnerability          2. Strategy                      3. RTL            4. Iterative                   Uniform Hardening                             Excessive Overhead
+                                         toward advanced process nodes, the continual reduction in                       Analysis               Selection                      Rewriting          Verification                    (e.g., Full TMR)
+                                         node capacitance and supply voltage has made digital systems                                                                                                                                      Replica 1
+                                                                                                                                                                                                                                                                      Output
+                                                                                                                                                                                                                                Input
+arXiv:2605.28169v1 [cs.AR] 27 May 2026
+
+
+
+
+                                                                                                                                                                                                                                                           Majority
+                                         increasingly vulnerable to soft errors. Although traditional full-            Fault injection /       Designer decides               Hand-written RTL    Simulate, debug,
+                                                                                                                                                                                                                                           Replica 2
+                                                                                                                                                                                                                                                            Voter
+
+                                                                                                                       simulation to find      which strategy                 modifications are   and repeat many                          Replica 3
+
+                                         chip hardening methods can improve reliability, they often incur              vulnerable assets       and how to apply               error-prone         iterations
+                                                                                                                      • High manual effort • Long iteration cycle • Expertise-dependent                                      • Inefficient protection allocation • Unacceptable overhead
+                                         unacceptable area and power overhead, making selective hard-
+                                         ening a more practical engineering solution. However, existing                                                    Need LLM-driven automation                                                           Need GNN-guided vulnerability analysis
+                                                                                                                                                       Automate strategy selection and RTL                                                             Identify truly critical assets to enable
+                                         approaches typically rely on time-consuming fault-injection sim-                                             rewriting with semantic understanding.                                                             selective and efficient hardening.
+
+
+                                         ulation to determine hardening locations through vulnerability                                                                     FT-Pilot: GNN-Guided, LLM-Powered RTL Rewriting Framework
+
+                                         analysis, and still depend heavily on manual strategy selection                1. GNN-Guided Vulnerability Analysis
+                                                                                                                                      Where to protect ?
+                                                                                                                                                                                          2. Semantics-Aware RTL Rewriting
+                                                                                                                                                                                           How to protect and implement ?
+                                                                                                                                                                                                                                        3. Automated Verification & Repair Loop
+                                                                                                                                                                                                                                         Is it correct and synthesizable ?
+                                         and RTL modification during the hardening stage, making them                                                                                          Strategy                                     Syntax Check
+                                                                                                                                                                                               Knowledge Base
+                                         ill-suited for efficient automated reliability optimization at early            RTL         Circuit
+                                                                                                                                                  Non-critical
+
+
+                                                                                                                                                    GNN
+                                                                                                                                                                 Critical
+
+
+                                                                                                                                                                              Critical         Example           LLM    Hardened
+                                                                                                                                                                                                                                            Interface    Consistency Check
+                                                                                                                                                                                                                                            Functional Simulation
+                                                                                                                                                                                                                                                                                                     Verified
+                                                                                                                                                                                               Code Base                                                                       Auto-Repair        Fault-Tolerant
+                                         design stages. To address these challenges, this paper proposes                Design       Graph        Predictor
+                                                                                                                       Fast, accurate identification of vulnerable
+                                                                                                                                                                              Assets                                      RTL
+                                                                                                                                                                                         Automatically select appropriate strategies       Multi-level verification with automatic
+                                                                                                                                                                                                                                                                                                       RTL
+
+
+                                         FT-Pilot, a GNN-guided LLM framework for automatic RTL                                  assets at the RT level.                                  and generate correct fault-tolerant RTL.        repair ensures correctness and reliability.
+
+                                         soft-error hardening. The framework first employs a GNN to
+                                         identify critical vulnerable assets directly at the RTL level, and          Fig. 1. Motivation for FT-Pilot. Traditional RTL hardening faces two key
+                                         then introduces an LLM-driven rewriting engine composed of an               bottlenecks: (1) an automation bottleneck due to the labor-intensive, expertise-
+                                         analyzer and a rewriter, which performs RTL-level fault-tolerant            dependent manual workflow; and (2) an efficiency bottleneck caused by
+                                         code rewriting with the support of dual-knowledge-base retrieval-           uniform hardening strategies such as full TMR that incur excessive overhead.
+                                         augmented generation and an automatic repair mechanism.                     FT-Pilot addresses both challenges through GNN-guided vulnerability analysis
+                                         Experimental results show that the proposed framework can au-               and LLM-powered semantics-aware RTL rewriting, forming a closed-loop
+                                                                                                                     pipeline for selective and automated fault-tolerant hardening.
+                                         tomatically generate hardened RTL designs that are syntactically
+                                         correct, functionally correct, and synthesizable across multiple
+                                         benchmark circuits, while significantly reducing output error
+                                         rates under soft-error scenarios. This work provides a practical            can lead to severe consequences, necessitating effective soft-
+                                         automated path toward shift-left reliability optimization at the            error protection mechanisms [2]. In practice, improving system
+                                         RTL level.                                                                  reliability critically depends on fault-tolerant register-transfer
+                                            Index Terms—Fault tolerant, Soft error hardening, Large                  level (RTL) rewriting, where the original design is transformed
+                                         language model, Register-transfer level                                     to incorporate appropriate protection strategies.
+                                                                                                                        However, despite its importance, RTL-level fault-tolerant
+                                                                  I. I NTRODUCTION                                   rewriting remains largely manual. Designers are required to
+                                                                                                                     identify vulnerable components, analyze fault impact, select
+                                           As semiconductor technology continues to scale toward
+                                                                                                                     suitable protection strategies [3], [4] (e.g., triple modular
+                                         advanced process nodes, digital circuits are becoming increas-
+                                                                                                                     redundancy (TMR), error-correcting code (ECC), parity), and
+                                         ingly sensitive to environmental disturbances such as radiation
+                                                                                                                     modify RTL code accordingly. This process is labor-intensive,
+                                         and supply-voltage fluctuations, making soft errors a key threat
+                                                                                                                     error-prone, and difficult to scale to large and complex designs.
+                                         to system reliability [1]. In safety-critical domains such as
+                                                                                                                     Existing design flows further exacerbate this challenge. As
+                                         aerospace and autonomous driving, even a single transient fault
+                                                                                                                     illustrated in Fig. 1, vulnerability analysis is typically per-
+                                            The corresponding authors are Zizhen Liu and Cheng Liu.                  formed through post-synthesis gate-level fault injection [5],
+                                            W. Liu is with the School of Advanced Interdisciplinary Sciences, Uni-   followed by manual RTL hardening. Each iteration can take
+                                         versity of Chinese Academy of Sciences, Beijing, China. E-mail: liuweix-
+                                         ing23@mails.ucas.ac.cn.                                                     days to weeks due to the high cost of gate-level simulation
+                                            Z. Liu is with the State Key Lab of Processors, Institute of Computing   and repeated verification. More importantly, this workflow
+                                         Technology, Chinese Academy of Sciences, Beijing, China. E-mail: liuz-      exposes a fundamental gap between vulnerability analysis and
+                                         izhen@ict.ac.cn.
+                                            C. Liu and X. Li are with the State Key Lab of Processors, Institute     fault-tolerant implementation. While existing tools can identify
+                                         of Computing Technology, Chinese Academy of Sciences, and the Univer-       critical components, they provide no systematic mechanism to
+                                         sity of Chinese Academy of Sciences, Beijing, China. E-mail: {liucheng,     translate analysis results into correct and effective RTL-level
+                                         lxw}@ict.ac.cn.
+                                            J. Ye and H. Li are with the State Key Lab of Processors, Institute of   transformations. Consequently, fault-tolerant rewriting remains
+                                         Computing Technology, Chinese Academy of Sciences, the University of        ad hoc and heavily dependent on designer expertise.
+                                         Chinese Academy of Sciences, and CASTEST Co., Ltd. E-mail: {yejing,            This gap persists despite extensive research in electronic de-
+                                         lihuawei}@ict.ac.cn.
+                                            N. Wang is with Bodesi Technologies. E-mail: naixing-                    sign automation (EDA). Existing tools provide strong support
+                                         wang@bodesitech.com                                                         for soft-error analysis, such as fault-injection simulation [5]
+                                                                                                                                     2
+
+
+
+and soft-error rate (SER) estimation [6], and offer limited         identification to fault-tolerant implementation. Specifically, the
+protection mechanisms for specific structures (e.g., ECC for        framework first converts RTL designs into And-Inverter Graph
+memories or TMR insertion [7]). However, these techniques           (AIG) based graph [15] representations and employs a graph
+are typically restricted to predefined patterns and do not          neural network (GNN) to identify vulnerable assets directly at
+generalize to arbitrary RTL designs. Fundamentally, reliability-    the RTL level, thereby eliminating the dependence on post-
+aware RTL rewriting is not a purely structural optimization         synthesis gate-level netlists and enabling earlier-stage relia-
+problem, but a semantic-driven and strategy-dependent trans-        bility analysis and optimization. Building on this foundation,
+formation task. Effective fault-tolerant modification requires      we further design a two-stage LLM-driven rewriting pipeline
+understanding the functional role of design components (e.g.,       consisting of an RTL Analyzer and an RTL Rewriter. The
+control logic, datapaths, and storage elements) and selecting       Analyzer is responsible for examining vulnerable assets and
+appropriate protection strategies accordingly. Moreover, such       assigning appropriate fault-tolerance strategies, producing a
+transformations are often non-local, involving coordinated          structured hardening plan. Guided by this plan, the Rewriter
+modifications across multiple modules and interfaces, which         performs strategy-aware RTL rewriting with retrieval augmen-
+cannot be handled by localized rule-based or synthesis-driven       tation from both a fault-tolerance semantic knowledge base
+approaches. Due to the lack of semantic understanding and the       and a fault-tolerance example knowledge base. Through the
+inability to perform context-aware, non-local transformations,      integration of automatic repair and multi-level verification,
+existing EDA tools are insufficient to automate this process.       the proposed framework establishes an automated closed loop
+As a result, RTL-level fault-tolerant rewriting remains largely     from vulnerability identification to RTL fault-tolerant imple-
+manual in practice.                                                 mentation, providing a practical path toward shift-left design
+   Recent advances in machine learning provide new oppor-           for reliability optimization.
+tunities to address these challenges. In particular, large lan-        The main contributions of this work are as follows:
+guage models (LLMs) have demonstrated strong capabilities              • We formulate reliability-aware RTL rewriting as a uni-
+in code understanding, generation, and transformation, making             fied problem that bridges vulnerability analysis and
+them promising candidates for automating RTL rewriting                    fault-tolerant implementation, and propose an automated
+tasks [8], [9]. However, directly applying general-purpose                framework that enables a closed-loop design flow for
+LLMs to reliability-aware RTL hardening is fundamentally                  scalable soft-error hardening.
+challenging. Although LLMs can capture code semantics,                 • We develop an RTL-level vulnerability prediction ap-
+they lack domain-specific knowledge of circuit fault tolerance            proach that captures structurally critical assets without
+and protection strategy selection. Consequently, they may                 relying on post-synthesis gate-level representations, en-
+generate syntactically valid modifications without ensuring               abling early-stage and technology-independent reliability
+that the applied transformations are appropriate for soft-error           optimization.
+mitigation. Moreover, since hardening effectiveness cannot             • We introduce a strategy-aware and knowledge-augmented
+be inferred from syntax alone, the generation process lacks               RTL rewriting paradigm that integrates structured anal-
+reliable feedback, leading to potentially incorrect or ineffec-           ysis and guided transformation with verification-driven
+tive results. Therefore, effective LLM-based RTL hardening                refinement, improving the correctness and robustness of
+requires explicit fault-tolerance knowledge and verification-             fault-tolerant RTL generation.
+driven guidance.                                                       • We implement an end-to-end soft-error hardening system
+   A second fundamental challenge is that fault-tolerant rewrit-          and demonstrate its effectiveness on diverse benchmark
+ing must be guided by structural vulnerability rather than                circuits, achieving high prediction accuracy, stable rewrit-
+applied uniformly. Selective hardening [10] is necessary to               ing quality, and significant reduction in soft-error vulner-
+balance reliability and overhead, which requires identifying              ability with acceptable overhead.
+vulnerable and critical assets prior to rewriting. However, such
+structural vulnerability information is not directly accessible                          II. R ELATED W ORKS
+to general-purpose LLMs, as it depends on circuit topology
+and fault-impact propagation rather than local code semantics.      A. Soft Error Protection and Selective Hardening
+Existing approaches address this problem using fault-injection         A wide range of protection techniques have been proposed
+simulation or machine-learning models on post-synthesis gate-       to mitigate soft errors such as single-event upsets (SEUs) at
+level netlists [11]–[14], which incur high analysis cost and        different abstraction levels. At the architectural level, prior
+are tightly coupled to specific technology libraries. In con-       work [16] primarily relies on hardware redundancy and check-
+trast, RTL-level representations preserve higher-level structural   point–rollback mechanisms, introducing redundant execution
+properties that are more stable across implementations, en-         or recovery capabilities at the system level to tolerate transient
+abling earlier-stage and more portable vulnerability estimation.    faults. At the algorithm level, Huang and Abraham proposed
+Therefore, vulnerability prediction must be integrated into the     the classical algorithm-based fault tolerance (ABFT) [17],
+rewriting process to provide explicit structural guidance for       which provides a low-overhead approach for error detection
+selective RTL hardening.                                            and correction in structured computations such as matrix
+   To address the above challenges, this paper proposes FT-         operations. At the circuit level, protection strategies are typ-
+Pilot, an automated framework for reliability-aware RTL             ically tailored to different types of modules. For data paths,
+rewriting, which establishes a closed loop from vulnerability       parity checking and EDC/ECC [4] techniques are commonly
+                                                                                                                                   3
+
+
+
+employed. For control logic, robust state encoding schemes         rely on post-synthesis gate-level netlists derived from RTL.
+such as safe-state encoding and one-hot encoding are widely        This dependence introduces two major limitations. First, vul-
+used to improve state resilience [18]. For memory structures,      nerability analysis can only be carried out after synthesis,
+ECC remains the most mature and widely adopted protec-             making it unsuitable for rapid iteration and shift-left optimiza-
+tion mechanism [4]. In addition, for timing-related soft error     tion in the early design stage. Second, the resulting prediction
+detection, Ernst et al. proposed Razor [19], which improves        models are often tightly coupled to a specific technology
+circuit robustness by detecting timing errors and triggering       library, so changes in the target library typically require
+recovery mechanisms. Subsequent works, such as Bubble              retraining, which limits generality and portability. Therefore,
+Razor [20], further reduce false positives and improve practical   there is a strong need for a method that can predict soft-error
+applicability.                                                     vulnerability directly at the RTL level, thereby supporting fast
+   Among these techniques, TMR [3] is widely regarded as           early-stage analysis and reliability optimization.
+one of the most effective hardware-level fault tolerance ap-
+proaches, as it can directly mask single-point failures through    C. Application of Large Language Models in Hardware De-
+triplication and majority voting. However, this robustness         sign Automation
+typically comes at the cost of over 200% hardware overhead,
+                                                                      In recent years, the application of LLMs to EDA has
+along with significant penalties in area, power, and timing. To
+                                                                   expanded rapidly. Existing work has primarily focused on
+address this limitation, selective hardening techniques have
+                                                                   RTL generation, design space exploration, PPA optimization,
+been proposed [10]. The key observation is that not all
+                                                                   verification assistance, and workflow automation. In RTL
+registers or circuit elements contribute equally to system-level
+                                                                   generation, systems such as AutoVCoder [24], RTLCoder
+reliability; therefore, instead of uniformly applying protec-
+                                                                   [8], and MAGE [25] have shown that domain-specific fine-
+tion, it is more efficient to selectively harden only the most
+                                                                   tuning, retrieval-augmented generation (RAG), and role-based
+vulnerable and critical components. Existing approaches to
+                                                                   collaboration can produce strong results on Verilog generation
+selective hardening typically rely on fault injection or similar
+                                                                   tasks. In design space exploration, LLM4GV [26] explores the
+analysis techniques to identify critical nodes, followed by the
+                                                                   design space of GEMM under performance constraints, while
+application of appropriate fault tolerance strategies to balance
+                                                                   Yao et al. [9] demonstrate that LLMs can approach human-
+reliability and power, performance, and area (PPA) [21].
+                                                                   expert performance in RTL-level PPA optimization through
+Traditional analysis methods such as fault injection incur
+                                                                   retrieval-augmented rewriting. In verification and debugging,
+substantial runtime overhead, which limits the efficiency of
+                                                                   AssertionLLM [27] and Self-HWDebug [28] demonstrate the
+vulnerability assessment. Moreover, after identifying critical
+                                                                   usefulness of LLMs for assertion generation and hardware
+nodes, the subsequent steps—strategy selection and RTL-level
+                                                                   debugging. Beyond RTL-level tasks, HLSPilot [29] further
+code modification—are still largely performed manually, with
+                                                                   extends LLM-based automation to the HLS abstraction layer,
+limited support from automated EDA tools, resulting in a
+                                                                   leveraging RAG-based strategy retrieval to transform sequen-
+workflow with low overall automation.
+                                                                   tial C/C++ into optimized FPGA accelerators. In addition,
+                                                                   some recent studies [30] have extended LLMs into agent-style
+B. Machine Learning-Based Soft Error Vulnerability Predic-         systems for EDA workflows, supporting task decomposition,
+tion                                                               script generation, and tool invocation.
+                                                                      Overall, existing LLM-for-EDA research has concentrated
+   Traditional fault injection requires simulation to be per-
+                                                                   on code generation, optimization, and verification, while RTL
+formed exhaustively over a large number of registers, and
+                                                                   rewriting for soft-error-tolerant hardening remains largely un-
+its computational cost increases rapidly with design size. For
+                                                                   explored. Compared with general RTL generation tasks, fault-
+million-gate circuits, the time overhead of such simulation-
+                                                                   tolerant rewriting requires not only syntactic correctness and
+based analysis becomes prohibitively high, to the point of
+                                                                   functional preservation, but also identification of protection
+being impractical. To accelerate this process, Tang et al. [22]
+                                                                   targets, selection of appropriate hardening strategies, and
+proposed a redundancy-elimination-based RTL fault simula-
+                                                                   careful trade-offs between reliability improvement and imple-
+tion method. Although it improves efficiency on small- and
+                                                                   mentation overhead. These requirements place substantially
+medium-scale circuits, its benefit remains limited for large-
+                                                                   stronger demands on consistency and verifiability, and remain
+scale designs. Researchers subsequently introduced machine
+                                                                   insufficiently studied.
+learning into vulnerability analysis. Lange et al. [14] employed
+machine learning models to predict flip-flop vulnerability
+                                                                                        III. M ETHODOLOGY
+and reduce fault injection cost. Lu et al. [12] exploited
+the inherently graph-structured nature of digital circuits by      A. Proposed Framework Overview
+combining graph neural networks with dynamic behavioral               The goal of this work is to automate fault-tolerant RTL
+features, thereby improving prediction accuracy. Das et al. [23]   rewriting, where a given RTL design is transformed into a
+further incorporated GNN interpretability analysis to reveal       resilient version through structure-aware and strategy-driven
+the relationship between circuit features and vulnerability,       code modifications. As illustrated in Fig. 2, FT-Pilot estab-
+providing guidance for downstream hardening.                       lishes a closed-loop rewriting pipeline that integrates struc-
+   Although existing methods have achieved promising results       tural vulnerability guidance, LLM-based transformation, and
+in both analysis efficiency and prediction accuracy, they still    verification-driven refinement.
+                                                                                                                                                                                                               4
+
+
+
+① GNN-based vulnerability prediction
+                                                                                                                                                         Fault Injection
+     module fsm(                        in0
+                                                A   $108                                                                       node, edge                 Simulation
+                                                             Y
+     input IN,                                  B AND_X
+                                                                     A  $109
+     input CLK,RST,           Yosys     in1                          B AND_X
+                                                                             Y
+                                                                                       Parser                                                                         label
+                                                       in2                                                                     static featuress
+     output MATCH);
+                                                                                                                                                                                             GraphSAGE
+     reg [2:0] ST_cr,ST_nt;                                            $110 Y
+                                                                                                                               dynamic features
+                                                                 A               out
+                                                                     INV_X1
+
+     ...
+           RTL Code                                          AIG                                       Graph                  Feature extraction                                       GNN model
+
+                                                                                                                                                              Critical Registers:
+② LLM-driven rewriting engine                                                                                                                                 reg ST_nt, reg A1,...
+
+
+   Critical Registers:                                                                                                                               "asset_id": "A1",
+                                      System Prompt:                                          Strategy                                               "asset_type": "fsm_state",
+   reg ST_nt, reg A1,...              You are an RTL                                      Eligibility Table                                          "signals": [
+                                      design expert,...                                                                                              "cur_state"
+                                                                                                                                  Plan                ],                                       Query
+   module fsm(                                                                                   COT
+                                                                                                                                 Builder             "risk": "high",
+   input IN,                          User Prompt:
+                                                                                                                                                     "strategy_candidates": [
+   input CLK,RST,                                                         LLM                                 analysis.json                          "fsm_hamming","tmr_state"]...
+                                      Please analyze the
+                                                                                                                                                                                                   Retrieval
+   output MATCH,...                   following RTL code ...
+                                                                         RTL Analyzer                                                                     plan.json
+
+                                                                          strategy_
+                                                                          failure_kb                                                                                                            RAG
+   module fsm_ft(
+                                                                                                  Auto Repair                                     Construct Prompt                   top-k
+                                                           Y
+   input IN,                     Reliability                                                                                                                                                 Semantic KB
+                                                                         Error Check                                                              Implement a fault-tolerant
+   input CLK,RST,               fault injection                          1.Syntax                    Rewritten RTL                                version of the RTL code.
+                                                                                                                                                  You can refer these                        Example KB
+   output MATCH,...                                        N             2.Interface                     Code                                     documents: chunk1,chunk2,
+                                                                         3.Function                                                               ...
+                                                                                                              RTL Rewriter LLM
+
+
+Fig. 2. Overview of the proposed FT-Pilot framework for RTL soft error hardening.
+
+
+
+   A key challenge in fault-tolerant RTL rewriting is that                                                        of LLM-based code generation. Guided by the rewriting
+effective modification must be guided by circuit-level vul-                                                       plan and retrieved knowledge, the RTL Rewriter performs
+nerability rather than applied uniformly. To address this, we                                                     strategy-aware transformation to generate fault-tolerant RTL.
+first derive structural vulnerability information directly at the                                                 The generated design is then subjected to multi-level verifi-
+RTL level. Specifically, the input RTL design is converted                                                        cation, including syntax, interface, and functional correctness
+into an AIG-based graph representation, from which both                                                           checks, along with fault-injection-based reliability evaluation.
+structural and activity-related features are extracted. A GNN is                                                  If violations or ineffective transformations are detected, an
+then used to predict vulnerable assets (e.g., critical registers),                                                automatic repair module is triggered to iteratively refine the
+providing explicit structural guidance for subsequent rewriting.                                                  code. Through this tightly coupled loop of knowledge-guided
+Unlike conventional approaches that rely on expensive post-                                                       generation and verification-driven feedback, the proposed
+synthesis analysis, this step enables efficient and early-stage                                                   framework ensures high-quality fault-tolerant RTL rewriting
+identification of protection targets.                                                                             with minimal manual effort.
+    Building on the vulnerability guidance, we construct a struc-                                                    The rest of this section is organized as follows. Section III-
+tured analysis-and-transformation pipeline for strategy-aware                                                     B presents the RTL-level vulnerability prediction method, and
+RTL rewriting. The pipeline consists of an RTL Analyzer                                                           Section III-C describes the strategy-aware LLM-based RTL
+and an RTL Rewriter, where high-level rewriting decisions                                                         rewriting process.
+are first derived and then systematically applied to generate
+fault-tolerant RTL. Given the original RTL code and the iden-                                                     B. GNN-Based Vulnerability Prediction
+tified vulnerable assets, an RTL Analyzer first interprets their                                                     To perform RTL-level vulnerability prediction, we first
+functional roles and assigns candidate fault-tolerance strategies                                                 construct a circuit graph representation and extract the cor-
+based on a predefined strategy eligibility table. The analysis                                                    responding features, then generate supervision labels through
+results are organized into a structured representation, which                                                     fault injection, and finally employ a GNN model to perform
+is further processed to generate a high-level rewriting plan                                                      register-level vulnerability prediction. The overall pipeline is
+describing target assets, risk levels, and candidate protection                                                   illustrated in Fig. 3.
+strategies.                                                                                                          1) Graph Construction and Representation. To enable
+   To ensure both correctness and effectiveness, we integrate                                                     GNN-based vulnerability prediction at the RTL level, we first
+knowledge-augmented generation with verification-driven re-                                                       convert the RTL design into a graph representation. Specif-
+finement into a unified rewriting process. Specifically, we                                                       ically, we adopt the AIG as an intermediate representation
+adopt a RAG [31] mechanism to incorporate both semantic                                                           and construct the input graph for the GNN on top of it.
+knowledge of fault-tolerance techniques and representative                                                        Compared with post-synthesis gate-level netlists, AIG provides
+transformation examples, improving the quality and reliability                                                    a more uniform representation and is decoupled from specific
+                                                                                                                                                                                                                  5
+
+
+
+                                              FF2                                                            FF2
+  *.v
+                                        G1                    G2
+                                                                                                                                                   objects in the RTL source code during graph construction.
+                                                                                                   G1                         G2
+                Yosys
+                              FF1                   G4                    G7     FF4   Parser                      G4              G7        FF4
+                                                                                                                                                   As a result, once vulnerability prediction has been performed
+                                                                                                 FF1
+                                                                                                                                                   on the register nodes in the graph, the predicted results can
+                                        G3
+RTL Code                                            FF3
+                                                                                                        G3
+                                                                                                                                   G6
+                                                                                                                                                   be directly mapped back to the RTL level, thereby producing
+                                                              G6
+                                                                                                                   FF3
+                                                                                                   Extraction                                      a vulnerability report for critical registers in the RTL design.
+                                                                    1           1 1 ... 1         1 0 ... 0                                        Since this correspondence is established during preprocessing,
+                                                                    0          0 1 ... 0          0 1 ... 0                                        the back-annotation process introduces almost no additional
+Golden reference                       label                        ...        ... ... ... ...    ... ... ... ...
+                                                                                                                                                   overhead.
+                                                                    1          1 0 ... 1          0 0 ... 1
+                                                                                                                                                      2) Feature Extraction. After graph construction and repre-
+Fault injection waveform                                           label       Features matrix Adjacency matrix
+                                                                                                                                                   sentation, we further extract feature representations for graph
+                                                     model train
+                              Positive node
+                                                                                                                                                   nodes for vulnerability prediction. Since node vulnerability
+                              Negative node                                                                                                        depends not only on the topological position of a node in
+                                                                                                                                                   the circuit, but also on its dynamic behavior during operation,
+                                                                   GraphSAGE                                                                       we jointly consider static topological features and dynamic
+   G=(V,E)                                                                                             G=(V,E)                                     temporal features [32] under representative workloads for
+  Label vector: 1 0 x x ...                                   GNN model                            Label vector: 1 0 0 1 ...                       register vulnerability modeling. For a graph node vi , its final
+                                                                                                                                                   feature vector is defined as
+Fig. 3. Architecture of the GNN-based vulnerability prediction module (Stage
+1).                                                                                                                                                                              (s)    (d)
+                                                                                                                                                                         xi = [xi ∥ xi ],
+                                                                                                                                                           (s)                                         (d)
+                                                                                                                                                   where xi denotes the static topological features, xi denotes
+technology libraries. It also avoids the additional cost of                                                                                        the dynamic behavioral features, and ∥ represents vector
+synthesis and technology mapping, making it more suitable                                                                                          concatenation.
+for reliability analysis in the early design stage.                                                                                                   The static topological features are used to characterize the
+                                                                                                                                                   structural position of a node and its local connectivity in the
+ always @(posedge clk)                                                                                        a                         q1
+                                                                                                                         G1
+ begin
+                                                                                                                                                   circuit. Specifically, we extract the following features:
+                                          a              G1        q1            G2      q2
+  q1 <= a & b;                                                                                                b                              G2
+  q2 <= ~q1;                                                                                                                                          • Node type: a one-hot encoding indicating different node
+ end                                      b
+                                                                                                                              q2
+                                                                                                                                                        categories, including primary inputs, primary outputs,
+                                                               G1                                                                                       logic gates, and flip-flops.
+              simulation                                                                                           0 0 1 0 0                 0        • Fan-in/fan-out counts: the numbers of incoming and
+                                                                                                                   0 0 1 0 0                 0
+                                                                                                                   0 0 0 1 0                 0
+                                          Toggle rate
+                                          Signal probability
+                                                                           NodeType
+                                                                           Fanin                                   0 0 0 0 1                 0
+                                                                                                                                                        outgoing edges of a node, which reflect its local con-
+                                          Coverage                         Fanout                                  0 0 0 0 0                 1
+      waveform
+                                          ...                              LogicDepth                              0 0 0 0 0                 0          nectivity complexity and its influence on upstream and
+                                                                           ...                                      Adjacency matrix
+                                                                                                                                                        downstream logic.
+                                                                                                                                                      • Logic depth: including forward logic depth and back-
+Fig. 4. Illustration of graph construction and feature extraction from an RTL                                                                           ward logic depth, which represent the logical distances
+design.
+                                                                                                                                                        from the current node to the primary input nodes and
+   For a given RTL design, we first use the open-source synthe-                                                                                         primary output nodes, respectively, thereby characterizing
+sis tool Yosys to translate it into an AIG representation [15].                                                                                         its relative position along the signal propagation path.
+In this representation, logic gates and flip-flops are modeled                                                                                        • Neighbor-type distribution: the type distribution of one-
+
+as graph nodes, while signal connections between them are                                                                                               hop neighbors, which describes the structural context
+modeled as graph edges. Fig. 4 shows a simple example. Based                                                                                            around the node.
+on the parsed AIG, we further construct a directed graph                                                                                              The dynamic behavioral features are used to capture node
+                                                                                                                                                   activity under representative workloads. Specifically, we col-
+                                                G = (V, E),                                                                                        lect temporal behavior information through RTL simulation
+where the node set V includes primary inputs (PIs), primary                                                                                        and extract the following dynamic features:
+outputs (POs), logic gates, and flip-flops, and the edge set                                                                                          • Toggle rate: the number of output signal transitions of
+E represents the logical connectivity between nodes. Accord-                                                                                            a node during simulation; a higher toggle rate indicates
+ingly, the graph is represented by a node feature matrix                                                                                                more frequent state changes.
+                                                                                                                                                      • Signal probability: the fraction of time for which the
+                                                    X ∈ RN ×F
+                                                                                                                                                        node output remains at logic high over the total execution
+and an adjacency matrix                                                                                                                                 time.
+                                                                                                                                                      • Coverage: a measure of how fully a node signal is
+                                                A ∈ RN ×N ,                                                                                             activated during simulation. If a node signal takes both
+where N denotes the total number of nodes and F denotes                                                                                                 logic 0 and logic 1 during simulation, its coverage is set
+the feature dimension.                                                                                                                                  to 1; if the signal remains constant (either always 0 or
+   In addition, to support efficient vulnerability back-                                                                                                always 1), its coverage is set to 0.5.
+annotation at the RTL level, we explicitly establish the cor-                                                                                         By jointly modeling static topological features and dynamic
+respondence between register nodes in the AIG and register                                                                                         behavioral features, we provide the subsequent GNN with
+                                                                                                                                                                          6
+
+
+
+a more comprehensive node representation. This allows the            by BatchNorm, ReLU activation, and Dropout to accelerate
+model to capture not only the structural position of registers       convergence and mitigate overfitting. The third layer maps the
+in the circuit, but also their runtime activity patterns, thereby    hidden features to a two-dimensional output space and directly
+enabling more accurate vulnerability prediction.                     outputs the logits.
+   3) Label Generation. We generate vulnerability labels for
+the training dataset using conventional fault-injection simula-                        Graph
+
+tion. Specifically, we use Synopsys Z01X [33] as the fault-
+injection tool to inject SEU faults into circuit registers and                    �1              �2
+                                                                                           �
+observe whether the faults lead to erroneous outputs at the
+                                                                                                                                                            Node
+                                                                                           �3
+primary outputs of the design, thereby assessing the impact                                                         GraphSAGE   GraphSAGE
+                                                                                                                                                        classification
+                                                                                                                                            GraphSAGE
+                                                                                                                                                          Positive node
+of each register on overall system reliability. For each RTL                                                          Layer 1     Layer 2     Layer 3
+                                                                                                                                                          Negative node
+design, we prepare a representative workload testbench. We               GraphSAGE aggregation
+                                                                        �1
+                                                                                                  aggregate
+first perform fault-free simulation and record the resulting
+                                                                                       �
+                                                                                                  neighbors
+                                                                        �2                            +
+output waveform as the golden reference. Then, over the full            �3
+                                                                                                 update node
+                                                                                                 embedding
+
+execution window of the circuit, we inject a single bit-flip fault
+                                                                      ��(�+�) = �(��(�) , 푨��({��
+                                                                                                (�)
+                                                                                                    , � ∈ ℵ(�)}))
+into each register at a random time point. After fault injection,
+the faulty output waveform is collected and compared against
+                                                                     Fig. 5. Architecture of the three-layer GraphSAGE network.
+the golden reference. If the two waveforms differ, the injected
+fault is considered to have caused an output error.                     The model is trained using a class-weighted cross-entropy
+   Based on this procedure, we perform fault-injection sim-          loss to address the class imbalance between vulnerable and
+ulation on every register in each RTL design and compute             non-vulnerable registers:
+its Architectural Vulnerability Factor (AVF). For a register ri ,
+                                                                                                   N
+the AVF is defined as the ratio between the number of fault                                     1 X      h
+                                                                                                                   (i)                       (i)
+                                                                                                                                                 i
+injections that lead to output errors and the total number of                L=−                      wyi yi log(p̂1 ) + (1 − yi ) log(1 − p̂1 )
+                                                                                                N i=1
+injections, i.e.,
+                                     N err                                                                                                        (i)
+                        AVF(ri ) = iinj ,                            where wyi denotes the class weight, and p̂1 denotes the
+                                     Ni                              Softmax-normalized probability that node i is predicted to be
+where Nierr denotes the number of injections on register ri          vulnerable. During inference, arg max is used to obtain the
+that result in output errors, and Niinj denotes the total number     final predicted class.
+of injections on that register. A higher AVF indicates that
+faults occurring in the register are more likely to propagate to     C. LLM-Driven Rewriting Engine
+the primary outputs and thus pose a greater threat to system
+                                                                        Building on the vulnerability prediction results from the
+reliability. To account for different reliability requirements
+                                                                     previous stage, we design an LLM-driven rewriting engine
+across tasks, we predefine a per-design AVF threshold based
+                                                                     to automatically harden the RTL code against soft errors. As
+on the distribution of register AVF values in each circuit, and
+                                                                     illustrated in the lower half of Fig. 2, the engine comprises
+label registers above this threshold as vulnerable (label 1)
+                                                                     two submodules: the RTL Analyzer and the RTL Rewriter.
+and the rest as non-vulnerable (label 0). In this way, register
+                                                                     The RTL Analyzer examines each critical asset by jointly
+vulnerability prediction is formulated as a binary classification
+                                                                     considering the vulnerability report and the RTL code seman-
+problem.
+                                                                     tics, assigns candidate fault-tolerance strategies, and produces
+   4) Graph Neural Networks. We adopt GraphSAGE [34]
+                                                                     a structured hardening plan. The RTL Rewriter then carries out
+as the vulnerability prediction model. Compared with con-
+                                                                     the actual code transformation according to this plan through
+ventional GCN, which performs convolution over the entire
+                                                                     a retrieval-augmented generation mechanism. The following
+graph, GraphSAGE learns node representations through neigh-
+                                                                     subsections detail the design of each submodule.
+borhood sampling and feature aggregation, making it more
+                                                                        1) RTL Analyzer. The RTL Analyzer bridges vulnerability
+suitable for large-scale circuit graphs. The core idea is as
+                                                                     identification and RTL rewriting, transforming the critical
+follows: for a target node v, its neighborhood set N (v) is
+                                                                     vulnerable assets identified upstream into an actionable hard-
+sampled, and the neighbor features are aggregated to update
+                                                                     ening plan. As illustrated in Fig. 6, it takes the vulnerability
+the embedding of the target node. The node representation at
+                                                                     report and the original RTL code as input, leverages code-
+the k-th layer is updated as
+                               n                     o           level semantic analysis to understand the functional role of
+      h(k)          (k)
+                        · AGG h(k−1)      , ∀u ∈ N (v)               each asset within the circuit, and formulates appropriate fault-
+        v =σ W                      u
+                                                                     tolerance strategies accordingly. The overall process proceeds
+where AGG(·) denotes the aggregation function (mean ag-              through three stages: LLM-based semantic analysis, strategy
+gregation is used in this work), W (k) is the learnable weight       eligibility matching, and plan validation, ultimately producing
+matrix, and σ is the ReLU activation function.                       a structured execution plan in JSON format.
+   As shown in Fig. 5, the proposed network consists of three           To improve the stability and controllability of the LLM
+SAGEConv layers. The first two layers map node features              when analyzing RTL code, we adopt a chain-of-thought
+from the input dimension to the hidden space, each followed          (CoT) [35] prompting approach that decomposes the analysis
+                                                                                                                                                                                             7
+
+
+
+                                                                                                                        cause synthesis errors, so they are removed from the candidate
+                                                      Strategy Eligibility Table
+    RTL Analyzer                                      (Fault Tolerant strategies)                                       set. Second, a deduplication step merges overlapping assets
+                                                                                                 Asset Semantic
+                                                                                                 Analysis               that refer to the same physical register, eliminating redundant
+                                                                                               identify asset type,
+            RTL Code
+                                     System
+                                                                                                 signals, role...       protection. Third, a strategy compliance check verifies each
+                                     Prompt
+
+                                                         LLM-based
+                                                                                                                        assigned strategy against the Strategy Eligibility Table and
+                                      User                                                      Strategy Eligibility
+            Cricital                                      Analyzer
+            Reg List                 Prompt
+                                                      semantic reasoning &
+                                                                                                Matching                automatically replaces any non-compliant assignment with the
+                                                            strategy                         match assets to eligible
+                                                        recommendation                            strategies...         preferred strategy for that asset type.
+    "asset_id": "A1",
+    "asset_type": "counter_reg",
+                                                                                                                           After the above analysis and validation, the RTL Analyzer
+    "signals": [
+    "cnt"
+    ],
+                                                                                                                        outputs the hardening plan in a structured JSON format.
+    "risk": "high",
+    "strategy_candidates": [
+                                               plan.json              Plan Builder                analysis.json         Each entry records the name, type, and recommended fault-
+      "tmr_reg",
+                                                                                                    intermediate
+    ],
+      "ecc"...                                execution plan         validate,deduplicate,
+                                                                      control complexity
+                                                                                                      analysis
+                                                                                                                        tolerance strategy of the asset to be protected, along with query
+    "query_terms": [                                                                                   results
+      "cnt register",
+      "divider counter protection"
+                                                                                                                        keywords for subsequent RAG retrieval, thereby providing
+       ...
+                                                                                                                        the downstream RTL Rewriter with well-defined rewriting
+                                                                                                                        directives.
+Fig. 6. Detailed workflow of the RTL Analyzer module.
+                                                                                                                                                      TABLE I
+                                                                                                                                            S TRATEGY E LIGIBILITY TABLE
+into a sequence of reasoning steps. The model first identifies                                                                 #   Asset Type       Applicable Strategies
+the overall structural category of the module—for instance, a                                                                  1   fsm state        ✓ tmr state, ✓ fsm hamming,
+finite state machine (FSM), a counter, a datapath, or a storage                                                                                     ◦ one hot, ◦ illegal detect, ◦ parity
+                                                                                                                               2 counter reg        ✓ tmr reg, ✓ hamming,
+block. It then examines each critical asset by considering                                                                                          ◦ cnt comp, ◦ secded, ◦ parity
+the signal’s definition, update pattern, control dependencies,                                                                 3 datapath reg ✓ tmr reg, ✓ hamming,
+and usage sites to determine the asset’s type, bit-width, and                                                                                       ◦ secded, ◦ parity, ◦ parity byte
+                                                                                                                               4 control reg        ✓ tmr reg, ◦ parity, ◦ watchdog
+functional semantics. Finally, guided by a predefined Strat-                                                                   5 memory             ✓ ecc fifo, ✓ sram ecc,
+egy Eligibility Table, the model selects semantically matched                                                                                       ◦ scrubbing, ◦ gray ptr, ◦ parity byte
+candidate fault-tolerance strategies for each asset.                                                                           6 matrix unit        ✓ abft sec, ✓ abft, ◦ checksum
+                                                                                                                               Legend: ✓ Preferred (correction-capable) · ◦ Alternative
+   The Strategy Eligibility Table serves as an explicit constraint                                                             (detection-only or high overhead)
+mechanism introduced to curb the inherent randomness of the
+LLM during strategy selection and to prevent the assignment
+of strategies incompatible with a given asset type. As shown                                                               2) RTL Rewriter. RTL Rewriter is the core component
+in Table I, the table enumerates the set of legitimate fault-                                                           of the rewriting engine and is responsible for generating
+tolerance strategies for each asset category, restricting the                                                           the hardened RTL code according to the rewriting plan pro-
+model to choose only within a semantically appropriate range.                                                           duced in the previous stage. This component adopts a RAG
+For example, Hamming encoding and TMR are among the                                                                     scheme to retrieve information relevant to the current rewriting
+eligible strategies for FSM state registers, whereas ECC and                                                            task from a prebuilt fault-tolerance strategy knowledge base,
+parity checking are better suited for wide data registers.                                                              thereby assisting RTL rewriting. In addition, we introduce an
+Beyond eligibility, we further incorporate implementation cost                                                          Auto-Repair mechanism, which can automatically trigger re-
+considerations under different scenarios. For wide registers,                                                           rewriting when the LLM produces erroneous code based on
+for instance, ECC typically incurs lower overhead than TMR,                                                             the detected error messages. The combination of these mecha-
+while the opposite may hold for narrow registers. Supplying                                                             nisms effectively alleviates the hallucination problem of large
+such prior knowledge enables the Analyzer not only to judge                                                             language models in this domain-specific task. Fig. 7 illustrates
+whether a strategy is applicable but also to make a more                                                                the overall architecture of RTL Rewriter. The implementation
+informed selection among multiple legitimate candidates.                                                                details are described as follows.
+   Because LLM outputs are inherently open-ended and                                                                       Dual knowledge-base architecture. To enable the LLM
+stochastic, the candidate assets and their strategy assignments                                                         to accurately and reliably exploit domain knowledge in fault-
+produced by the preceding analysis do not always satisfy the                                                            tolerant digital integrated circuit design, and to further improve
+predefined constraints. The model may, for instance, deviate                                                            its practicality and trustworthiness, we construct two one-to-
+from the Strategy Eligibility Table or assign multiple strate-                                                          one aligned knowledge bases: a fault-tolerance strategy seman-
+gies to the same asset. Passing such results directly to the                                                            tic knowledge base (Semantic KB) and an example knowledge
+downstream Rewriter could lead to over-hardening, redundant                                                             base (Examples KB). The Semantic KB contains formal de-
+protection, and prompt bloating. To address this, we introduce                                                          scriptions of 29 fault-tolerance strategies, covering categories
+a Plan Builder module within the RTL Analyzer that applies                                                              such as register protection, FSM hardening, datapath encoding,
+deterministic rules to validate and refine the analysis results                                                         memory ECC, and system-level monitoring. Each knowledge
+before they are emitted. Specifically, it performs three checks.                                                        entry records structured information including the applicable
+First, a static structure check parses the sensitivity lists of                                                         scenarios, implementation principles, interface constraints, and
+always blocks to identify signals that are assigned only in                                                             overhead estimation of the corresponding strategy. The Ex-
+combinational logic; such signals correspond to no physical                                                             amples KB stores manually checked RTL rewriting templates
+flip-flop, and applying register-level hardening to them would                                                          corresponding to these semantic strategies. The cooperation
+                                                                                                                                                                                                      8
+
+
+
+
+    RTL Rewriter
+                                                                                                                                       patterns and injects them into the prompt as warnings, enabling
+                                                                                                Semantic KB
+                                                                                                 strategy rules,                       the LLM to proactively avoid common error types.
+                                                                     top-k                  applicability, constraints
+     RTL Code                                                       chunks                                                                Auto-Repair mechanism. Even with RAG assistance, the
+                                                                                                Example KB
+
+                      Query
+                                                                                                RTL templates,
+                                                                                                 code snippets
+                                                                                                                                       code generated by the LLM may still contain errors such as
+                    Constructor                  RAG
+                 extract asset, strategy,       Retriever                             29 fault-tolerance strategies                    port mismatches and multi-driver conflicts. To address this, we
+     Plan.json      module context
+                                                                                                                                       design an Auto-Repair module that employs an iterative repair
+                                                                                                                                       loop. The generated code first undergoes multi-level verifi-
+                                                                                                                         Final
+                    Prompt                                                                                           Hardened RTL      cation, which sequentially checks syntactic correctness, syn-
+                   Assembler
+                      System
+                                                                                                                                       thesizability, interface consistency, and functional correctness
+                    Instruction
+                                                                                 Error                        Yes        Reliability
+
+                     Retrieved
+                                            LLM-based           Candidate
+                                                                Hardened
+                                                                                 Check
+                                                                              • Syntax
+                                                                                                      Pass?
+                                                                                                                         validation    using a combination of compilation, synthesis, and functional
+                                             Rewriter
+                                                                  RTL
+                      Chunks                                                  • Interface
+                                                                              • Function                   No                          simulation tools to validate the rewritten design from different
+                       RTL
+                      Context                                                                                                          perspectives. If any check detects an error, an error classifier
+                                                                                                 Feedback
+                     plan.json
+                                                          Auto-Repair
+                                                                              strategy
+                                                                             failure_kb
+                                                                                                   Builder                             maps the raw error message to a predefined error category,
+                                                                                                 summarize
+                                      refined prompt/
+                                     repair instruction
+                                                                                               error messages                          each associated with a structured repair directive. The system
+                                                                                                                                       then assembles a repair prompt comprising the original RTL,
+                                                                                                                                       the faulty code version, the classified error information, and a
+Fig. 7. Detailed workflow of the RTL Rewriter module.
+                                                                                                                                       condensed RAG context, guiding the LLM to correct the issue
+                                                                                                                                       in the next generation round. Failed cases are recorded in the
+                                                                                                                                       Strategy Failure KB to accumulate error knowledge for future
+between the Semantic KB and the Examples KB significantly
+                                                                                                                                       reference. This loop executes for at most three rounds to strike
+improves the correctness of the generated code.
+                                                                                                                                       a balance between repair success rate and computational cost.
+   Retrieval-augmented generation. We use ChromaDB as                                                                                  Code that passes all verification stages is further subjected to
+the vector database to store both the semantic knowledge                                                                               fault injection testing to confirm that it achieves the expected
+and the code examples of fault-tolerance strategies, and use                                                                           reliability improvement under soft error scenarios.
+a text embedding model to map the documents into a high-
+dimensional vector space. During code generation, the system
+                                                                                                                                                             IV. E XPERIMENTS
+constructs a retrieval query according to the type of the current
+asset, the selected strategy, and the query keywords provided                                                                          A. Experiment Setup
+by the Plan Builder. The same embedding model is then used                                                                                To evaluate the effectiveness of the proposed framework, we
+to encode the query into a vector, after which the system                                                                              conduct experiments on 14 open-source RTL designs collected
+retrieves the top-k most relevant strategy descriptions using                                                                          from the RTLLM benchmark suite [36], the OpenCores IP
+cosine similarity. Based on the retrieved strategy identifiers,                                                                        repository [37], and public GitHub repositories. These designs
+the system further extracts the corresponding RTL code tem-                                                                            cover a variety of representative application scenarios, includ-
+plates directly from the Examples KB. Finally, the retrieved                                                                           ing arithmetic computation, control logic, datapath processing,
+results, together with the original RTL code, asset information,                                                                       bus interfaces, and memory structures, and their full list is
+and rewriting plan, are assembled into a structured prompt and                                                                         given in Table II. In terms of design size, the benchmarks
+fed to the LLM to perform the RTL rewriting task.                                                                                      span three scales: small, medium, and large. Small designs
+   Context assembly. The retrieved knowledge is assembled                                                                              are approximately 100 lines of code, medium designs are
+together with other contextual information into a structured                                                                           around 500 lines, and large designs are multi-module systems
+prompt before being sent to the LLM. Specifically, the prompt                                                                          ranging from about 1,000 to 3,000 lines of code. The large-
+includes: (i) the original RTL code and the hardening plan; (ii)                                                                       scale benchmarks include the mriscv processor core [38] as
+the retrieved strategy descriptions and RTL code templates;                                                                            well as the i2c master and spi master bus controllers. Among
+(iii) an asset summary, including the signal list, asset type,                                                                         them, mriscv is a complete RV32I processor core composed
+and assigned strategy; and (iv) the rationale behind strategy                                                                          of nine submodules.
+selection. This structured prompt provides both “what to do”                                                                              We employ two complementary benchmark sets that target
+and “how to do it”: the former is specified by the rewriting                                                                           different evaluation goals. The GNN vulnerability predictor is
+plan and the strategy rationale, while the latter is provided                                                                          evaluated on four medium-to-large circuits (mriscv, SPI, I2C,
+by the retrieved code templates. In this way, the generation                                                                           XGE-MAC) that provide sufficient register populations for
+space of the LLM is significantly constrained, reducing the                                                                            meaningful classification metrics. The LLM rewriting engine
+probability of hardware-specific hallucinations.                                                                                       is evaluated on a broader set of 14 designs spanning small to
+   Collection and use of failure knowledge. To further                                                                                 large scales (Table II), all of which fit within current LLM
+improve rewriting robustness, we maintain a failure knowledge                                                                          context limits. Scaling LLM-based rewriting to designs with
+base that is accumulated across runs. Whenever an error is                                                                             thousands of registers, such as XGE-MAC, remains an open
+detected during verification, the system categorizes the error                                                                         challenge that we discuss further in Section V-C.
+message into a predefined error type and records it in the                                                                                The performance of the GNN-based vulnerability prediction
+knowledge base using the pair (strategy name, error type) as                                                                           stage is evaluated on four designs, all of which are obtained
+the key. When the same strategy is selected again in a later                                                                           from OpenCores. To construct the dataset, we first use Yosys
+run, the system retrieves the corresponding historical failure                                                                         to convert these circuits into AIG graph representations and
+                                                                                                                                                9
+
+
+
+                            TABLE II                                plemented using ChromaDB, where the knowledge base is
+            B ENCHMARK SUITE USED IN OUR EXPERIMENTS .              embedded using the Qwen-text-embedding-v4 model, and the
+                                                                    top-3 relevant strategy entries are retrieved for each query.
+    Scale      Design            LoC    Category     #Module
+                                                                    The Auto-Repair mechanism performs up to three iterations
+               fsm1               128    Control         1          of refinement.
+               alu                 87   Arithmetic       1
+               fifo               202    Storage         1
+                                                                       To evaluate the quality of LLM-generated RTL code, we
+    Small                                                           adopt the widely used pass@k metric [40] from code gen-
+               parallel2serial     63    Datapath        1
+               serial2parallel    107    Datapath        1          eration. For each design, n = 10 candidate outputs are
+               memory             146    Storage         1          generated independently using sampling parameters T = 0.8
+               crc               261    Algorithm        1          and top p = 0.95. Let c denote the number of candidates that
+               serial io         284     Interface       1          pass functional verification. The pass@k metric is computed
+    Medium     bus a             572     Interface       1          as:
+               gemm              415    Arithmetic       1                                         "
+                                                                                                          n−c
+                                                                                                              #
+               uart              360     Interface       1                            pass@k = E 1 − n     k
+
+               i2c master        1650   Interface        4                                                          k
+    Large      spi master        1089   Interface        3
+               mriscv            2665   Processor        9          which represents the probability that at least one correct sam-
+                                                                    ple is obtained when drawing k samples without replacement
+                                                                    from the n candidates. We report both pass@1 and pass@3,
+                                                                    where pass@1 reflects single-shot success, and pass@3 cap-
+extract their static features. We then develop typical work-
+                                                                    tures the success rate under a small number of retries.
+load testbenches for simulation to obtain the corresponding
+dynamic features. In addition, we employ the Synopsys Z01X             For the rewritten RTL code, we use iverilog [41] for
+fault injection tool to conduct fault injection experiments under   syntax checking and ModelSim together with the original
+the same representative workloads. Based on the resulting fault     benchmark testbenches for functional verification. The original
+injection data, we construct a complete dataset for each design.    testbenches are reused to preserve behavioral equivalence
+For every design, the dataset is split into 70% for training and    under representative workloads. Reliability improvement is
+30% for validation. We use Accuracy, Precision, and Recall          evaluated through fault injection using Synopsys Z01X. In
+as the primary evaluation metrics to measure the classification     addition, hardware overhead is analyzed by synthesizing the
+performance of the model in identifying critical vulnerable         rewritten designs with Yosys and the Nangate45 open-source
+registers, and compare the prediction results against the recent    technology library [42].
+method proposed by Lu et al. [12]. Our GNN model is
+implemented with PyTorch Geometric [39] and adopts a three-
+                                                                    B. GNN Vulnerability Prediction Results
+layer GraphSAGE architecture. The input feature dimension
+is 19, the hidden dimension is 64, and the output dimension            In this section, we first evaluate the classification perfor-
+is 2, corresponding to the two classes, vulnerable and non-         mance of the GNN-based vulnerability predictor, since its
+vulnerable.                                                         prediction accuracy directly affects the rationality of hardening
+   The effectiveness of the LLM-based rewriting stage is            target selection in the downstream LLM rewriting stage. We
+evaluated on four aspects: syntactic correctness, synthesizabil-    conduct experiments on four representative designs (mriscv,
+ity, reliability under fault injection, and hardware overhead.      SPI, I2C, and XGE-MAC) to assess the proposed RTL-
+We compare the proposed framework against three baselines,          level GraphSAGE-based critical flip-flop prediction model,
+namely Unhardened, Full TMR, and GNN+TMRG. Here, Un-                and compare the results with those of the state-of-the-art
+hardened denotes the original RTL design without protection         netlist-level prediction method proposed by Lu et al. [12]. The
+and serves as a reference for both area and reliability; Full       results are summarized in Table III.
+TMR applies triple modular redundancy uniformly to all reg-
+isters, representing a global hardening scheme; GNN+TMRG                                         TABLE III
+first identifies vulnerable registers using a GNN predictor and          V ULNERABILITY PREDICTION PERFORMANCE (%). “—” INDICATES
+                                                                                       METRICS NOT REPORTED IN [12].
+then applies TMR using the TMRG tool [7]. TMRG is an
+open-source RTL-level tool that automates TMR insertion by              Design       Method            Prec.    Rec.      F1         Acc.
+triplicating target registers and adding majority voters. FT-
+                                                                                     Lu et al. [12]     —        —        —         98.00
+Pilot denotes the proposed GNN-guided LLM-based rewriting               SPI
+                                                                                     FT-Pilot          96.10    98.67    97.37      95.65
+framework, which selectively applies a range of fault-tolerance
+strategies, including TMR and Hamming-based SEC codes.                               Lu et al. [12]     —        —        —      80.39–91.49
+                                                                        I2C
+                                                                                     FT-Pilot          93.10    84.38    88.52      85.11
+All four configurations are evaluated on the same benchmark
+to ensure a fair comparison.                                                         Lu et al. [12]     —       98.83     —         96.67
+                                                                        XGE-MAC
+                                                                                     FT-Pilot          95.77    99.27    97.49      96.73
+   The rewriting module adopts Claude Opus 4.6 as the pri-
+mary model and is further compared with GPT-5.3, GLM-                                Lu et al. [12]† 97.74 97.74 97.74              98.67
+                                                                        mriscv
+5, and Qwen-3.6 Plus to assess sensitivity to the underlying                         FT-Pilot        98.53 100.00 99.26             98.84
+                                                                    †   [12] evaluates on RI5CY; we evaluate on mriscv. Both are RV32I cores.
+LLM. The retrieval-augmented generation component is im-
+                                                                                                                                 10
+
+
+
+   The experimental results in Table III show that the proposed    characteristics. Table V reports the area, critical-path delay,
+GraphSAGE-based predictor achieves strong classification per-      and error rate under SEU fault injection for the four schemes.
+formance across all four designs, and outperforms or remains       Among the 14 designs, Full TMR and GNN+TMRG baselines
+comparable to the method of Lu et al. [12] on most metrics.        are available for 11 designs; the remaining three (fifo, memory,
+It is worth noting that our method performs vulnerability          and gemm) are excluded from these two baselines. For storage-
+prediction directly at the pre-synthesis RTL level, whereas the    dominated designs such as fifo and memory, applying TMR
+method of Lu et al. operates at the netlist level; therefore,      to all registers is of limited practical value, since nearly
+our approach avoids the additional synthesis-related processing    all internal storage elements would be classified as registers
+flow. On mriscv, the model achieves an F1 score of 99.26% and      and triplicated, resulting in roughly 200% overhead without
+an accuracy of 98.84%, indicating that the proposed method         meaningful selectivity. Similarly, gemm contains large matrix
+remains stable on a larger processor core. On XGE-MAC,             storage arrays that dominate the design area, making uniform
+our method is slightly better than that of Lu et al. on both       TMR impractical, the proposed framework instead applies
+comparable metrics, namely accuracy (96.73% vs. 96.67%)            an ABFT strategy to protect the computation results at a
+and recall (99.27% vs. 98.83%). On SPI, the proposed method        significantly lower cost. These three designs are included
+also achieves high precision (96.10%) and recall (98.67%),         primarily to demonstrate the applicability of the proposed
+with an F1 score of 97.37%; although its accuracy is slightly      framework to diverse circuit types, where our method can
+lower than the 98.00% reported by Lu et al., the overall           select more efficient strategies such as ECC and ABFT in
+performance remains at a high level. On I2C, the model             place of TMR.
+attains an accuracy of 85.11%. Since this design is relatively        Taking the original Unhardened design as the area baseline,
+small, the prediction results are more easily affected by class    Full TMR incurs an average area overhead of +176% across
+distribution and sample size. Lu et al. also observed similar      the 11 designs where it is evaluated, because triple modular
+accuracy fluctuations on this circuit (80.39%–91.49%), and         redundancy is uniformly applied to all registers; on paral-
+our result falls within the range reported in their study.         lel2serial and uart, the overhead exceeds +220%, indicating
+                                                                   the high cost of global hardening. By using the GNN predictor
+                           TABLE IV                                to prioritize critical registers for protection, GNN+TMRG
+  T IME REQUIRED FOR FAULT SIMULATION VERSUS GNN INFERENCE .       reduces the average overhead to +112%; however, the cost
+                                                                   remains relatively high, mainly because this method can only
+                     Time required for     Time required           apply TMR uniformly to all critical registers. In contrast, the
+        Circuit
+                      fault simulation       for GNNs
+                                                                   proposed method achieves an average area overhead of only
+        SPI               63.0 s               10.52 s             +71% on the same 11-design subset, which is substantially
+        I2C              5410.4 s              10.14 s
+                                                                   lower than both Full TMR and GNN+TMRG. This advantage
+      XGE-MAC             843.7 s              24.06 s
+       mriscv            10227.6 s             19.24 s             is particularly evident on datapath-dominated designs such as
+                                                                   uart (+36%), serial io (+36%), and mriscv (+40%). The main
+   Compared with the conventional fault-injection flow, the        reason is that our framework can assign lower-cost correction
+proposed GNN-based method offers a significant advantage in        strategies, such as Hamming or SECDED codes, to wide
+analysis efficiency. Table IV compares the time cost of fault-     data registers, whereas GNN+TMRG is constrained by tool
+injection simulation with that of the proposed GNN-based           capability and can only employ a single TMR-based strategy.
+approach for each of the four designs. Fault injection requires    Across all 14 designs, the area overhead of the proposed
+about 10,228 seconds (nearly 3 hours) on mriscv and about          method ranges from +28% (gemm) to +141% (fsm1). The
+5,410 seconds (roughly 1.5 hours) on I2C, whereas the GNN-         highest overhead appears in fsm1, mainly because this design
+based method completes within 25 seconds for all designs.          is extremely small and all of its registers are identified as
+Together with the classification results in Table III, these       critical, making the result close to Full TMR. In contrast, for
+results show that the proposed method can substantially reduce     medium- and large-scale designs, selective hardening demon-
+the time cost of vulnerability analysis while maintaining high     strates a more pronounced area advantage.
+accuracy, thereby supporting reliability evaluation at the early      In terms of reliability, GNN+TMRG and the proposed
+RTL design stage.                                                  method use the same GNN predictor and therefore protect
+                                                                   exactly the same set of registers; the only difference lies in
+                                                                   the subsequent strategy selection. However, the fault-tolerance
+C. LLM-Based RTL Hardening Results                                 strategies selected by our framework, together with the TMR
+   In this section, we compare the proposed framework against      strategy applied by GNN+TMRG, can all provide single-
+three baselines—Unhardened, Full TMR, and GNN+TMRG—                error correction under the SEU single-bit fault model. As a
+on all 14 benchmark designs. The evaluation focuses on three       result, the two methods achieve identical error rates in the
+aspects: hardware overhead, reliability under fault injection,     fault-injection experiments. As the upper bound of reliability,
+and timing impact. All 14 designs pass the multi-level ver-        Full TMR reduces the error rate to 0%. Meanwhile, both
+ification flow, including syntax checking, interface consis-       the proposed method and GNN+TMRG substantially reduce
+tency checking, functional verification, and fault-injection-      the error rate on all designs. Specifically, the error rates of
+based reliability evaluation, confirming that the framework is     fifo, fsm1, and memory are reduced to 0%, while those of
+applicable to RTL designs with varying scales and functional       crc, uart, and gemm are reduced to below 0.2%. Even for
+                                                                                                                                                11
+
+
+
+                                                                TABLE V
+ E ND - TO - END COMPARISON ON ALL 14 BENCHMARK DESIGNS . A REA IN µm2 , D ELAY IN NS , AO ( AREA OVERHEAD ) AND E RR IN %. “—” INDICATES
+                                     THAT THE DATA WAS NOT AVAILABLE FOR THE CORRESPONDING DESIGN .
+
+
+                      Unhardened                      Full TMR                       GNN+TMRG [7]                            FT-Pilot
+Design
+                     Area Delay       Err     Area      AO      Delay   Err       Area   AO     Delay    Err         Area     AO        Delay    Err
+alu                  173.4   0.506   12.28    321.3 +85.29 0.506 0.00            343.1 +97.87 0.506 2.90             315.5 +81.95 0.506 2.90
+fifo                1226.0   0.399   46.10      —     —        — —                 —     —        — —               2211.5 +80.38 0.695 0.00
+fsm1                  30.1   0.174   41.25     72.4 +140.53 0.137 0.00            81.1 +169.44 0.174 0.00             72.4 +140.53 0.111 0.00
+parallel2serial       48.1   0.114   22.29    162.0 +236.80 0.112 0.00           103.2 +114.55 0.112 0.31             93.9 +95.22 0.112 0.31
+serial2parallel      155.1   0.208   29.26    497.2 +220.57 0.208 0.00           311.0 +100.52 0.208 3.83            297.7 +91.94 0.483 3.83
+memory             33655.9   0.435    6.93      —     —        — —                 —     —        — —              54619.4 +62.29 0.869 0.00
+crc                  364.2   0.200 31.04     1117.2   +206.75   0.189   0.00    971.2 +166.67 0.216 0.16  665.0              +82.59     0.348    0.16
+gemm              600911.0   1.747 4.90          —      —          —     —         —    —        — — 766571.0                +27.57     1.931    0.18
+serial io            370.8   0.463 7.38       984.7   +165.56   0.556   0.00    519.8 +40.18 0.504 1.91   504.1              +35.95     0.627    1.91
+bus a                466.6   0.418 8.65      1219.3   +161.32   0.481   0.00    854.4 +83.11 0.433 2.97   663.1              +42.11     0.566    2.97
+uart                 790.8   0.730 5.57      2605.7   +229.50   0.812   0.00   1595.2 +101.72 0.781 0.18 1077.6              +36.27     0.840    0.18
+i2c master          1488.5 0.657 42.07 4134.4 +177.76 0.739 0.00 3386.4 +127.50 0.750 6.05                          2751.0   +84.82     0.722 6.05
+spi master          3350.8 1.064 10.25 8282.2 +147.17 1.015 0.00 8032.4 +139.72 1.021 2.53                          5163.3   +54.09     1.001 2.53
+mriscv             25604.1 1.236 6.20 67332.0 +162.97 1.998 0.00 47815.6 +86.75 1.307 1.46                         35788.2   +39.78     1.694 1.46
+
+
+
+i2c master, which has the highest original error rate, the error         four stages. TMRG partially automates the rewriting stage but
+rate decreases from 42.07% to 6.05% (an 85.6% reduction).                still requires manually prepared protection lists and constraint
+These residual errors mainly come from registers that are                files, and its strategy is limited to TMR. GNN+TMRG further
+predicted by the GNN as non-critical and therefore remain                automates vulnerability identification by replacing manual
+unhardened.                                                              analysis with a GNN predictor; however, strategy selection
+   As for timing overhead, the impact varies across design               remains restricted to TMR, and the constraint files must still
+scales and hardening strategies. For small designs, the hard-            be manually derived from the GNN outputs.
+ening logic generally has minimal impact on timing. On
+alu, the critical-path delay is identical across all four con-                                      TABLE VI
+figurations, indicating that the added protection logic does                     AUTOMATION LEVEL COMPARISON OF HARDENING FLOWS .
+not alter the critical path. On parallel2serial, the variation
+                                                                          Flow           Vuln. Id.      Strategy        Rewrite       Verification
+among configurations is within 0.002 ns, which is attributable
+to synthesis noise rather than a meaningful timing penalty.               Manual          Manual       Manual        Manual             Manual
+                                                                          TMRG            Manual      TMR only      Semi-Auto           Manual
+A notable case is fsm1, where the proposed method achieves                GNN+TMRG         GNN        TMR only      Semi-Auto           Manual
+a shorter critical path (0.111 ns) than the original (0.174 ns);          FT-Pilot         GNN       Multi-strategy   LLM                Auto
+this can be attributed to improved code quality introduced
+during rewriting, such as adding explicit default branches
+                                                                            In contrast, the proposed method automates all of these key
+in case statements, which enables the synthesizer to pro-
+                                                                         stages: the GNN automatically identifies vulnerable registers,
+duce more efficient logic. For storage-dominated designs such
+                                                                         the RTL Analyzer generates multi-strategy hardening schemes,
+as fifo and memory, the proposed framework selects ECC-
+                                                                         and the RTL Rewriter completes RTL rewriting automatically
+based strategies, which inherently introduce encoding and
+                                                                         with LLM assistance. Furthermore, the multi-level verification
+decoding logic on the data path, resulting in noticeable delay
+                                                                         pipeline—including syntax checking, interface consistency
+increases; this is an intrinsic cost of these correction-capable
+                                                                         checking, functional simulation, and fault injection—is also
+strategies rather than a limitation of the framework itself. For
+                                                                         fully automated, enabling a closed-loop flow from vulnera-
+medium- and large-scale designs, both the proposed method
+                                                                         bility identification to verified hardened RTL without manual
+and GNN+TMRG introduce moderate timing overhead, and
+                                                                         intervention.
+their overall delay impact remains at a comparable level.
+   Overall, while maintaining the same reliability as
+GNN+TMRG, the proposed method further reduces the av-                    D. Ablation Study
+erage area overhead from +112% to +71% on the 11-design                    To validate the contribution of the two core components
+subset with complete baseline data. Compared with Full TMR,              in the proposed framework, we conduct ablation studies on
+it achieves a more favorable cost–reliability tradeoff while             two dimensions. For the GNN component, we evaluate six
+sacrificing only a small amount of reliability.                          representative designs and compare the full method with a
+   Beyond hardware overhead and reliability, the proposed                w/o GNN variant, in which the GNN-based vulnerability
+method also offers significant advantages in terms of workflow           predictor is removed and the LLM autonomously selects which
+automation. As summarized in Table VI, the conventional                  registers to harden based on its own code analysis, while the
+manual hardening flow requires designer involvement in all               rewriting engine remains unchanged. For the RAG component,
+                                                                                                                                                                                                                                                                                             12
+
+
+
+ we evaluate all 14 designs and compare the full pipeline with a                                                                                                                                                              in Table VII and Fig. 9, this leads to a decrease in the
+ w/o RAG variant, in which the dual-knowledge-base retrieval                                                                                                                                                                  average pass@1 from 85.00% to 74.29% and pass@3 from
+ module is removed so that no domain knowledge or code                                                                                                                                                                        95.60% to 83.93%. The impact is most pronounced on designs
+ templates are injected during rewriting, while the Auto-Repair                                                                                                                                                               that require specialized hardening patterns: bus a drops from
+ mechanism is still retained. The GNN ablation results are                                                                                                                                                                    100% to 20% in pass@1, and mriscv drops from 30% to 0%,
+ shown in Fig. 8, and the RAG ablation results are reported                                                                                                                                                                   indicating a complete failure to produce functionally correct
+ in Table VII.                                                                                                                                                                                                                hardened code without RAG support. gemm also decreases
+                                                                                                                                                                                                                              from 30% to 10%. Analysis of the failed samples reveals that,
+                                                                           Original                Ours (full)                        w/o GNN
+                                                                                                                                                                                                                              without RAG, the LLM is more prone to generating semanti-
+                                              (a) Area overhead                                                                                               (b) Error rate                                                  cally defective hardening logic, such as incomplete TMR voter
+                                                                                                                           50
+                                                                                                                                                                                              42.07                           implementations, voting on stale register values, and check-bit
+Area overhead (%)
+
+
+
+
+                    150      140.71
+                           140.71                                                                                                 41.25
+                                                      136.08                                                               40
+                                                                                                          Error rate (%)
+
+                    100                  86.19                                                                             30
+                                                                                                                                                              31.04                                                           misalignment in Hamming encoders—errors that correspond
+                                                                                  84.54
+                                                                                84.81
+                                       81.90   82.62
+                                                                                              59.57                        20                                                                                                 precisely to the failure modes addressed by the Semantic KB
+                                                                                                                                                                                                         14.35
+                     50                                                36.08
+                                                                     35.94                  39.77                                             12.28
+                                                                                                                                                                      9.71                                                    and Examples KB. For designs that pass verification under
+                                                                                                                           10                                                 7.38 5.70             6.05         6.20
+                                                                                                                                                      4.67
+                                                                                                                                                   2.90                                                                3.83
+                                                                                                                                        0 0                      0.16            1.91                               1.46
+                      0                                                                                                     0                                                                                                 both configurations, the resulting area overhead and error rate
+                             1         alu         crc            io    er    cv                                                      1           alu          crc                  io              er           isc
+                                                                                                                                                                                                                     v
+                          fsm                                 ial_ _mast mris                                                     fsm                                        ial_            ast             mr               remain comparable, confirming that RAG primarily improves
+                                                           ser     i2c                                                                                                 ser           i2c
+                                                                                                                                                                                         _m
+                                                                                                                                                                                                                              the correctness and robustness of the rewriting process rather
+ Fig. 8. Ablation study on GNN-based vulnerability prediction: area overhead                                                                                                                                                  than the quality of already-correct hardening logic.
+ and error rate comparison across six representative designs.
+
+    For the w/o GNN variant, since the LLM rewriting engine                                                                                                                                                                   E. Impact of LLM Selection
+ itself remains unchanged, the functional verification pass rate                                                                                                                                                                 The rewriting capability of the proposed framework is fun-
+ is unaffected. However, without GNN-guided vulnerability                                                                                                                                                                     damentally governed by the code comprehension and genera-
+ reports, the LLM tends to misallocate hardening resources to                                                                                                                                                                 tion ability of the underlying LLM. To assess this sensitivity,
+ non-critical registers while leaving genuinely vulnerable ones                                                                                                                                                               we fix all other pipeline components and substitute four differ-
+ unprotected. As shown in Fig. 8, the error rates of all six                                                                                                                                                                  ent LLMs—Claude Opus 4.6, GPT-5.3, GLM-5, and Qwen-
+ designs increase to varying degrees. Among them, crc exhibits                                                                                                                                                                3.6 Plus—as the backbone, running each of the 14 benchmark
+ the largest degradation, with its error rate rising from 0.16%                                                                                                                                                               designs 10 times with a sampling temperature of 0.8. We adopt
+ to 9.71%, while i2c master increases from 6.05% to 14.35%.                                                                                                                                                                   the pass@k metric to measure functional verification success
+ Meanwhile, the area overhead of the w/o GNN variant does                                                                                                                                                                     rates. The quantitative results are summarized in Table VIII,
+ not decrease—in fact, for designs such as crc (+136% vs.                                                                                                                                                                     and a per-design breakdown is visualized as a heatmap in
+ +83%) and mriscv (+60% vs. +40%), the overhead is notably                                                                                                                                                                    Fig. 10.
+ higher, because the LLM without vulnerability guidance tends                                                                                                                                                                    The results confirm that LLM capability has a pronounced
+ to over-protect low-risk registers. These results demonstrate                                                                                                                                                                effect on rewriting success. Claude Opus 4.6 achieves the
+ that accurate vulnerability prediction is essential for achieving                                                                                                                                                            highest pass@1 of 85.00% and pass@3 of 95.60%, followed
+ cost-effective selective hardening.                                                                                                                                                                                          by GPT-5.3 at 75.00% pass@1, while GLM-5 reaches only
+                                                                                                                                                                                                                              47.86%. The per-design heatmap in Fig. 10 further reveals that
+                                                                                           Full pipeline                                w/o RAG                                                                               all four models reliably handle small, single-module designs
+                                 1.0         1.0       1.0           1.0       1.0        1.0             1.0                           1.0       1.0            1.0                           1.0
+                    1.0                             0.9
+                                                                                   0.8          0.8 0.8
+                                                                                                                                                                                                                              such as fsm1 and parallel2serial, yet the gap widens sharply
+                    0.8
+                                                                                                                                                                                                                              on multi-module designs (i2c master, mriscv) and computa-
+                                                                                                                                                                             0.6
+pass@1
+
+
+
+
+                    0.6                                                                                                                                                         0.5                                           tionally complex ones (gemm). Notably, each model exhibits
+                    0.4                                                                                                    0.3                                                                               0.3              distinct failure patterns—GPT-5.3 scores 0.0 on serial2parallel
+                                                                                                                                                        0.2
+                    0.2                                                                                                         0.1                                                                                           despite 1.0 on crc, whereas Claude Opus 4.6 is the only model
+                                                                                                                                                                                                                    0.0
+                    0.0                                                                                                                                                                                                       to reach 1.0 on serial2parallel, indicating stronger cross-design
+                                alu     fifo           1              s       2p            m       crc              mm ser_i
+                                                                                                                                        o          a             rt          m                 _m              cv
+                                                   fsm           par2      ser           me                       ge                          bus_            ua        i2c_               spi           m ris                generalization. Weaker models tend to introduce port mis-
+                                                                                                                                                                                                                              matches, omit control conditions, or misplace hardening logic
+ Fig. 9. Ablation study on RAG: per-design pass@1 for the full pipeline versus                                                                                                                                                when confronted with multi-module, long-context rewriting
+ the w/o RAG variant.
+                                                                                                                                                                                                                              tasks. These findings suggest that pairing the framework with
+                                                                                                                                                                                                                              a more capable LLM yields higher rewriting reliability, and
+                                 TABLE VII                                                                                                                                                                                    that continued advances in LLM code generation are likely to
+        A BLATION STUDY ON RAG COMPONENT, PASS @ K IN % ( N =10, T=0.8).                                                                                                                                                      translate directly into improved end-to-end automation.
+
+                                                   Configuration                                      pass@1                                      pass@3
+                                                                                                                                                                                                                                                     V. D ISCUSSION
+                                                   w/o RAG                                                  74.29                                  83.93
+                                                   Full pipeline                                            85.00                                  95.60                                                                         The experiments on 14 benchmark circuits demonstrate that
+                                                                                                                                                                                                                              FT-Pilot can automate the entire flow from vulnerability pre-
+   For the w/o RAG variant, the LLM loses access to domain                                                                                                                                                                    diction to fault-tolerant code generation. Nevertheless, several
+ knowledge and code templates during rewriting. As shown                                                                                                                                                                      limitations merit further discussion.
+                                                                                                                                                     13
+
+
+
+
+                                                                           1.0        multi-bit upsets (MBUs) increases, and existing fault-tolerance
+        GLM-5 0.7 0.0 0.4 1.0 0.0 0.8 0.0 0.7 0.0 1.0 0.1 1.0 0.6 0.4
+                                                                                      strategies such as Hamming(7,4) encoding and standard TMR
+  Qwen-3.6 Plus 0.8 0.6 1.0 1.0 0.0 0.9 0.0 1.0 0.0 1.0 0.2 0.8 0.5 0.7               may no longer provide adequate protection. Extending the
+
+
+
+
+                                                                             pass@1
+                                                                           0.5
+       GPT-5.3 1.0 1.0 1.0 1.0 0.6 1.0 0.1 1.0 0.2 1.0 0.0 1.0 0.8 0.8
+                                                                                      GNN predictor to generalize across unseen designs, and broad-
+                                                                                      ening the framework to accommodate more complex fault
+ Claude Opus 4.6 1.0 0.8 1.0 0.9 0.3 1.0 0.6 1.0 0.3 1.0 1.0 1.0 1.0 1.0   0.0        scenarios, represent important directions for future research.
+
+
+
+
+                             i_m
+
+                              _io
+                              _m
+                            mm
+
+
+
+
+                               ry
+             alu
+                   crc
+                   fifo
+
+                                1
+
+
+                             s_a
+
+
+
+
+                                v
+                             r2s
+
+                              2p
+
+
+
+
+                               rt
+                            isc
+                           fsm
+
+
+
+
+                            ua
+                           mo
+
+
+
+
+                          ser
+
+
+                         ser
+                         i2c
+                          bu
+
+
+
+
+                          pa
+
+
+                          sp
+                         ge
+
+
+
+
+                         mr
+                        me
+                                                                                      C. Framework scalability and broader applicability
+Fig. 10. Per-design pass@1 for four LLM backbones across 14 benchmark                    The largest benchmark circuit evaluated in this work,
+designs. Darker green indicates higher pass rates.                                    mriscv, comprises approximately 2,665 lines of code. Designs
+                                                                                      with significantly larger register counts, such as XGE-MAC
+                          TABLE VIII                                                  (used in our GNN evaluation but excluded from LLM rewriting
+ LLM SENSITIVITY STUDY, PASS @ K IN % (14 DESIGNS , N =10, T=0.8).                    due to its scale), already exceed the practical context limits of
+                                                                                      current LLMs. Industrial designs are considerably larger, and
+                   LLM Backbone           pass@1        pass@3                        both the limited context window of LLMs and the retrieval
+                   GLM-5                   47.86         63.69                        precision of RAG may become bottlenecks when the frame-
+                   Qwen-3.6 Plus           60.71         74.35                        work is applied to such designs. The ablation study further
+                   GPT-5.3                 75.00         84.29                        highlights the critical role of the knowledge base: removing
+                   Claude Opus 4.6         85.00         95.60
+                                                                                      RAG causes the average pass@1 to drop from 85.00% to
+                                                                                      74.29% and the average pass@3 from 95.60% to 83.93%.
+                                                                                      However, the strategy entries in the current knowledge base
+A. Dependence of the framework on LLM capability
+                                                                                      are manually curated, and incorporating new fault-tolerance
+   As demonstrated in Section IV-E, the rewriting success                             techniques requires ongoing human effort. These scalability
+rate depends substantially on the code comprehension and                              challenges may be addressed in future work by decomposing
+generation ability of the underlying LLM. Among the four                              large designs along their module hierarchy and by automati-
+models evaluated, Claude Opus 4.6 achieves the highest aver-                          cally extracting strategy knowledge from published literature
+age pass@1 of 85.00%, whereas GLM-5 reaches only 47.86%,                              and design specifications. From a broader perspective, the
+with the performance gap becoming particularly pronounced                             experimental results of this work suggest that LLMs exhibit
+on multi-module and structurally complex designs. This indi-                          considerable potential for understanding the functional seman-
+cates that the overall effectiveness of the proposed framework                        tics of RTL code and performing targeted code transforma-
+is, to a considerable extent, bounded by the current capability                       tions accordingly. In principle, this paradigm of automated,
+of large language models. In addition to cross-model varia-                           semantics-driven code transformation could extend beyond
+tion, the inherent stochasticity of LLM generation introduces                         fault-tolerance hardening to other RTL transformation tasks
+within-model variability: since sampling is performed with                            that require design-level semantic knowledge, such as power
+a temperature of T = 0.8, multiple independent runs on the                            optimization and timing closure, provided that rigorous multi-
+same design may yield hardened code of differing quality.                             level verification is employed to ensure the correctness of the
+The gap between pass@1 and pass@3 (85.00% vs. 95.60% for                              generated results.
+Claude Opus 4.6) confirms that, for certain complex designs,
+a single sample may not succeed, yet drawing a small number                                                 VI. C ONCLUSION
+of additional candidates substantially raises the probability of
+                                                                                         This paper presents FT-Pilot, a GNN-guided LLM frame-
+obtaining a correct result. For industrial deployment, reducing
+                                                                                      work for automated RTL-level soft-error hardening. A GNN
+this variability and improving single-shot reliability remain
+                                                                                      operating on AIG-based graphs predicts register-level vulner-
+important challenges. Nevertheless, as LLMs continue to ad-
+                                                                                      ability directly at the RTL level, while an LLM-driven rewrit-
+vance in code generation, such progress is expected to directly
+                                                                                      ing engine, supported by dual-knowledge-base RAG and an
+translate into higher rewriting quality within the framework
+                                                                                      automatic repair mechanism, performs strategy selection and
+without requiring architectural modifications.
+                                                                                      fault-tolerant code transformation with multi-level verification.
+                                                                                      Experiments on 14 benchmark circuits demonstrate that the
+B. Generalizability of vulnerability prediction and scope of                          GNN predictor achieves 85%–99% accuracy with inference
+fault models                                                                          times orders of magnitude faster than fault injection, and
+   The current GNN predictor is trained on a per-design basis,                        the rewriting engine produces verified hardened code on all
+meaning that for each new, previously unseen design, fault-                           designs while reducing average area overhead from +112%
+injection simulation is still required to generate training labels,                   to +71% compared with GNN+TMRG at the same reliability
+cross-design generalization has not yet been achieved. Since                          level.
+this is fundamentally a model generalization problem, we
+leave its in-depth investigation to future work. In addition, the                                          ACKNOWLEDGMENT
+experiments in this paper consider only the SEU fault model.                            Claude (Anthropic) was employed exclusively for syntactic
+As technology nodes continue to shrink, the probability of                            and grammatical polishing to ensure the manuscript meets
+                                                                                                                                                              14
+
+
+
+academic standards; the AI was not involved in data analysis                      [21] Y. Li, X. Zeng, Z. Gao, L. Lin, J. Tao, J. Han, X. Cheng, M. Tahoori,
+or the development of the research findings.                                           and X. Zeng, “Exploring a bayesian optimization framework compatible
+                                                                                       with digital standard flow for soft-error-tolerant circuit,” in 2020 57th
+                                                                                       ACM/IEEE Design Automation Conference (DAC). IEEE, 2020, pp.
+                                                                                       1–6.
+                              R EFERENCES                                         [22] J. Tang, J. Mu, S. Liu, Z. Liu, F. Gu, X. Zhang, L. Wang, S. Liang, J. Ye,
+                                                                                       H. Li, and X. Li, “ERASER: Efficient RTL fault simulation framework
+                                                                                       with trimmed execution redundancy,” in Proc. Design, Automation &
+ [1] R. Baumann, “Radiation-induced soft errors in advanced semiconductor              Test in Europe (DATE), 2025, pp. 1–7.
+     technologies,” IEEE Transactions on Device and Materials Reliability,        [23] S. Das, S. Kundu, P. Madhusoodhanan, P. V. Pillai, R. Parekhji, A. Raha,
+     vol. 5, no. 3, pp. 305–316, 2005.                                                 S. Banerjee, S. Natarajan, and K. Basu, “Graph learning-based fault
+ [2] ISO 26262: Road Vehicles—Functional Safety, International Organiza-               criticality analysis for enhancing functional safety of e/e systems,” in
+     tion for Standardization Std., 2018.                                              2024 61st ACM/IEEE Design Automation Conference (DAC), 2024, pp.
+ [3] R. E. Lyons and W. Vanderkulk, “The use of triple-modular redundancy              1–6.
+     to improve computer reliability,” IBM Journal of Research and Devel-         [24] M. Gao, J. Zhao, Z. Lin, W. Ding, X. Hou, Y. Feng, C. Li, and M. Guo,
+     opment, vol. 6, no. 2, pp. 200–209, 1962.                                         “Autovcoder: A systematic framework for automated verilog code gen-
+ [4] R. W. Hamming, “Error detecting and error correcting codes,” The Bell             eration using llms,” in 2024 IEEE 42nd International Conference on
+     system technical journal, vol. 29, no. 2, pp. 147–160, 1950.                      Computer Design (ICCD), 2024, pp. 162–169.
+ [5] H. Ziade, R. A. Ayoubi, R. Velazco et al., “A survey on fault injection      [25] Y. Zhao, H. Zhang, H. Huang, Z. Yu, and J. Zhao, “Mage: A multi-agent
+     techniques,” Int. Arab J. Inf. Technol., vol. 1, no. 2, pp. 171–186, 2004.        engine for automated rtl code generation,” in 2025 62nd ACM/IEEE
+ [6] M. Zhang and N. R. Shanbhag, “Soft-error-rate-analysis (sera) method-             Design Automation Conference (DAC), 2025, pp. 1–7.
+     ology,” IEEE Transactions on Computer-Aided Design of Integrated             [26] D. Zou, G. Zhang, K. Sun, Z. Wen, M. Wang, and Z. Wang, “Llm4gv:
+     Circuits and Systems, vol. 25, no. 10, pp. 2140–2155, 2006.                       An llm-based flexible performance-aware framework for gemm verilog
+ [7] S. Kulis, “Single event effects mitigation with tmrg tool,” Journal of            generation,” in 2025 Design, Automation & Test in Europe Conference
+     Instrumentation, vol. 12, no. 01, p. C01082, 2017. [Online]. Available:           (DATE), 2025, pp. 1–2.
+     http://stacks.iop.org/1748-0221/12/i=01/a=C01082                             [27] V. Pulavarthi, D. Nandal, S. Dan, and D. Pal, “Are llms ready for
+ [8] S. Liu, W. Fang, Y. Lu, Q. Zhang, H. Zhang, and Z. Xie, “Rtlcoder:                practical adoption for assertion generation?” in 2025 Design, Automation
+     Outperforming gpt-3.5 in design rtl generation with our open-source               & Test in Europe Conference (DATE), 2025, pp. 1–7.
+     dataset and lightweight solution,” in 2024 IEEE LLM Aided Design             [28] M. Akyash and H. M. Kamali, “Self-hwdebug: Automation of llm self-
+     Workshop (LAD), 2024, pp. 1–5.                                                    instructing for hardware security verification,” in 2024 IEEE Computer
+ [9] X. Yao, Y. Wang, X. Li, Y. Lian, R. Chen, L. Chen, M. Yuan, H. Xu,                Society Annual Symposium on VLSI (ISVLSI), 2024, pp. 391–396.
+     and B. Yu, “Rtlrewriter: Methodologies for large models aided rtl            [29] C. Xiong, C. Liu, H. Li, and X. Li, “Hlspilot: Llm-based high-level
+     code optimization,” in 2024 ACM/IEEE International Conference On                  synthesis,” in 2024 ACM/IEEE International Conference On Computer
+     Computer Aided Design (ICCAD), 2024, pp. 1–7.                                     Aided Design (ICCAD), 2024, pp. 1–9.
+[10] I. Polian and J. P. Hayes, “Selective hardening: Toward cost-effective       [30] H. Wu, Z. He, X. Zhang, X. Yao, S. Zheng, H. Zheng, and B. Yu,
+     error tolerance,” IEEE Design & Test of Computers, vol. 28, no. 3, pp.            “Chateda: A large language model powered autonomous agent for eda,”
+     54–63, 2011.                                                                      IEEE Transactions on Computer-Aided Design of Integrated Circuits
+[11] A. Balakrishnan, T. Lange, M. Glorieux, D. Alexandrescu, and M. Jeni-             and Systems, vol. 43, no. 10, pp. 3184–3197, 2024.
+     hhin, “Modeling gate-level abstraction hierarchy using graph convolu-        [31] P. Lewis, E. Perez, A. Piktus, F. Petroni, V. Karpukhin, N. Goyal,
+     tional neural networks to predict functional de-rating factors,” in 2019          H. Küttler, M. Lewis, W.-t. Yih, T. Rocktäschel et al., “Retrieval-
+     NASA/ESA Conference on Adaptive Hardware and Systems (AHS), 2019,                 augmented generation for knowledge-intensive nlp tasks,” Advances in
+     pp. 72–78.                                                                        neural information processing systems, vol. 33, pp. 9459–9474, 2020.
+[12] L. Lu, J. Chen, M. Ulbricht, and M. Krstic, “Toward critical flip-           [32] T. Lange, A. Balakrishnan, M. Glorieux, D. Alexandrescu, and L. Ster-
+     flop identification for soft-error tolerance with graph neural networks,”         pone, “On the estimation of complex circuits functional failure rate by
+     IEEE Transactions on Computer-Aided Design of Integrated Circuits                 machine learning techniques,” in 2019 49th Annual IEEE/IFIP Interna-
+     and Systems, vol. 43, no. 4, pp. 1135–1148, 2024.                                 tional Conference on Dependable Systems and Networks – Supplemental
+                                                                                       Volume (DSN-S), 2019, pp. 35–41.
+[13] L. Lu, J. Chen, M. Ulbricht, and M. Krstic, “Machine learning method-
+                                                                                  [33] Synopsys Inc., “VC Z01X functional safety simulator,”
+     ologies to predict the results of simulation-based fault injection,” IEEE
+                                                                                       https://www.synopsys.com/verification/simulation/vc-z01x.html, 2023.
+     Transactions on Circuits and Systems I: Regular Papers, vol. 71, no. 5,
+                                                                                  [34] W. Hamilton, Z. Ying, and J. Leskovec, “Inductive representation
+     pp. 1978–1991, 2024.
+                                                                                       learning on large graphs,” Advances in neural information processing
+[14] T. Lange, A. Balakrishnan, M. Glorieux, D. Alexandrescu, and L. Ster-             systems, vol. 30, 2017.
+     pone, “Machine learning to tackle the challenges of transient and soft       [35] J. Wei, X. Wang, D. Schuurmans, M. Bosma, F. Xia, E. Chi, Q. V. Le,
+     errors in complex circuits,” in 2019 IEEE 25th International Symposium            D. Zhou et al., “Chain-of-thought prompting elicits reasoning in large
+     on On-Line Testing and Robust System Design (IOLTS), 2019, pp. 7–14.              language models,” Advances in neural information processing systems,
+[15] C. Wolf, J. Glaser, and J. Kepler, “Yosys-a free verilog synthesis suite,”        vol. 35, pp. 24 824–24 837, 2022.
+     in Proceedings of the 21st Austrian Workshop on Microelectronics             [36] Y. Lu, S. Liu, Q. Zhang, and Z. Xie, “Rtllm: An open-source benchmark
+     (Austrochip), vol. 97, 2013, pp. 1–6.                                             for design rtl generation with large language model,” in 2024 29th Asia
+[16] S. S. Mukherjee, J. Emer, and S. K. Reinhardt, “The soft error problem:           and South Pacific Design Automation Conference (ASP-DAC). IEEE,
+     An architectural perspective,” in 11th International Symposium on High-           2024, pp. 722–727.
+     Performance Computer Architecture. IEEE, 2005, pp. 243–247.                  [37] OpenCores, “OpenCores—open source IP cores,” https://opencores.org,
+[17] K.-H. Huang and J. A. Abraham, “Algorithm-based fault tolerance for               2023.
+     matrix operations,” IEEE Transactions on Computers, vol. C-33, no. 6,        [38] OnChipUIS,        “mriscvcore:      A     RISC-V      processor     core,”
+     pp. 518–528, 1984.                                                                https://github.com/onchipuis/mriscvcore, 2023.
+[18] M. Cassel and F. Lima, “Evaluating one-hot encoding finite state             [39] M. Fey and J. E. Lenssen, “Fast graph representation learning with Py-
+     machines for seu reliability in sram-based fpgas,” in 12th IEEE Inter-            Torch Geometric,” in Proc. ICLR Workshop on Representation Learning
+     national On-Line Testing Symposium (IOLTS’06), 2006, pp. 6 pp.–.                  on Graphs and Manifolds, 2019.
+[19] D. Ernst, N. S. Kim, S. Das, S. Pant, R. Rao, T. Pham, C. Ziesler,           [40] M. Chen, J. Tworek, H. Jun, Q. Yuan, H. P. D. O. Pinto, J. Kaplan,
+     D. Blaauw, T. Austin, K. Flautner, and T. Mudge, “Razor: a low-power              H. Edwards, Y. Burda, N. Joseph, G. Brockman et al., “Evaluating large
+     pipeline based on circuit-level timing speculation,” in Proceedings.              language models trained on code,” arXiv preprint arXiv:2107.03374,
+     36th Annual IEEE/ACM International Symposium on Microarchitecture,                2021.
+     2003. MICRO-36., 2003, pp. 7–18.                                             [41] S. Williams, “Icarus verilog,” https://github.com/steveicarus/iverilog,
+[20] M. Fojtik, D. Fick, Y. Kim, N. Pinckney, D. M. Harris, D. Blaauw,                 2002.
+     and D. Sylvester, “Bubble razor: Eliminating timing margins in an arm        [42] J. E. Stine et al., “FreePDK: An open-source variation-aware design
+     cortex-m3 processor in 45 nm cmos using architecturally independent               kit,” in Proc. IEEE Int. Conf. Microelectronic Systems Education (MSE),
+     error detection and correction,” IEEE Journal of Solid-State Circuits,            2007, pp. 173–174.
+     vol. 48, no. 1, pp. 66–81, 2013.
+
