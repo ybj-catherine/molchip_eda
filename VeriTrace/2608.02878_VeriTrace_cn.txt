@@ -1,0 +1,347 @@
+VeriTrace：类人时间探索补全智能体行动空间
+
+作者：Yu-Tung Liu，Cunxi Yu
+单位：美国马里兰大学帕克分校（University of Maryland, College Park）
+地址：美国马里兰州 College Park
+邮箱：liuyt@umd.edu；cunxiyu@umd.edu
+
+原文信息：arXiv:2608.02878v1 [cs.AI]，2026 年 8 月 3 日
+出版信息：979-8-3195-1246-8-0/26/$31.00 ©2026 IEEE
+
+说明：本文按 PDF 的双栏阅读顺序重新整理。正文、图注、表格、公式和脚注均已翻译；参考文献的作者、题名、出版物和链接保留原文，以便检索和核对。
+
+摘要
+
+大型语言模型在自动生成 Verilog 寄存器传输级（RTL）代码方面展现出良好潜力，但当前最先进的多智能体系统在标准基准上的准确率仍停留在约 95%。我们将这一瓶颈归因于调试行动空间不完整：现有系统限制智能体能够检查哪些信号、能够查询哪些时间窗口，或者同时限制两者，使调试退化为在预先规定的狭窄电路行为视图上进行模式匹配，而不是基于假设分析根因。
+
+我们提出 VeriTrace，这是一个多智能体系统，其 Inspector（检查器）智能体在完整的调试行动空间上运行，能够独立控制信号选择、时间窗口边界和迭代深度。我们将这种能力称为“智能体时间探索”（Agentic Temporal Exploration）。它使智能体能够针对故障原因形成假设、查询波形以获取证据，并以迭代方式完善理解，从而模拟人类验证工程师的探索过程。
+
+VeriTrace 在 VerilogEval-V2 上取得了 100% 的 Pass@1，这是首个在该基准上达到完美功能正确性的系统。在共享 Claude Sonnet 4.0 主干模型的条件下，VeriTrace 比复现得到的最强基线高出 5.1%，说明调试自主性能够弥合最后的准确率差距。
+
+I. 引言
+
+现代数字硬件设计仍然是劳动密集型工作，需要具备 Verilog 或 SystemVerilog 等硬件描述语言（HDL）的专业知识 [1]，[2]。随着芯片复杂度不断提升、设计周期不断缩短，对自动化 RTL 代码生成的需求日益迫切 [3]–[5]。将自然语言规范手工翻译成具有功能正确性的 Verilog 代码容易出错且耗时，因此需要智能化自动化方法。
+
+大型语言模型（LLM）已经成为硬件设计自动化领域颇具前景的工具 [4]，[6]。近期研究表明，LLM 能够根据自然语言描述生成语法有效的 Verilog 代码；GPT-4 和 Claude 等模型在 VerilogEval [3]，[7] 等基准上已经取得了不可忽视的通过率。这些结果表明，LLM 已经掌握了足够的 HDL 语法和基本数字设计模式知识，可以作为自动 RTL 生成的基础 [7]–[9]。
+
+然而，单智能体 LLM 方法在调试方面存在根本性局限。当生成的代码仿真失败时，这些系统通常只能获得通过/失败反馈或泛化的错误消息，缺少诊断功能性错误所需的详细信号级信息。多智能体系统开始通过引入基于波形的调试反馈来弥补这一缺口 [10]，[11]，但仅有反馈仍然不够。真正重要的是调试智能体拥有怎样的行动空间：它可以选择哪些信号、可以查询哪些时间窗口，以及能否随着理解不断发展而迭代发起查询 [12]，[13]。
+
+表 I 总结了现有多智能体系统的调试行动空间。MAGE [11] 引入了状态检查点打印机制，在首次错误时间戳捕获输入/输出值，但它将智能体限制在单个时间点的输入和输出信号上，既不能选择信号，也没有时间自由度，更不能迭代。VerilogCoder [10] 使用 AST 分析自动选择信号，并支持迭代式追踪，但将波形显示固定在首次失配时间戳。尽管这两个系统都证明了波形反馈能够改善功能正确性，但它们都没有让智能体同时自主决定“检查哪些信号”和“何时检查”。
+
+表 I  多智能体系统对比
+
+| 方法 | 智能体信号选择 | 智能体时间探索 | 迭代 |
+|---|---|---|---|
+| MAGE | ✗ | ✗ | ✗ |
+| VerilogCoder | ✓（基于 AST） | ✗ | ✓ |
+| VeriTrace（本文） | ✓ | ✓ | ✓ |
+
+我们提出 VeriTrace，通过引入智能体时间探索这一调试方法来弥合行动空间缺口。该方法赋予 LLM 智能体对信号选择和时间窗口检查的完全控制权。不同于以往方法，VeriTrace 支持迭代式波形查询：智能体选择信号和时间范围，观察结果，完善假设，再次查询，直到找到根因。本文的贡献如下：
+
+• 我们指出，调试行动空间的完整性是多智能体 RTL 生成中的关键瓶颈，并引入智能体时间探索，使智能体能够自主访问任意信号和时间窗口，基于假设驱动代码完善。
+
+• 我们提出 VeriTrace，这是一个以智能体时间探索为核心、配备专用 Inspector 智能体进行波形分析的多智能体系统。
+
+• Inspector 不会把完整的 VCD 波形转储全部输入模型，而只查询与当前假设相关的信号和时间窗口，将 token 消耗降低 18%，为扩展到更大规模设计提供可行路径。
+
+• VeriTrace 在 VerilogEval-V2 上取得 100% 的 Pass@1；据我们所知，这是首个在该基准上达到完美功能正确性的开源系统。
+
+图 1  VeriTrace 概览
+
+图 1 的流程可概括为：
+
+自然语言规范/测试平台
+  -> Testbench Agent：修改测试平台，使其转储全部波形
+  -> RTL Agent：生成 RTL
+  -> Simulator（iverilog）
+  -> 若通过：输出“已验证 RTL”
+  -> 若失败：Sim Judge 检查测试平台；RTL Agent 进行高温度采样；Inspector 诊断错误并追踪波形
+  -> Inspector 通过查询 VCD 工具获取波形快照，生成 Inspector Report
+  -> RTL Debugger 根据报告应用修复
+  -> 再次仿真，直到通过。
+
+图中的“Debugging Agency”表示上述 Inspector 与 RTL Debugger 之间的闭环调试自主性；错误消息从仿真器反馈给调试环路，波形转储由 VCD 工具提供给 Inspector。
+
+II. 背景
+
+A. 用于 RTL 代码生成的 LLM
+
+大型语言模型在 Verilog 生成方面的发展主要沿着两条路径展开：一类是使用精选 RTL 数据集训练的领域专用模型 [8]，[14]–[19]；另一类是直接将 GPT-4、Claude 等通用 LLM 应用于硬件描述 [3]，[7]。两条路径都表明，LLM 已经掌握了足够的 HDL 语法和基本数字设计模式知识 [6]，[7]；但如果没有仿真反馈，仅靠单次生成仍不足以保证可靠的功能正确性 [20]。
+
+B. 用于 RTL 生成的多智能体系统
+
+为了纳入仿真反馈，近期工作采用了多智能体架构，将 RTL 设计分解为多个专门子任务。VerilogCoder [10] 引入 Task and Circuit Relation Graph（任务与电路关系图）进行计划分解，并使用基于 AST 的波形追踪工具，从失配输出反向追踪相关信号，在故障点提供信号级上下文。MAGE [11] 采用四类智能体、高温度候选采样策略，以及能够捕获最早失配处输入/输出值的状态检查点机制。ACE-RTL [21] 将领域专用 RTL 模型与前沿推理 LLM 结合到智能体上下文演化循环中，由 Reflector 分析仿真日志，由 Coordinator 在多轮迭代之间维护结构化调试历史。这些系统共同表明，带有仿真闭环的多智能体协作能够显著提升功能正确性，相比单次生成方法更有效 [12]，[22]，[23]。
+
+C. 智能体推理与工具使用
+
+ReAct 范式 [24] 将智能体工具使用形式化为 Thought（思考）、Action（行动）和 Observation（观察）交错进行的循环：智能体根据当前状态进行推理，调用工具，观察结果，然后重复这一过程。软件工程领域的一项关键发现是，智能体与工具之间的接口，其重要性不亚于底层 LLM 本身 [25]。
+
+SWE-Agent [26] 表明，对软件智能体而言，行动空间设计比模型规模扩展更加重要。硬件调试还面临额外挑战：错误同时具有空间和时间属性，需要联合控制信号选择与时间导航 [13]，[27]–[32]。
+
+III. 方法
+
+VeriTrace 的多智能体架构遵循一种确定性的控制流程，该流程仿照人类工程师进行 RTL 设计的方式：编写代码、仿真、检查失败信号、诊断根因，然后修复。VeriTrace 不依赖学习得到的编排策略或动态智能体分配，而是将任务分解为验证工程师会遵循的相同顺序阶段，并由专门智能体负责每个阶段。
+
+如图 1 所示，系统以自然语言规范和（若有）黄金测试平台作为输入，生成测试平台和 RTL。随后，如果仿真报告功能错误，系统便进入检查与调试的闭环，直到所有测试用例通过。关键创新在于 Inspector 智能体：它在完整的调试行动空间上运行，为系统提供基于假设的诊断反馈。
+
+A. 测试平台与 RTL 智能体
+
+Testbench Agent 会修改黄金测试平台，使其转储所有波形，从而让 Inspector 能够查询任意内部信号，就像人类设计者使用商业工具时所做的那样 [33]。RTL Agent 根据规范和修改后的测试平台生成模块，并在仿真前强制执行严格的语法检查。我们遵循 MAGE [11] 的做法，在初始尝试中加入 Simulation Judge 和高温度 RTL Sampling，以避免对中等难度和简单任务使用耗费大量 token 的调试循环。
+
+B. Inspector：智能体时间探索
+
+复杂的 RTL 问题，特别是带反馈的有限状态机（FSM）问题，很少能通过一次生成解决。正如 II-C 节所述，RTL 错误具有时空属性：在时间 t 观察到的失配，可能源于许多时钟周期之前的另一个逻辑块。Inspector 通过将诊断与修复分离来处理这一问题。Debugger 将诊断结果转换为代码编辑，而 Inspector 则在完整的调试行动空间上运行，选择要检查的信号、要查询的时间窗口，以及要执行多少轮探索。
+
+这种将诊断与修复分离的做法¹，使每个智能体都拥有聚焦的上下文窗口，避免单个智能体同时处理波形分析和代码修改。
+
+图 2 展示了 Inspector 如何从初始错误时间戳出发，通过迭代波形分析识别错误的状态转移。
+
+图 2  Inspector 针对问题 155 进行智能体时间探索的示例
+
+图 2 中示例内容的整理翻译如下：
+
+仿真失败消息：
+  输出 walk_left 存在 22 处失配。
+  首次失配发生在时间 580……
+
+第 1 轮思考：
+  选择对调试状态机错误至关重要的信号：
+  （1）时钟和复位，用于建立时序上下文；
+  （2）当前状态和下一状态，用于跟踪状态转移……
+  选定信号：
+  ["clk", "areset", "reset", "state", "state_next", ...]
+
+第 1 轮波形快照（时间 560 至 585）：
+  Time 560：clk=0
+  Time 565：fall_counter_next=0，state_next=0，ground=1，fall_counter=20，clk=1
+  Time 570：clk=0
+  Time 575：tb_mismatch=1，state=0，fall_counter=0，clk=1
+  Time 580：clk=0
+  Time 585：state_next=1，bump_left=1，fall_counter=0，clk=1
+
+第 2 轮思考：
+  ……让我检查时间 560 之前发生了什么，以便更好地理解下落序列。
+  行动：Inspect Waveform（检查波形）
+  开始时间：300；结束时间：580
+  选定信号：
+  ["clk", "state", "state_next", "fall_counter", ...]
+
+第 2 轮波形快照（时间 560 至 585）：
+  …
+  Time 560：clk=0
+  Time 565：fall_counter_next=0，state_next=0，ground=1，fall_counter=20，clk=1
+  Time 570：clk=0
+  Time 575：aah=0，walk_left=1，state=0，fall_counter=0，clk=1
+  …
+
+第 3 轮思考：
+  在时间 565，fall_counter=20，而条件 fall_counter > 20 的结果为 FALSE，因此状态转移到了 WALK_LEFT，而不是 SPLAT。但预期行为是：fall_counter 应在超过 20 个周期内保持不变。
+  行动：Finish（结束）
+
+Inspector Report：
+  ……
+  建议修复：
+  将 FALL_LEFT 和 FALL_RIGHT 状态中的条件从
+  fall_counter > 6'd20
+  修改为
+  fall_counter >= 6'd20
+  Verilog 代码片段：……
+
+1) 来自人类 RTL 验证的观察
+
+当 RTL 仿真报告失配时，人类设计者不会孤立地检查失败时间戳。在 Synopsys Verdi [33]，[34] 等商业工具中，设计者会选择一个可疑信号，检查它在选定时间窗口内的跃迁，形成关于哪个逻辑块引入错误的假设，然后进一步追踪该逻辑块的输入，以确认或修正假设。关键在于，由设计者决定检查哪些信号以及何时检查。诊断这类故障需要在任意时间范围内反复浏览内部信号、状态寄存器、计数器和下一状态逻辑，并随着理解加深不断调整探索。
+
+这些观察启发了 Inspector 的设计。如果智能体被限制在固定信号或单一时间戳上，就无法摆脱使自动调试变得脆弱的狭窄视图。Inspector 对信号选择和时间窗口拥有完全控制权，从而支持下面形式化的、迭代式且由假设驱动的过程。
+
+2) Inspector 行动形式化
+
+令 S 表示自然语言规范，C 表示当前 RTL 代码，t_err 表示仿真报告的首次错误时间戳，W 表示由修改后的测试平台生成的完整波形。
+
+在每次迭代 i 中，Inspector 选择一组信号 σ_i 和一个待查询的时间窗口 [t_i^start, t_i^end]。智能体波形追踪工具返回一种自然语言风格的波形快照：
+
+ω_i = TRACE(W, σ_i, t_i^start, t_i^end)                                      （1）
+
+Inspector 遵循 ReAct 风格的推理模式 [24]，交错执行思考和行动。在每一步中，Inspector 生成一个思考 τ_i，根据累积上下文进行推理，并决定是发起另一次查询还是终止：
+
+τ_i, a_i = THINK(S, C, t_err, ω_1, ..., ω_i)                                  （2）
+
+其中 a_i ∈ {QUERY, FINISH}。如果 a_i = QUERY，Inspector 会选择新参数 (σ_{i+1}, t_{i+1}^start, t_{i+1}^end)，并获取下一个快照 ω_{i+1}。该循环会持续到 a_i = FINISH，或达到最大迭代次数 N。
+
+终止时，Inspector 会生成 Inspector Report（Inspector 报告）R，总结 S 与 C 之间已经诊断出的行为失配，说明对失配的推理，并为后续 RTL Debugger 提出修复建议。需要注意的是，Inspector 看不到测试平台，因为自我纠正的目标应当是找出 RTL 代码 C 与功能描述 S 之间的失配行为，而不是找出 RTL 与测试平台之间的差异。
+
+C. RTL Debugger
+
+RTL Debugger 收到 Inspector Report R 后，会结合 R 中包含的行为失配诊断和修复建议分析有缺陷的 RTL 代码 C。随后，Debugger 执行有针对性的编辑，生成修正版 C'。Debugger 不会尝试重写整个模块，而是聚焦于 Inspector 指出的特定逻辑块，同时保留那些工作正常的代码结构。
+
+修正后的 RTL C' 会重新仿真。令 m(C) 表示给定 RTL 实现 C 的输出失配数量。如果 m(C') < m(C)，则接受该编辑，并将 C 更新为 C'。如果 m(C') >= m(C)，则回滚编辑以防止回归，保留之前的版本。之所以需要这一检查点，是因为解决一个失配的编辑可能引入其他失配，尤其是在共享状态逻辑会产生级联影响的时序电路中。要求失配数量单调减少，可以保证系统持续向前推进。
+
+当已接受的编辑减少了失配但没有消除全部失配时，系统会针对更新后的代码 C' 和新的错误时间戳再次调用 Inspector。这反映了现实 RTL 调试中的常见模式：单个设计可能包含多个相互独立的错误，或者修复一个问题后会暴露此前被遮蔽的失败。随后 Inspector 在更新后的设计上开始新一轮波形探索，循环继续。Inspector 与 RTL Debugger 之间的完整闭环迭代会持续到 m(C) = 0（所有测试用例通过），或者达到最大迭代次数 M。
+
+IV. 实验与结果
+
+A. 实验设置
+
+我们在 VerilogEval-V2 [3]，[7] 上评估 VeriTrace。该基准包含 156 个 Verilog 编码问题，覆盖组合逻辑和时序电路¹。每个问题都包含一份自然语言规范和一个黄金测试平台。
+
+对于文献中的结果，我们报告最高的 PASS@1 准确率 [10]，[11]。对于复现的方法和我们的方法，均使用 n = 3 次运行进行报告，以减小采样方差。
+
+表 II  VerilogEval-V2 上的对比
+
+| 方法 | 是否开源 | LLM 模型 | VerilogEval-V2 Pass@1 |
+|---|---|---|---:|
+| Single Agent | N/A | Claude Sonnet 4.5 | 81.4% |
+| VerilogCoder [10] | ✓ | GPT4-Turbo | 94.2% |
+| ACE-RTL [21] | ✗ | Custom & Claude Sonnet 4.0 | 95.5%³ |
+| MAGE [11] | ✓ | Claude 3.5 Sonnet | 95.7% |
+| MAGE | ✓ | Claude Sonnet 4.0 | 92.3% |
+| Ours | ✓ | Claude Sonnet 4.0 | 97.4% |
+| Ours | ✓ | Claude Sonnet 4.5 | 100% |
+
+B. 关键结果
+
+表 II 将 VeriTrace 与最先进的开源多智能体系统 [10]，[11]，[21] 进行比较。我们设置 N=5、M=10。使用 Claude Sonnet 4.5 [35] 时，VeriTrace 达到 100% 的 Pass@1，成为首个在 VerilogEval-V2 上实现完美功能正确性的系统，弥合了此前所有方法都未能消除的差距。
+
+为了进行公平的同模型比较，我们还使用 Claude Sonnet 4.0 进行评估，此时 VeriTrace 的 Pass@1 为 97.4%，比使用相同主干模型的 MAGE（92.3%）高出 5.1%²。该收益完全归因于 VeriTrace 的调试自主性，因为两个系统使用的是相同的底层 LLM。
+
+此外，ACE-RTL [21]³ 报告了在 VerilogEval-V2 上 95.5% 的 APR，它使用相同的 Claude Sonnet 4.0 主干模型以及自定义微调模型。不过，APR 衡量的是多次运行中独立解决的问题所占比例，而不是其他条目使用的统计意义上的 Pass@1 估计值；同时，ACE-RTL 的闭源实现也无法在受控条件下复现。因此，我们主要与可复现的开源基线进行比较。
+
+C. 消融研究
+
+1) Inspector 的有效性
+
+为了单独考察 Inspector 的贡献，我们比较了包含和不包含该组件的 VeriTrace。表 III 报告了在所有问题上取平均后的各智能体 token 消耗和总 token 消耗。由于 LLM API 延迟会导致实际墙钟时间出现波动，我们改为报告平均 LLM 调用次数，将其作为运行时间的代理指标。
+
+Pass@1 在 n=3 次运行上计算，以减少采样方差。两种配置都使用 Claude Sonnet 4.5 主干模型 [35]，温度参数 t=0.85。
+
+两种配置在 RTL 生成阶段消耗的 token 数量相近，说明 Inspector 的收益来自调试阶段，而不是初始代码生成阶段。加入 Inspector 后，波形分析被卸载给一个专用智能体，该智能体生成有针对性的诊断报告，使 RTL Debugger 能够实施更精确的修复。这种专门化使 RTL Debugger 与 Inspector 的联合调试 token 消耗，相对于不使用 Inspector 时仅由 RTL Debugger 调试的消耗，整体减少约 18%。
+
+这一改进也存在权衡：由于迭代式检查的性质，VeriTrace 平均会进行更多轮 LLM 调用，因此运行时间更长。
+
+表 III  消融研究
+
+| 方法 | VerilogEval-V2 Pass@1 | RTL Agent 平均 token | Testbench Agent 平均 token | Sim Judge 平均 token | RTL Debugger 平均 token | Inspector 平均 token | 总平均 token | 平均 LLM 调用 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 不使用 Inspector | 98.29% | 10.2k | 6.8k | 1.3k | 8.5k | N/A | 26.7k | 6.4 |
+| 使用 Inspector | 100% | 10.1k | 5.4k | 0.9k | 0.4k | 5.2k | 21.9k | 6.7 |
+
+2) 对困难问题的分析
+
+为了了解哪些问题类别受益最大，我们进一步检查了在两种配置中都会持续触发调试循环的 7 个问题（表 IV）。对于组合电路和非 FSM 时序电路，两种系统都达到 100% 的 Pass@1。在这些问题上，Inspector 的优势主要体现在效率方面：它通过提前提供更具可操作性的诊断信息，在 4 个案例中的 3 个案例减少了调试 token。
+
+差异在 FSM 问题上最为明显：不使用 Inspector 的系统只能达到 0–33% 的 Pass@1。Inspector 能够跨时间窗口追踪状态转移，从而在反馈密集型设计中定位根因，使这 3 个问题的 Pass@1 全部提升到 100%。
+
+值得注意的是，对于 Prob155，Inspector 将总 token 消耗降低了 5 倍以上（619k -> 110k）。这表明，准确的诊断不仅能够提高正确性，还能避免盲目重试所带来的浪费性试错循环。在这个案例中，我们观察到 RTL Debugger 在多次尝试失败后最终编辑了整个模块，因此消耗了显著更多的 token。
+
+表 IV  调试密集型问题的逐问题消融
+
+| 问题 | 类型 | 不使用 Inspector：Pass@1 | 不使用：总 token | 不使用：调试 token | 不使用：调试 LLM 调用 | 使用 Inspector：Pass@1 | 使用：总 token | 使用：调试 token | 使用：调试 LLM 调用 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Prob062 | 组合逻辑 | 100% | 41.7k | 4k | 2.00 | 100% | 44.6k | 7.3k | 4.33 |
+| Prob070 | 组合逻辑 | 100% | 64.7k | 10.5k | 2.00 | 100% | 63.2k | 6.3k | 4.00 |
+| Prob078 | 时序电路 | 100% | 50.6k | 18.4k | 4.67 | 100% | 46.8k | 7.6k | 5.00 |
+| Prob093 | 组合逻辑 | 100% | 94.7k | 47.2k | 4.67 | 100% | 83.1k | 36.5k | 8.33 |
+| Prob137 | FSM（时序） | 0% | 348.2k | 301.7k | 30.00 | 100% | 383.6k | 339.6k | 56.00 |
+| Prob149 | FSM（时序） | 33% | 345.9k | 281.2k | 20.67 | 100% | 317.4k | 256.9k | 31.67 |
+| Prob155 | FSM（时序） | 33% | 619.5k | 530.8k | 27.33 | 100% | 110.3k | 32.6k | 9.00 |
+
+V. 讨论与局限
+
+VerilogEval-V2 由 156 个带有给定黄金测试平台的单模块问题组成。工业设计则涉及多模块层级、不完整的规范，以及规模大得多的信号空间。Inspector 的时间探索能否扩展到这类场景，仍然是一个开放问题。CVDP [21]，[36]，[37] 等多任务基准可以在更多样的条件下检验这一框架。
+
+由于 CVDP 评估要求每个问题进行多次独立运行，并在每次迭代中调用前沿模型 API，因此相关成本对于学术环境而言并不低。在初步实验中，我们将智能体时间探索应用于一个层级化多智能体框架中的两个具有挑战性的 CVDP 规范到 RTL 问题，并成功解决了两个问题。这说明该调试方法可能推广到单模块基准之外。全面评估将作为后续工作开展。
+
+Testbench Agent 默认会为所有信号转储波形，正是这一点使 Inspector 能够查询任意内部信号。关键在于，Inspector 不会把完整的 VCD 输入 LLM 上下文，而是只检索它在每次迭代中选择的信号和时间窗口。因此，token 成本随诊断复杂度而不是设计规模增长。对于 VerilogEval-V2 中的单模块问题，这一存储开销可以忽略不计；但对于包含数千个信号的工业规模模块，可能需要自适应波形转储或按需重新仿真。
+
+最后，Claude Sonnet 4.0（97.4%）与 4.5（100%）之间的差距表明，当前所有多智能体 RTL 系统仍然对底层 LLM 敏感。如何将架构层面的贡献与模型层面的贡献区分开来，仍是整个领域共同面临的挑战。
+
+VI. 结论
+
+我们提出了 VeriTrace，这是一个引入智能体时间探索的多智能体系统，使 LLM 智能体在调试过程中能够完全控制信号选择和时间探索。VeriTrace 在 VerilogEval-V2 上达到 100% 的 Pass@1，取得该基准上的首个满分；同时，通过更有针对性的诊断将 token 消耗降低了 18%。
+
+我们的结果表明，在基于 LLM 的 RTL 生成中，弥合最后准确率差距的关键是调试自主性，而不仅仅是更丰富的反馈。未来工作将把智能体时间探索扩展到多模块设计和动态智能体分配。VeriTrace 的实现将公开发布。
+
+脚注
+
+1. 其中一个问题的测试平台与提示词不匹配。我们咨询了文献 [7] 的作者，并据此进行了相应调整。
+
+2. 我们使用 [11] 的开源实现复现了 MAGE，用 Claude Sonnet 4.0 和 4.5 替代已经弃用的 3.5 和 3.7 版本。我们注意到，使用 Claude Sonnet 4.5 时性能明显下降，这归因于脆弱的测试平台语法和输出解析。
+
+3. ACE-RTL [21] 报告的是 Agentic Pass Rate（APR），其定义是多次运行中独立解决的问题所占比例，而不是其他条目采用的统计 Pass@1 估计值。其实现并未公开。
+
+参考文献
+
+以下书目信息按论文原文保留，编号与正文引用一一对应：
+
+[1] J. Choi, S. Brown, and J. Anderson, “From software threads to parallel hardware in high-level synthesis for fpgas,” in 2013 International Conference on Field-Programmable Technology (FPT), 2013, pp. 270–277.
+
+[2] C. J. Faber, S. D. Harris, Z. Xiac, R. D. Chamberlain, and A. M. Cabrera, “Challenges designing for fpgas using high-level synthesis,” in 2022 IEEE High Performance Extreme Computing Conference (HPEC), 2022, pp. 1–7.
+
+[3] M. Liu, N. Pinckney, B. Khailany, and H. Ren, “Verilogeval: Evaluating large language models for verilog code generation,” in 2023 IEEE/ACM International Conference on Computer Aided Design (ICCAD). IEEE, 2023, pp. 1–8.
+
+[4] J. Pan, G. Zhou, C.-C. Chang, I. Jacobson, J. Hu, and Y. Chen, “A survey of research in large language models for electronic design automation,” ACM Transactions on Design Automation of Electronic Systems, vol. 30, no. 3, pp. 1–21, 2025.
+
+[5] Y. Lu, S. Liu, Q. Zhang, and Z. Xie, “Rtllm: An open-source benchmark for design rtl generation with large language model,” in 2024 29th Asia and South Pacific Design Automation Conference (ASP-DAC). IEEE, 2024, pp. 722–727.
+
+[6] S. Thakur, B. Ahmad, Z. Fan, H. Pearce, B. Tan, R. Karri, B. Dolan-Gavitt, and S. Garg, “Benchmarking large language models for automated verilog rtl code generation,” 2022.
+
+[7] N. Pinckney, C. Batten, M. Liu, H. Ren, and B. Khailany, “Revisiting verilogeval: A year of improvements in large-language models for hardware code generation,” ACM Transactions on Design Automation of Electronic Systems, 2025.
+
+[8] P. Zehua, H. Zhen, M. Yuan, Y. Huang, and B. Yu, “Betterv: Controlled verilog generation with discriminative guidance,” in Forty-first International Conference on Machine Learning, 2024.
+
+[9] Y.-D. Tsai, M. Liu, and H. Ren, “Rtlfixer: Automatically fixing rtl syntax errors with large language models,” 2024.
+
+[10] C.-T. Ho, H. Ren, and B. Khailany, “Verilogcoder: Autonomous verilog coding agents with graph-based planning and abstract syntax tree (ast)-based waveform tracing tool,” in Proceedings of the AAAI Conference on Artificial Intelligence, 2025, vol. 39, pp. 300–307.
+
+[11] Y. Zhao, H. Zhang, H. Huang, Z. Yu, and J. Zhao, “Mage: A multi-agent engine for automated rtl code generation,” in 2025 62nd ACM/IEEE Design Automation Conference (DAC). IEEE, 2025, pp. 1–7.
+
+[12] Q. Wu, G. Bansal, J. Zhang, Y. Wu, B. Li, E. Zhu, L. Jiang, X. Zhang, S. Zhang, J. Liu, et al., “Autogen: Enabling next-gen llm applications via multi-agent conversations,” in First conference on language modeling, 2024.
+
+[13] X. Chen, M. Lin, N. Schärli, and D. Zhou, “Teaching large language models to self-debug,” arXiv preprint arXiv:2304.05128, 2023.
+
+[14] S. Liu, W. Fang, Y. Lu, J. Wang, Q. Zhang, H. Zhang, and Z. Xie, “Rtlcoder: Fully open-source and efficient llm-assisted rtl code generation technique,” IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems, vol. 44, no. 4, pp. 1448–1461, 2024.
+
+[15] C. Deng, Y.-D. Tsai, G.-T. Liu, Z. Yu, and H. Ren, “Scalertl: Scaling llms with reasoning data and test-time compute for accurate rtl code generation,” in 2025 ACM/IEEE 7th Symposium on Machine Learning for CAD (MLCAD). IEEE, 2025, pp. 1–9.
+
+[16] M. Chen, J. Tworek, H. Jun, Q. Yuan, H. P. D. O. Pinto, J. Kaplan, H. Edwards, Y. Burda, N. Joseph, G. Brockman, et al., “Evaluating large language models trained on code,” arXiv preprint arXiv:2107.03374, 2021.
+
+[17] M. Liu, T.-D. Ene, R. Kirby, C. Cheng, N. Pinckney, R. Liang, J. Alben, H. Anand, S. Banerjee, I. Bayraktaroglu, et al., “Chipnemo: Domain-adapted llms for chip design,” arXiv preprint arXiv:2311.00176, 2023.
+
+[18] F. Cui, C. Yin, K. Zhou, Y. Xiao, G. Sun, Q. Xu, Q. Guo, Y. Liang, X. Zhang, D. Song, et al., “Origen: Enhancing rtl code generation with code-to-code augmentation and self-reflection,” in Proceedings of the 43rd IEEE/ACM International Conference on Computer-Aided Design, 2024, pp. 1–9.
+
+[19] M. Liu, Y.-D. Tsai, W. Zhou, and H. Ren, “Craftrtl: High-quality synthetic data generation for verilog code models with correct-by-construction non-textual representations and targeted code repair,” arXiv preprint arXiv:2409.12993, 2024.
+
+[20] N. Wu, Y. Li, H. Yang, H. Chen, S. Dai, C. Hao, C. Yu, and Y. Xie, “Survey of machine learning for software-assisted hardware design verification: Past, present, and prospect,” ACM Transactions on Design Automation of Electronic Systems, vol. 29, no. 4, pp. 1–42, 2024.
+
+[21] C. Deng, Z. Yu, G.-T. Liu, N. Pinckney, and H. Ren, “Ace-rtl: When agentic context evolution meets rtl-specialized llms,” arXiv preprint arXiv:2602.10218, 2026.
+
+[22] S. Hong, M. Zhuge, J. Chen, X. Zheng, Y. Cheng, J. Wang, C. Zhang, Z. Wang, S. K. S. Yau, Z. Lin, et al., “Metagpt: Meta programming for a multi-agent collaborative framework,” in The twelfth international conference on learning representations, 2023.
+
+[23] H. Wu, Z. He, X. Zhang, X. Yao, S. Zheng, H. Zheng, and B. Yu, “Chateda: A large language model powered autonomous agent for eda,” IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems, vol. 43, no. 10, pp. 3184–3197, 2024.
+
+[24] S. Yao, J. Zhao, D. Yu, N. Du, I. Shafran, K. Narasimhan, and Y. Cao, “React: Synergizing reasoning and acting in language models,” arXiv preprint arXiv:2210.03629, 2022.
+
+[25] T. Schick, J. Dwivedi-Yu, R. Dessì, R. Raileanu, M. Lomeli, E. Hambro, L. Zettlemoyer, N. Cancedda, and T. Scialom, “Toolformer: Language models can teach themselves to use tools,” Advances in neural information processing systems, vol. 36, pp. 68539–68551, 2023.
+
+[26] J. Yang, C. E. Jimenez, A. Wettig, K. Lieret, S. Yao, K. Narasimhan, and O. Press, “Swe-agent: Agent-computer interfaces enable automated software engineering,” Advances in Neural Information Processing Systems, vol. 37, pp. 50528–50652, 2024.
+
+[27] N. Shinn, F. Cassano, A. Gopinath, K. Narasimhan, and S. Yao, “Reflexion: Language agents with verbal reinforcement learning,” Advances in neural information processing systems, vol. 36, pp. 8634–8652, 2023.
+
+[28] X. Wang, B. Li, Y. Song, F. F. Xu, X. Tang, M. Zhuge, J. Pan, Y. Song, B. Li, J. Singh, et al., “Openhands: An open platform for software developers as generalist agents,” arXiv preprint arXiv:2407.16741, 2024.
+
+[29] A. Madaan, N. Tandon, P. Gupta, S. Hallinan, L. Gao, S. Wiegreffe, U. Alon, N. Dziri, S. Prabhumoye, Y. Yang, et al., “Self-refine: Iterative refinement with self-feedback,” Advances in neural information processing systems, vol. 36, pp. 46534–46594, 2023.
+
+[30] X. Wang, Y. Chen, L. Yuan, Y. Zhang, Y. Li, H. Peng, and H. Ji, “Executable code actions elicit better llm agents,” in Forty-first International Conference on Machine Learning, 2024.
+
+[31] G. Wang, Y. Xie, Y. Jiang, A. Mandlekar, C. Xiao, Y. Zhu, L. Fan, and A. Anandkumar, “Voyager: An open-ended embodied agent with large language models,” arXiv preprint arXiv:2305.16291, 2023.
+
+[32] M. ul Islam, H. Sami, P.-E. Gaillardon, V. Tenace, et al., “Aivril: Ai-driven rtl generation with verification in-the-loop,” arXiv preprint arXiv:2409.11411, 2024.
+
+[33] Synopsys, “Verdi debug: Streamlining verification engineers’ workflow,” 2024, Synopsys Blog.
+
+[34] Synopsys, Inc., “Verdi automated debug system,” https://www.synopsys.com/verification/debug/verdi.html, 2024, Accessed: 2025-02-05.
+
+[35] Anthropic, “System card: Claude sonnet 4.5,” Tech. Rep., Anthropic, September 2025.
+
+[36] N. Pinckney, C. Deng, C.-T. Ho, Y.-D. Tsai, M. Liu, W. Zhou, B. Khailany, and H. Ren, “Comprehensive verilog design problems: A next-generation benchmark dataset for evaluating large language models and agents on rtl design and verification,” 2025.
+
+[37] A. Allam and M. Shalan, “Rtl-repo: A benchmark for evaluating llms on large-scale rtl design projects,” in 2024 IEEE LLM Aided Design Workshop (LAD). IEEE, 2024, pp. 1–5.
