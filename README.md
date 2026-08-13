@@ -144,13 +144,12 @@
 | SynC-LLM | EMNLP 2025 | ✅ | 2/17 | [📄](SynC-LLM/论文深度讲解.md) |
 | GenEDA | ICCAD 2025 | ✅ | 3/17 | [📄](GenEDA/论文深度讲解.md) |
 
-#### 4. 逻辑综合与 PPA 预测（5 篇）
+#### 4. 逻辑综合与 PPA 预测（4 篇）
 
 | 论文 | 会议 | 代码 | 覆盖率 | 链接 |
 |---|---:|---|:---:|------|
 | CircuitEvo | ICLR 2025 | ✅ | 2/17 | [📄](CircuitEvo/论文深度讲解.md) |
 | RTL-Sequencer | arXiv 2026 | ❌ | 2/17 | [📄](RTL-Sequencer/论文深度讲解.md) |
-| **Dr. RTL** | **ICCAD 2026 / arXiv** | ✅ | 4/17 核心 | [📄](Dr-RTL/论文深度讲解.md) |
 | DREAMPlace | DAC 2019 | ✅ | 1/17 | [📄](DREAMPlace/论文深度讲解.md) |
 | **RocketPPA** | **MLSys 2026** | ❌ | 3/17 | [📄](RocketPPA/论文深度讲解.md) |
 
@@ -193,12 +192,13 @@
 | AlphaRoute | IEEE LAD 2026 | ✅ | 4/17 | [📄](AlphaRoute/论文深度讲解.md) |
 | ARCADE | IEEE VTS 2026 | ✅ | 5/17 | [📄](ARCADE/论文深度讲解.md) |
 
-#### 7. EDA Agent 与流程编排（3 篇）
+#### 7. EDA Agent 与流程编排（4 篇）
 
 | 论文 | 会议 | 代码 | 覆盖率 | 链接 |
 |---|---:|---|:---:|------|
 | ChatEDA | arXiv 2023 | ✅ | 5/17 | [📄](ChatEDA/论文深度讲解_ChatEDA.md) |
 | Multi-Agent ChatEDA | NAACL 2025 | ✅ | 5/17 | [📄](ChatEDA/论文深度讲解_Multi-Agent-ChatEDA.md) |
+| Dr. RTL | ICCAD 2026 | ✅ | 4/17 | [📄](Dr-RTL/论文深度讲解.md) |
 | CircuitWeave | arXiv 2026 | ❌ | 2/17 | [📄](CircuitWeave/论文深度讲解.md) |
 
 #### 8. 跨领域 — 光子 / 模拟 / RF / PCB（11 篇）
@@ -235,10 +235,10 @@
 | RTL 生成、修复与 Agent | 29 | 18 | 9 | 2 |
 | Benchmark 与评测 | 20 | 17 | 3 | 0 |
 | 电路表示学习与数据集 | 16 | 13 | 3 | 0 |
-| 逻辑综合与 PPA 预测 | 5 | 3 | 0 | 2 |
+| 逻辑综合与 PPA 预测 | 4 | 2 | 0 | 2 |
 | 验证、修复与形式化 + DFT | 22 | 9 | 10 | 3 |
 | 物理设计与跨阶段 | 7 | 4 | 3 | 0 |
-| EDA Agent 与流程编排 | 3 | 2 | 0 | 1 |
+| EDA Agent 与流程编排 | 4 | 3 | 0 | 1 |
 | 跨领域 | 11 | 6 | 4 | 1 |
 | 综述 | 4 | 0 | 0 | 4 |
 | **总计** | **117** | **72 (62%)** | **32 (27%)** | **13 (11%)** |
