@@ -96,7 +96,7 @@
 | VeriGen (Benchmark) | arXiv 2022 | ✅ | 2/17 | [📄](VGen/论文深度讲解_VeriGen-Benchmark.md) |
 | VeriReason | arXiv 2025 | ⏳ | 5/17 | [📄](VeriReason/论文深度讲解.md) |
 | ChipNeMo | DAC 2024 | ❌ | 9/17 | [📄](ChipNeMo/论文深度讲解.md) |
-| ChatHLS | ACL 2026 | ✅ | 5/17 | [📄](ChatHLS/论文深度讲解.md) |
+| ChatHLS | ACL 2026 | ✅ | 约 1.5/17 | [📄](ChatHLS/论文深度讲解.md) |
 
 #### 2. Benchmark 与评测（20 篇）
 
@@ -198,7 +198,7 @@
 |---|---:|---|:---:|------|
 | ChatEDA | arXiv 2023 | ✅ | 5/17 | [📄](ChatEDA/论文深度讲解_ChatEDA.md) |
 | Multi-Agent ChatEDA | NAACL 2025 | ✅ | 5/17 | [📄](ChatEDA/论文深度讲解_Multi-Agent-ChatEDA.md) |
-| Dr. RTL | ICCAD 2026 | ✅ | 4/17 | [📄](Dr-RTL/论文深度讲解.md) |
+| Dr. RTL | ICCAD 2026（仓库标注） | ✅ | 4/17 | [📄](Dr-RTL/论文深度讲解.md) |
 | CircuitWeave | arXiv 2026 | ❌ | 2/17 | [📄](CircuitWeave/论文深度讲解.md) |
 
 #### 8. 跨领域 — 光子 / 模拟 / RF / PCB（11 篇）
@@ -286,7 +286,7 @@ molchip_eda/
 ├── 论文原文归档清单_20260802.md
 ├── 新增参考文献_20260804.bib
 │
-├── <论文目录> ×105/                   ← 每个目录 = 论文深度讲解.md + PDF + TXT
+├── <论文目录> ×109/                   ← 每个目录 = 论文深度讲解.md + PDF + TXT
 │   例：VeriTrace/ MAGE/ DeepGate4/ CircuitFusion/ ChipNeMo/ ...
 │
 ├── AI4eda综述/                       ← 3 篇综述 + 增量调研报告
