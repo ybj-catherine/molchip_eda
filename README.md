@@ -41,7 +41,7 @@
 | 14 | [ChipSeek](ChipSeek/论文深度讲解.md) | arXiv 2025 | ✅ | RTL 生成 | SFT+CDPO 强化学习，用 EDA 工具反馈更新模型权重 |
 | 15 | [VerilogCoder](VerilogCoder/论文深度讲解.md) | **ICCAD 2024** | ✅ | RTL 生成 | NVIDIA 多 Agent Verilog 生成+自修正，AST 感知任务规划 |
 | 16 | [DeepGate3](DeepGate3/论文深度讲解.md) | **ICCAD 2024** | ✅ | 电路表示 | Transformer+GNN 双链路电路学习，解决大规模 scalability |
-| 17 | [GenEDA](GenEDA/论文深度讲解.md) | **ICCAD 2025** | ✅ | 电路表示 | 首个跨模态电路-LLM 对齐框架，门级网表→RTL 反向翻译 |
+| 17 | [GenEDA](GenEDA/论文深度讲解.md) | **ICCAD 2025** | ✅ | 电路表示 | 编码器—解码器跨模态对齐：网表→自然语言规格；算术网表→RTL（仿真评估） |
 | 18 | [DecoRTL](DecoRTL/论文深度讲解.md) | **ICCAD 2025** | ✅ | RTL 生成 | 推理时 contrastive re-rank+自适应温度解码 |
 | 19 | [FVEval](FVEval/论文深度讲解.md) | **DAC 2025** | ✅ | 形式验证 | 形式验证 LLM 评测基准，Cadence JasperGold 评估（UCB/NVIDIA） |
 | 20 | [RocketPPA](RocketPPA/论文深度讲解.md) | **MLSys 2026** | ❌ | PPA 预测 | LLM+MoE 代码级 PPA 预测，**20×** 快于 MetRex |

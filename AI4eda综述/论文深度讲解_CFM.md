@@ -571,9 +571,9 @@ $$
 
 ### 创新点 4：Encoder-Decoder 桥接的展望（GenEDA, Section 6.3）
 
-论文不仅总结了已有工作，还展示了作者团队的最新尝试（GenEDA [300]）——将 netlist encoder（NetTAG [110]）的图 embedding 注入 LLM decoder，实现 "reverse netlist functional reasoning"（从门级网表反推高层功能描述和 RTL 代码）。这在方法论上意义重大：
+论文不仅总结了已有工作，还展示了作者团队的最新尝试（[GenEDA](../GenEDA/论文深度讲解.md) [300]）——把 netlist encoder（NetTAG [110]）的图 embedding 注入可训练 LLM，或把逐门功能预测作为文本交给冻结 LLM，实现 "reverse netlist functional reasoning"：从门级网表生成高层功能描述、实现细节，并在算术电路上生成 RTL。这里的 RTL 结果由给定 testbench 评估，不等于形式等价恢复。
 
-- 证明了 encoder 学习的电路表示确实包含 decoder 缺失的结构化知识
+- 消融实验支持 encoder 表示能为 decoder 补充有用的结构与功能信息，但没有证明该表示包含完整或可逆的 RTL 语义
 - 提出了两种对齐范式：embedding-based alignment（训练时注入）和 prediction-based alignment（以文本 prompt 形式注入）
 - 为未来 "统一 CFM" 提供了可行的技术路线
 
