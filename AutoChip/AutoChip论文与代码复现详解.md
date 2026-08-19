@@ -854,7 +854,7 @@ API 型号和价格都会变化，因此：
 ### 13.1 安装依赖
 
 ```bash
-cd /mnt/d/AI4eda/AutoChip
+cd AutoChip
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -882,7 +882,7 @@ export OPENAI_API_KEY='...'
 当前导入和相对路径设计更适合在 `autochip_scripts/` 内执行：
 
 ```bash
-cd /mnt/d/AI4eda/AutoChip/autochip_scripts
+cd AutoChip/autochip_scripts
 python generate_verilog.py -c config.json
 ```
 
@@ -1108,4 +1108,3 @@ AutoChip 很适合作为“RTL Agent 工具反馈闭环”的基础论文分享�
 1. rank 函数把 warning 一律记为 -0.5 是否会过滤掉功能正确但带无害 warning 的优质候选？应如何改进？
 2. greedy 单分支展开相比 beam search/MCTS 损失了多少探索收益，什么证据能说明 k 比 d 更重要？
 3. mixed-model 的成本收益主要来自“小模型提前成功”还是“强模型利用前序修复轨迹”？如何设计消融实验区分二者？
-

@@ -4,7 +4,7 @@
 > 会议：IEEE International Workshop on LLM-Aided Design（LAD 2024）  
 > 原文：[2312.08617_RTLCoder.pdf](./2312.08617_RTLCoder.pdf)  
 > 本文件是面向入门、复现和选题判断的论文—代码核对版，不替代上游 `README.md`。  
-> 本地仓库：`/mnt/d/AI4eda/RTL-Coder`  
+> 本地仓库：当前 `RTL-Coder/` 目录
 > 上游仓库：<https://github.com/hkust-zhiyao/RTL-Coder>  
 > 本地基线 commit：`b2847073be62d5f1d6d9b17bb247f0cfeb1ce642`  
 > 核验日期：2026-07-20

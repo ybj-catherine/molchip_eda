@@ -655,7 +655,7 @@ subprocess.run("pkill vvp", shell=True)
 当前本地工作树是 v2，直接 `git checkout release/1.0.0` 会改变仓库状态。若要保留两版并行，建议另建 worktree：
 
 ```bash
-cd /mnt/d/AI4eda/VerilogEval
+cd VerilogEval
 git worktree add ../VerilogEval-v1 origin/release/1.0.0
 ```
 
@@ -852,4 +852,3 @@ VerilogEval 是一篇非常值得分享的 benchmark 论文，因为它建立了
 1. Machine descriptions 经过“模型可解”筛选后，是否仍能量化描述歧义对性能的影响？
 2. v1 evaluator 默认关闭 Icarus 执行，这种“安全门槛”设计对可复现性利大于弊还是弊大于利？
 3. pass@5/pass@10 与 pass@1 趋势可能相反，评估 RTL 生成模型时应如何根据应用场景选择指标？
-

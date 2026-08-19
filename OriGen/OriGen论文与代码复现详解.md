@@ -175,7 +175,7 @@ VerilogFixEval 上 OriGen_Fix 的语法正确率为 89.1%、功能正确率为 3
 ### 5.2 生成实测：成功
 
 ```bash
-/home/xlx/miniconda3/envs/mage/bin/python local_cpu_inference.py \
+python local_cpu_inference.py \
   --base-model weights/base/deepseek-coder-7b-instruct-v1.5-Q3_K_M.gguf \
   --lora weights/OriGen/OriGen-LoRA-f16.gguf \
   --mode generation --output-dir runs/origen_generation_half_adder

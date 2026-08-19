@@ -36,7 +36,7 @@ OpenLLM-RTL
 | RTL 生成评价 | RTLLM-2.0 | 测语法、功能和设计质量 |
 | RTL 验证评价 | AssertEval | 测模型能否从完整规格生成有效 assertion |
 
-当前 `/mnt/d/AI4eda/RTLLM` 只完整对应第一项 **RTLLM-2.0**。AssertEval 是另一个仓库，本地当前未发现完整目录；RTLCoder-Data 位于 `/mnt/d/AI4eda/RTL-Coder`，并已有两篇 RTLCoder 的独立详解。
+当前 `RTLLM/` 目录只完整对应第一项 **RTLLM-2.0**。AssertEval 是另一个仓库，本地当前未发现完整目录；RTLCoder-Data 位于 `RTL-Coder/`，并已有两篇 RTLCoder 的独立详解。
 
 所以本篇采用“论文全景 + 当前代码边界 + 跨目录导航”，不把缺失的 AssertEval 代码虚构成 RTLLM 子目录，也不重复复制 RTLCoder 两篇文档的全部内容。
 
@@ -375,7 +375,7 @@ Cone of Influence coverage 衡量被 properties 结构性关联到的设计逻�
 
 ## 8. 当前工作区中的 AssertEval 边界
 
-当前 `/mnt/d/AI4eda` 未发现完整 `AssertLLM`/`AssertEval` 项目目录。
+当前资料包未发现完整 `AssertLLM`/`AssertEval` 项目目录。
 
 因此本篇对 AssertEval 已完成的是：
 
@@ -880,9 +880,9 @@ Rouge-L 只能近似文本相似；基础模型预训练数据无法完全控制
 
 | 论文组件 | 官方仓库 | 当前本地位置 | 本地状态 |
 |---|---|---|---|
-| RTLLM-2.0 | `hkust-zhiyao/RTLLM` | `/mnt/d/AI4eda/RTLLM` | 50 题、旧输出和脚本在；已静态审计 |
+| RTLLM-2.0 | `hkust-zhiyao/RTLLM` | `RTLLM/` | 50 题、旧输出和脚本在；已静态审计 |
 | AssertEval | `hkust-zhiyao/AssertLLM` | 当前未发现完整目录 | 仅论文级还原；需手动下载/克隆 |
-| RTLCoder-Data | `hkust-zhiyao/RTL-Coder` | `/mnt/d/AI4eda/RTL-Coder` | 代码、数据/模型相关资产与两篇详解已存在 |
+| RTLCoder-Data | `hkust-zhiyao/RTL-Coder` | `RTL-Coder/` | 代码、数据/模型相关资产与两篇详解已存在 |
 
 ### 21.1 为什么不复制 RTLCoder 文档
 

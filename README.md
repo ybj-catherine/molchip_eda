@@ -1,24 +1,26 @@
 # molchip_eda — AI4EDA 论文深度解读与开源索引
 
-> 📚 **117 篇论文深度讲解** · 109 个论文目录 · 全部分类 + 开源标注 + 点击直达
-> 🏷️ 初版 v0.3 — 后续持续更新完善
-> 📖 完整导航：[00-总索引.md](00-总索引.md) · 校验：`python3 _校验.py`（117 个文件）
+> 📚 **169 篇论文深度讲解** · 161 个论文目录 · 主索引 + 增量清单 + 点击直达
+> 🗓️ 最近整理：2026-08-19
+> 📖 导航：[00-总索引.md](00-总索引.md) · [论文增量整理清单_20260819.md](论文增量整理清单_20260819.md) · 校验：`python3 _校验.py`（169 个文件）
 
 ---
 
 ## 30 秒速览
 
-本仓库为 AI4EDA（AI for Electronic Design Automation）领域 **117 篇论文** 提供统一格式的深度技术解读。
+本仓库为 AI4EDA（AI for Electronic Design Automation）领域 **169 篇论文** 提供深度技术解读。其中主分类表覆盖 119 篇，其余 50 篇通过增量清单统一导航。
 
 - **一篇论文 = 一份 `论文深度讲解.md`**，按 12 节骨架组织
-- **每份解读包含**：一句话定位 → EDA 17 阶段映射 → 输入/输出样例 → 方法架构 ASCII 图 → 公式推导 → 实验数据 → 创新点 → 缩写表 → 芯片流程关系 → 讨论局限 → 复现信息 → 一分钟复述
+- **完整解读采用**：一句话定位 → EDA 17 阶段映射 → 输入/输出样例 → 方法架构 ASCII 图 → 公式推导 → 实验数据 → 创新点 → 缩写表 → 芯片流程关系 → 讨论局限 → 复现信息 → 一分钟复述
 - **想快速判断一篇论文是否与你相关**：读第 1 节「一句话定位」（30 秒）+ 第 2 节「EDA 阶段映射」（确认它落在芯片流程哪一段）
+
+当前机器校验结果为 **143 份完全通过、26 份待完善**；待完善项主要是早期增量讲解的章节完整度和输入/输出例子，不代表论文真实性存疑。
 
 ---
 
 ## 📊 论文分类总览
 
-### 🏆 🔥 重点推荐（高价值论文 Top 30）
+### 🏆 🔥 重点推荐（32 篇）
 
 按 会议级别 × 开源 × 影响力 综合排序。点击论文名直接跳转深度讲解。
 
@@ -33,38 +35,40 @@
 | 7 | [ChipNeMo](ChipNeMo/论文深度讲解.md) | **DAC 2024** | ❌ | 领域 LLM | NVIDIA 芯片设计域适配 LLM，覆盖率 9/17（最高） |
 | 8 | [RTLFixer](RTLFixer/论文深度讲解.md) | **DAC 2024** | ✅ | RTL 修复 | ReAct+RAG 自动化语法修复，**98.5%** 修复率，NVIDIA |
 | 9 | [MAGE](MAGE/论文深度讲解.md) | **ICCAD 2024** | ✅ | RTL 生成 | 多 Agent 协作 RTL 生成，不训练模型，仿真反馈迭代修复 |
-| 9 | [BetterV](BetterV/论文深度讲解.md) | **ICML 2024** | ⏳ | RTL 生成 | 判别式引导受控 Verilog 生成，Bayes+Langevin 动力学 |
-| 10 | [CraftRTL](CraftRTL/论文深度讲解.md) | **ICLR 2025** | ✅ | RTL 生成 | NVIDIA 正确即构造（KMap/FSM）+ 目标代码修复 |
-| 11 | [CircuitNet3.0](CircuitNet3.0/论文深度讲解.md) | **ICLR 2025** | ⏳ | 数据集 | 多模态早期 PPA 预测，RTLDistil 蒸馏+MOSS 编码，覆盖率 9/17 |
-| 12 | [CodeV-R1](CodeV-R1/论文深度讲解.md) | **NeurIPS 2025** | ✅ | RTL 生成 | NLCDE 数据合成 + distill-then-RL 管线 |
-| 13 | [SynthLoop-Eval](SynthLoop-Eval/论文深度讲解.md) | **GLSVLSI 2026** | ⏳ | Benchmark | HQI 综合闭环评测，32 模型评估 |
-| 14 | [ChipSeek](ChipSeek/论文深度讲解.md) | arXiv 2025 | ✅ | RTL 生成 | SFT+CDPO 强化学习，用 EDA 工具反馈更新模型权重 |
-| 15 | [VerilogCoder](VerilogCoder/论文深度讲解.md) | **ICCAD 2024** | ✅ | RTL 生成 | NVIDIA 多 Agent Verilog 生成+自修正，AST 感知任务规划 |
-| 16 | [DeepGate3](DeepGate3/论文深度讲解.md) | **ICCAD 2024** | ✅ | 电路表示 | Transformer+GNN 双链路电路学习，解决大规模 scalability |
-| 17 | [GenEDA](GenEDA/论文深度讲解.md) | **ICCAD 2025** | ✅ | 电路表示 | 编码器—解码器跨模态对齐：网表→自然语言规格；算术网表→RTL（仿真评估） |
-| 18 | [DecoRTL](DecoRTL/论文深度讲解.md) | **ICCAD 2025** | ✅ | RTL 生成 | 推理时 contrastive re-rank+自适应温度解码 |
-| 19 | [FVEval](FVEval/论文深度讲解.md) | **DAC 2025** | ✅ | 形式验证 | 形式验证 LLM 评测基准，Cadence JasperGold 评估（UCB/NVIDIA） |
-| 20 | [RocketPPA](RocketPPA/论文深度讲解.md) | **MLSys 2026** | ❌ | PPA 预测 | LLM+MoE 代码级 PPA 预测，**20×** 快于 MetRex |
-| 21 | [RTL-BenchLS](RTL-BenchLS/论文深度讲解.md) | arXiv 2026 | ✅ | Benchmark | 10,000+ 形式验证 Verilog 设计，3 种自监督任务 |
-| 22 | [CLOSER-Bench](CLOSER-Bench/论文深度讲解.md) | arXiv 2026 | ⏳ | 跨阶段 | **10/17**（覆盖率最高），跨阶段 design closure |
-| 23 | [FluxBench](FluxBench/论文深度讲解.md) | arXiv 2026 | ✅ | 跨阶段 | RTL-to-GDS Agent 评测，覆盖率 9/17 |
-| 24 | [ScaleRTL](ScaleRTL/论文深度讲解.md) | **MLCAD 2025** | ⏳ | RTL 生成 | NVIDIA reasoning LLM for RTL，3.5B-token CoT |
-| 25 | [VFlow](VFlow/论文深度讲解.md) | arXiv 2025 | ⏳ | RTL 生成 | MCTS 工作流优化 Verilog 生成，84.3% Machine pass@1 |
-| 26 | [MGVGA](MGVGA/论文深度讲解.md) | **ICLR 2025** | ✅ | 电路表示 | 门级掩码建模（MGM）+ Verilog-AIG 对齐（VGA） |
-| 27 | [PCB-Bench](PCB-Bench/论文深度讲解.md) | **ICLR 2026** | ✅ | 跨领域 | PCB 布局布线 LLM 评测基准，3,700+ 题目 |
-| 28 | [CorrectHDL](CorrectHDL/论文深度讲解.md) | arXiv 2025 | ✅ | RTL 生成 | 以 HLS 为参考的 Agentic HDL 生成 |
-| 29 | [SpecLoop](SpecLoop/论文深度讲解.md) | arXiv 2026 | ⏳ | RTL 逆向 | RTL→Spec 逆向生成 + 形式验证反馈闭环（NTU+MediaTek） |
-| 30 | [FuncGNN](FuncGNN/论文深度讲解.md) | **ACM TRETS 2026** | ✅ | 电路表示 | GNN 学习逻辑电路功能语义 |
-| 31 | [AnalogGenie](AnalogGenie/论文深度讲解.md) | arXiv 2025 | ✅ | 跨领域 | 模拟电路基础模型，3,350 拓扑生成 |
+| 10 | [BetterV](BetterV/论文深度讲解.md) | **ICML 2024** | ⏳ | RTL 生成 | 判别式引导受控 Verilog 生成，Bayes+Langevin 动力学 |
+| 11 | [CraftRTL](CraftRTL/论文深度讲解.md) | **ICLR 2025** | ✅ | RTL 生成 | NVIDIA 正确即构造（KMap/FSM）+ 目标代码修复 |
+| 12 | [CircuitNet3.0](CircuitNet3.0/论文深度讲解.md) | **ICLR 2025** | ⏳ | 数据集 | 多模态早期 PPA 预测，RTLDistil 蒸馏+MOSS 编码，覆盖率 9/17 |
+| 13 | [CodeV-R1](CodeV-R1/论文深度讲解.md) | **NeurIPS 2025** | ✅ | RTL 生成 | NLCDE 数据合成 + distill-then-RL 管线 |
+| 14 | [SynthLoop-Eval](SynthLoop-Eval/论文深度讲解.md) | **GLSVLSI 2026** | ⏳ | Benchmark | HQI 综合闭环评测，32 模型评估 |
+| 15 | [ChipSeek](ChipSeek/论文深度讲解.md) | arXiv 2025 | ✅ | RTL 生成 | SFT+CDPO 强化学习，用 EDA 工具反馈更新模型权重 |
+| 16 | [VerilogCoder](VerilogCoder/论文深度讲解.md) | **ICCAD 2024** | ✅ | RTL 生成 | NVIDIA 多 Agent Verilog 生成+自修正，AST 感知任务规划 |
+| 17 | [DeepGate3](DeepGate3/论文深度讲解.md) | **ICCAD 2024** | ✅ | 电路表示 | Transformer+GNN 双链路电路学习，解决大规模 scalability |
+| 18 | [GenEDA](GenEDA/论文深度讲解.md) | **ICCAD 2025** | ✅ | 电路表示 | 编码器—解码器跨模态对齐：网表→自然语言规格；算术网表→RTL（仿真评估） |
+| 19 | [DecoRTL](DecoRTL/论文深度讲解.md) | **ICCAD 2025** | ✅ | RTL 生成 | 推理时 contrastive re-rank+自适应温度解码 |
+| 20 | [FVEval](FVEval/论文深度讲解.md) | **DAC 2025** | ✅ | 形式验证 | 形式验证 LLM 评测基准，Cadence JasperGold 评估（UCB/NVIDIA） |
+| 21 | [RocketPPA](RocketPPA/论文深度讲解.md) | **MLSys 2026** | ❌ | PPA 预测 | LLM+MoE 代码级 PPA 预测，**20×** 快于 MetRex |
+| 22 | [RTL-BenchLS](RTL-BenchLS/论文深度讲解.md) | arXiv 2026 | ✅ | Benchmark | 10,000+ 形式验证 Verilog 设计，3 种自监督任务 |
+| 23 | [CLOSER-Bench](CLOSER-Bench/论文深度讲解.md) | arXiv 2026 | ⏳ | 跨阶段 | **10/17**（覆盖率最高），跨阶段 design closure |
+| 24 | [FluxBench](FluxBench/论文深度讲解.md) | arXiv 2026 | ✅ | 跨阶段 | RTL-to-GDS Agent 评测，覆盖率 9/17 |
+| 25 | [ScaleRTL](ScaleRTL/论文深度讲解.md) | **MLCAD 2025** | ⏳ | RTL 生成 | NVIDIA reasoning LLM for RTL，3.5B-token CoT |
+| 26 | [VFlow](VFlow/论文深度讲解.md) | arXiv 2025 | ⏳ | RTL 生成 | MCTS 工作流优化 Verilog 生成，84.3% Machine pass@1 |
+| 27 | [MGVGA](MGVGA/论文深度讲解.md) | **ICLR 2025** | ✅ | 电路表示 | 门级掩码建模（MGM）+ Verilog-AIG 对齐（VGA） |
+| 28 | [PCB-Bench](PCB-Bench/论文深度讲解.md) | **ICLR 2026** | ✅ | 跨领域 | PCB 布局布线 LLM 评测基准，3,700+ 题目 |
+| 29 | [CorrectHDL](CorrectHDL/论文深度讲解.md) | arXiv 2025 | ✅ | RTL 生成 | 以 HLS 为参考的 Agentic HDL 生成 |
+| 30 | [SpecLoop](SpecLoop/论文深度讲解.md) | arXiv 2026 | ⏳ | RTL 逆向 | RTL→Spec 逆向生成 + 形式验证反馈闭环（NTU+MediaTek） |
+| 31 | [FuncGNN](FuncGNN/论文深度讲解.md) | **ACM TRETS 2026** | ✅ | 电路表示 | GNN 学习逻辑电路功能语义 |
+| 32 | [AnalogGenie](AnalogGenie/论文深度讲解.md) | arXiv 2025 | ✅ | 跨领域 | 模拟电路基础模型，3,350 拓扑生成 |
 
 > 📝 【开源标注说明】✅ = GitHub 仓库已确认 · ⏳ = 论文声明将开源/等待发布 · ❌ = 闭源/未公开
 > 🔗 点击论文名直接打开深度讲解
 
 ---
 
-### 📂 按研究方向分类（全部 117 篇）
+### 📂 按研究方向分类（主表 119 篇）
 
-#### 1. RTL 生成、修复与 Agent（29 篇）
+> 这里保留原有主表口径；52 个增量目录（含已并入主表的 HLS-RTL、HLS-LeVeri）统一见 [论文增量整理清单_20260819.md](论文增量整理清单_20260819.md)。因此主表与增量表有 2 篇交叉，去重后总数为 169。
+
+#### 1. RTL 生成、修复与 Agent（30 篇）
 
 | 论文 | 会议 | 代码 | 覆盖率 | 链接 |
 |---|---:|---|:---:|------|
@@ -97,6 +101,7 @@
 | VeriReason | arXiv 2025 | ⏳ | 5/17 | [📄](VeriReason/论文深度讲解.md) |
 | ChipNeMo | DAC 2024 | ❌ | 9/17 | [📄](ChipNeMo/论文深度讲解.md) |
 | ChatHLS | ACL 2026 | ✅ | 约 1.5/17 | [📄](ChatHLS/论文深度讲解.md) |
+| HLS-RTL | Found. Trends EDA 2025 | ✅ | 2/17 | [📄](HLS-RTL/论文深度讲解.md) |
 
 #### 2. Benchmark 与评测（20 篇）
 
@@ -153,7 +158,7 @@
 | DREAMPlace | DAC 2019 | ✅ | 1/17 | [📄](DREAMPlace/论文深度讲解.md) |
 | **RocketPPA** | **MLSys 2026** | ❌ | 3/17 | [📄](RocketPPA/论文深度讲解.md) |
 
-#### 5. 验证、修复与形式化 + DFT（22 篇）
+#### 5. 验证、修复与形式化 + DFT（23 篇）
 
 | 论文 | 会议 | 代码 | 覆盖率 | 链接 |
 |---|---:|---|:---:|------|
@@ -168,17 +173,18 @@
 | HierSVA | arXiv 2026 | ✅ | 1/17 | [📄](HierSVA/论文深度讲解.md) |
 | TrojanWhisper | arXiv 2024 | ✅ | 1/17 | [📄](TrojanWhisper/论文深度讲解.md) |
 | CktFormalizer | arXiv 2025 | ⏳ | 6/17 | [📄](CktFormalizer/论文深度讲解.md) |
-| SpecAlign | arXiv 2025 | ✅ | 2/17 | [📄](SpecAlign/论文深度讲解.md) |
-| VeriDafny | arXiv 2025 | ❌ | 2/17 | [📄](VeriDafny/论文深度讲解.md) |
+| SpecAlign | arXiv 2026 | ✅ | 2/17 | [📄](SpecAlign/论文深度讲解.md) |
+| VeriDafny | arXiv 2026 | ❌ | 2/17 | [📄](VeriDafny/论文深度讲解.md) |
 | AssertLLM | arXiv 2024 | ✅ | 1/17 | [📄](AssertLLM/论文深度讲解.md) |
 | **SpecLoop** | arXiv 2026 | ⏳ | 2/17 | [📄](SpecLoop/论文深度讲解.md) |
-| VerilogLAVD | arXiv 2026 | ⏳ | 1/17 | [📄](VerilogLAVD/论文深度讲解.md) |
+| VerilogLAVD | arXiv 2025 | ⏳ | 1/17 | [📄](VerilogLAVD/论文深度讲解.md) |
 | VeriRAG | ISQED 2026 | ✅ | 2/17 | [📄](VeriRAG/论文深度讲解.md) |
 | LITE | ITC 2025 | ❌ | 2/17 | [📄](LITE/论文深度讲解.md) |
 | DFT AI | ICAIC 2026 | ⏳ | ⏳ | [📄](DFT-AI/论文深度讲解.md) |
 | LLMCov | ITC India 2025 | ⏳ | ⏳ | [📄](LLMCov/论文深度讲解.md) |
 | TESLA | ITC 2025 | ⏳ | ⏳ | [📄](TESLA/论文深度讲解.md) |
 | FT-Pilot | arXiv 2026 | ⏳ | ⏳ | [📄](DFT_AI_TPI/论文深度讲解.md) |
+| HLS-LeVeri | arXiv 2026 | ✅ | 2/17 | [📄](HLS-LeVeri/论文深度讲解.md) |
 
 #### 6. 物理设计、跨阶段与成本（7 篇）
 
@@ -226,22 +232,53 @@
 | Verilog LLM 综述 | arXiv 2025 | 2/17 | [📄](AI4eda综述/论文深度讲解_VerilogLLM.md) |
 | Agentic EDA 综述 | arXiv 2025 | 跨阶段 | [📄](AgenticEDA综述/论文深度讲解.md) |
 
+#### 10. 验证与缺陷检测（20 篇，交叉归类）
+
+> 这是验证与缺陷检测方向的专题归拢。这 20 篇横跨「验证/形式化 + Benchmark + 安全」，便于对照不同工作的验证对象、判据与评测边界。
+> 本节为跨分类的文献视图，不重复计入论文总数。
+
+| 论文 | 会议 | 代码 | 讲解 |
+|---|---|---|:---:|---|
+| **Encarsia** | USENIX Security 2025 | ✅ | [📄](Encarsia/论文深度讲解.md) |
+| **Cascade** | USENIX Security 2024 | ✅ | [📄](Cascade/论文深度讲解.md) |
+| Fuzzing Hardware Like Software | USENIX Security 2022 | ✅ | [📄](FuzzingHardwareLikeSoftware/论文深度讲解.md) |
+| CorrectBench | DATE 2025 | ✅ | [📄](CorrectBench/论文深度讲解.md) |
+| AutoBench | MLCAD 2024 | ✅ | [📄](AutoBench/论文深度讲解.md) |
+| LLM4DV | FCCM 2025 | ✅ | [📄](LLM4DV/论文深度讲解.md) |
+| VerilogReader | LAD 2024 | ❌ | [📄](VerilogReader/论文深度讲解.md) |
+| **LASSO** | MLCAD 2025 | 部分 | [📄](LASSO/论文深度讲解.md) |
+| AssertionForge | 2025 预印本 | ❌ | [📄](AssertionForge/论文深度讲解.md) |
+| HAVEN | 2026 预印本 | 待核 | [📄](HAVEN/论文深度讲解.md) |
+| STG | 2026 预印本 | 待核 | [📄](STG/论文深度讲解.md) |
+| UVM² | ICCAD 2025 | 部分 | [📄](UVM2/论文深度讲解.md) |
+| Mantra | DAC 2023 | ❌ | [📄](Mantra/论文深度讲解.md) |
+| FVEval | DATE 2025 | ✅ | [📄](FVEval/论文深度讲解.md) |
+| AssertLLM | ASP-DAC 2025 | ❌ | [📄](AssertLLM/论文深度讲解.md) |
+| PRO-V-R1 | 2025–26 预印本 | ✅ | [📄](PRO-V/论文深度讲解.md) |
+| HierSVA | 2026 预印本 | ✅ | [📄](HierSVA/论文深度讲解.md) |
+| GoGoTB | 2026 预印本 | 部分 | [📄](GoGoTB/论文深度讲解.md) |
+| ChipFuzzer | 2026 预印本 | ⏳ | [📄](ChipFuzzer/论文深度讲解.md) |
+| **HWE-Bench** | 2026 预印本 | ✅ | [📄](HWE-Bench/论文深度讲解.md) |
+
 ---
 
 ### 📈 开源率统计
 
 | 分类 | 总数 | 已开源 ✅ | 待发布 ⏳ | 闭源 ❌ |
 |---|---:|---:|---:|---:|
-| RTL 生成、修复与 Agent | 29 | 18 | 9 | 2 |
+| RTL 生成、修复与 Agent | 30 | 19 | 9 | 2 |
 | Benchmark 与评测 | 20 | 17 | 3 | 0 |
 | 电路表示学习与数据集 | 16 | 13 | 3 | 0 |
 | 逻辑综合与 PPA 预测 | 4 | 2 | 0 | 2 |
-| 验证、修复与形式化 + DFT | 22 | 9 | 10 | 3 |
+| 验证、修复与形式化 + DFT | 23 | 10 | 10 | 3 |
 | 物理设计与跨阶段 | 7 | 4 | 3 | 0 |
 | EDA Agent 与流程编排 | 4 | 3 | 0 | 1 |
 | 跨领域 | 11 | 6 | 4 | 1 |
 | 综述 | 4 | 0 | 0 | 4 |
-| **总计** | **117** | **72 (62%)** | **32 (27%)** | **13 (11%)** |
+| 验证与缺陷检测 | 20（交叉，全部已有深度讲解） | — | — | — |
+| **总计** | **119** | **74 (62%)** | **32 (27%)** | **13 (11%)** |
+
+> 上表只统计 119 篇主表条目，不把尚未逐项核对开源状态的增量目录混入百分比。
 
 ---
 
@@ -272,6 +309,13 @@
 2. [GoGoTB](GoGoTB/论文深度讲解.md) — Agentic 验证与覆盖率闭合
 3. [AssertLLM](AssertLLM/论文深度讲解.md) — 断言生成评测
 
+### 时序 Bug 定位路线（4 篇）
+
+1. [Wit-HW](Wit-HW/论文深度讲解.md) — 主动生成 witness tests，增强 SBFL 的测试区分度
+2. [Pecker](Pecker/论文深度讲解.md) — EMPC 反推激活周期并裁剪噪声 trace
+3. [Propagation-Aware](Propagation-Aware-Bug-Localization/论文深度讲解.md) — 跨周期重建完整传播路径；目前仅摘要级
+4. [HLSTester](HLSTester/论文深度讲解.md) — 相邻方向：软件与 HLS 实现的差分测试
+
 ---
 
 ## 📂 仓库结构
@@ -279,14 +323,15 @@
 ```text
 molchip_eda/
 ├── README.md                         ← 你在这里
-├── 00-总索引.md                      ← 完整导航（117 篇分类总表 + 覆盖率反查 + 组会轮次）
+├── 00-总索引.md                      ← 主索引、覆盖率反查与阅读轮次
+├── 论文增量整理清单_20260819.md       ← 52 个增量论文目录及校验状态
 ├── 芯片流程.md                       ← 17 阶段标准编号定义（①-⑰）
 ├── _合并规范.md                      ← 12 节骨架写作规范
 ├── _校验.py                          ← 机器校验脚本
 ├── 论文原文归档清单_20260802.md
 ├── 新增参考文献_20260804.bib
 │
-├── <论文目录> ×109/                   ← 每个目录 = 论文深度讲解.md + PDF + TXT
+├── <论文目录> ×161/                   ← 每个目录至少包含论文深度讲解.md
 │   例：VeriTrace/ MAGE/ DeepGate4/ CircuitFusion/ ChipNeMo/ ...
 │
 ├── AI4eda综述/                       ← 3 篇综述 + 增量调研报告
@@ -298,9 +343,9 @@ molchip_eda/
 ```text
 论文目录/
 ├── 论文深度讲解.md          ← 唯一正文（12 节骨架）
-├── xxxx.pdf                 ← 论文原文
-├── xxxx.txt                 ← pdftotext 提取文本（事实校对来源）
-└── （少数）复现详解.md       ← 本地复现记录
+├── xxxx.pdf                 ← 可选；仅限许可允许公开再分发的原文
+├── xxxx.txt                 ← 可选；仅限许可允许公开再分发的文本
+└── （少数）公开复现说明.md    ← 可选；不含私有实验日志
 ```
 
 ---
@@ -323,7 +368,7 @@ molchip_eda/
 - [ ] 增加论文之间的对比分析
 - [ ] 完善开源代码的实际运行验证
 - [ ] 增加中文术语对照表
-- [ ] 补充 PPT 组会 slides
+- [ ] 补充跨论文对照与术语索引
 
 欢迎提 Issue / PR 补充新论文或修正错误。
 
@@ -331,10 +376,10 @@ molchip_eda/
 
 ## 📄 License
 
-本仓库中的深度解读文档为原创内容。各论文目录下的 PDF 文件版权归原作者/出版社所有，仅供学术研究使用。
+本仓库中的深度解读文档为原创内容。论文原文版权归原作者或出版方所有；新增资料应优先链接官方页面，只有许可明确允许公开再分发时才收录 PDF 或提取文本。
 
 ---
 
 > 📖 完整导航：[00-总索引.md](00-总索引.md)
 > 🔬 增量调研：[AI4eda综述/20260804_最新论文与开源代码补充.md](AI4eda综述/20260804_最新论文与开源代码补充.md)
-> 📐 校验：`python3 _校验.py`（117 个文件）
+> 📐 校验：`python3 _校验.py`（169 个文件；143 个通过，26 个待完善）

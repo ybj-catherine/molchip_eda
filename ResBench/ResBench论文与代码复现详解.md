@@ -924,7 +924,7 @@ Yosys+nextpnr/具体 FPGA family
 先复制而不是移动作者 artifact：
 
 ```bash
-cd /mnt/d/AI4eda/ResBench
+cd ResBench
 cp solutions/solutions.json ./solutions.json
 ```
 
@@ -1106,5 +1106,4 @@ ResBench 的研究价值是真实的：它让 RTL 生成评价从“过不过 te
 1. 如果最小化 LUT 会诱导模型把算术运算推给 DSP，那么资源感知 benchmark 应如何设计多目标代价函数才能避免指标博弈？
 2. 在公开 testbench 的情况下，怎样区分“模型真正理解了设计规格”与“针对测试向量过拟合/定向优化”？
 3. 当前开源入口存在阻断级 bug 且缺少原始 Vivado 日志，artifact 审计和完整可复现之间应如何分级表述才最严谨？
-
 

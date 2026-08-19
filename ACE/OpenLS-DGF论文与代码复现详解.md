@@ -2137,7 +2137,7 @@ times = 1000
 /workspace/LogicFactory/config/layer_netlist/ieda/config.json
 ```
 
-这些路径在当前 `/mnt/d/AI4eda/ACE` 环境不存在。
+这些路径在当前本地 ACE 仓库环境中不存在。
 
 ### 15.3 allowlist 与本地 benchmark
 

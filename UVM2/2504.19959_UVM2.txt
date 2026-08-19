@@ -1,0 +1,741 @@
+                                            From Concept to Practice: an Automated LLM-aided UVM
+                                                         Machine for RTL Verification
+                                                            0
+                                                                       30%
+                                                                           Frontend Design
+                                                                                                   70%
+                                                                                                                        1
+                                                                                                                        0
+                                                                                                                                           0
+                                                                                                                                           %              30%
+                                                                                                                                                                Frontend Development
+                                                                                                                                                                                                    70%
+                                                                                                                                                                                                                                       100
+                                                                                                                                                                                                                                        %
+                                                            %                                                           0
+                                                                                                                        %                             IC Design                                 IC Verification
+                                                                    IC Design                  IC Verification
+                                                                             Junhao Ye1,2 , Yuchen Hu1,2 , Ke
+                                                                                                           1
+                                                                                                              Xu1,2 , Dingrong Pan2 , Qichun Chen3 , Jie Zhou      1,2
+                                                                                                                                                              Bottleneck
+                                                                                              4                          0      10%                 70%                                                          10%         10%       100
+                                                            0    10%             Shuai
+                                                                                   70% Zhao , Xinwei
+                                                                                                 10%   Fang
+                                                                                                     10%   0 5,∗ , Xi Wang 1,2,∗ , Nan Guan6 , Zhe Jiang1,2,∗
+                                                                                                                         % Verification                                                                        Formal                   %
+                                                           %                                               0                                                                                                                Sign-off
+                                                      1 School
+                                                             Verification                                Formal Sign-off                        Blueprint
+                                                                                                                                         2 National                   Functional Verification                Verification
+                                                                  of Integrated
+                                                                 Review         FunctionCircuits,
+                                                                                        Verification Southeast
+                                                                                                       Verification University,
+                                                                                                                        China
+                                                                                                                         %                       of  Center         Technology      Innovation
+                                                                                                                                                                              for EDA, China
+                                                                                                       3 College                                                      UVM-based Testbench
+                                                                                 UVM Testbench                 of Economics,
+                                                                                                                   1         Shenzhen   University,  China
+                                                                                                                                 0    10%             30%            10%             50%                                               100
+                                                            0    10%           30% 4 School
+                                                                                          10% of Computer
+                                                                                                       50%         0
+                                                                                                              Science and Engineering,
+                                                                                                                                 %      Sun Yat-sen    University,Simulation
+                                                                                                                                                                    China                                                               %
+                                                            %                                                      0                   Test         Testbench                      Testcase
+                                                                  Test       Testbench   Testcase5   Testcase                       Planning       Generation      Analysis       Supplement
+                                                                Planning     Generation  Analysis Department
+                                                                                                    Supplement of Computer
+                                                                                                                   %       Science, University of York, UK
+                                                                                    6 Department of Computer Science, City University of Hong Kong,Time       HongConsumption
+                                                                                                                                                                     Kong
+
+                                           Abstract— Verification         presents                                                                                             Time Consumption
+                                                                     Frontend Design a major bottleneck in1 Integrated
+                                        Circuit (IC) development,
+                                                        0                consuming nearly 70% of the total development    0                                     Frontend Development
+                                        effort. While the
+                                                        % Universal30%                           70%
+                                                                            Verification Methodology                (UVM) 0 is widely      0                                                                                           100
+                                                                                                                          %                %              30%                                       70%                                 %
+                                        used in industry toICimprove
+                                                                   Design     verification       efficiency through structured
+                                                                                             IC Verification
+arXiv:2504.19959v4 [cs.AR] 7 Apr 2026
+
+
+
+
+                                                                                                                                                      IC Design                                 IC Verification
+                                        and reusable testbenches, constructing these testbenches and1 generating
+                                                        3 remain challenging. These challenges arise
+                                        sufficient stimuli                                                                                                                                      Bottleneck
+                                                        0 10%                      70%                     10%      10% 0 from the
+                                        considerable manual       coding effort required, repetitive                manual0 execution      0     10%                            70%                              10%         10%       100
+                                                        % Verification                                    Formal Sign-off
+                                                                           Function Verification                          %                %   Verification                                                    Formal                   %
+                                        of multiple EDA Reviewtools, and      the need for in-depth    Verification domain   expertise          Blueprint             Functional Verification                Verification
+                                                                                                                                                                                                                            Sign-off
+                                        to navigate complex designs. Here, we present UVM2 , an automated                                                             UVM-based Testbench
+                                        verification framework that leverages Large Language Models (LLMs)
+                                                                                                                                           0     10%                30%              10%                        50%                    100
+                                        to generate UVM testbenches and iteratively refine them using coverage                             %                                                                                            %
+                                                                                                                                                 Test             Testbench       Simulation                  Testcase
+                                        feedback, significantly reducing manual effort while maintaining rigorous                              Planning           Generation       Analysis                  Supplement
+                                        verification standards. To evaluate UVM2 , we introduce a benchmark
+                                        suite comprising Register Transfer Level (RTL) designs of up to 1.6K                              Fig. 1: Breakdown of the IC frontend design and verification workflow,
+                                        lines of code. The results show that UVM2 reduces testbench setup time                            demonstrating the effort required at each stage, where the functional
+                                        by up to 38.82× compared to experienced engineers, and achieve average                            verification dominates the time consumption of the entire workflow.
+                                        code and function coverage of 87.44% and 89.58%, outperforming state-
+                                        of-the-art solutions by 20.96% and 23.51%, respectively.
+                                                                                                                                          grows [21]–[23]. The manual identification and supplement of these
+                                                                             I. I NTRODUCTION                                             scenarios into testbench are both costly and prone to human error.
+                                                                                                                                             Recent advances in large language models (LLMs) have opened
+                                           IC verification is the most resource and time-intensive phase in                               new opportunities for automated assistance in hardware design
+                                        IC frontend design, consuming nearly 70% of the total development                                 and verification [24]–[34]. Prior work has made promising strides:
+                                        effort [1]. As illustrated in Fig. 1, IC verification usually begins with                         MEIC [35] demonstrated the feasibility of employing LLMs in ver-
+                                        a verification blueprint, followed by functional verification, formal                             ification. However, it neither adopts a UVM-based verification flow,
+                                        verification, and ultimately sign-off [2]. Among these stages, the                                thus remaining disconnected from industry-standard methodologies,
+                                        functional verification alone accounts for approximately 70% of the                               nor scales beyond small designs (typically fewer than 150 lines
+                                        total verification effort and encounters two significant challenges that                          of RTL), limiting its applicability to realistic industrial settings.
+                                        hinder verification efficiency [3]–[7].                                                           UVLLM [36] improved upon this by integrating LLMs into a UVM-
+                                           The first challenge is the complexity associated with testbench                                compatible workflow, demonstrating that LLMs can assist in generat-
+                                        generation. UVM-based testbench is widely used in industrial due                                  ing UVM components. Nevertheless, the overall verification testbench
+                                        to its modular, layered architectures and reusable verification com-                              still demands manual construction. Furthermore, both approaches rely
+                                        ponents [8]–[10]. For instance, stimulus generation is modularly                                  on randomised stimulus generation without targeted coverage refine-
+                                        encapsulated via sequencers, enabling reuse across designs [11]–[14].                             ment or feedback-driven optimisation, leading to limited code and
+                                        However, this modularity significantly increases the complexity of                                function coverage achievements and reduced verification efficiency.
+                                        testbench setup. Engineers must manually instantiate and configure                                   In this paper, we present an LLM-aided UVM Machine (UVM2 ),
+                                        numerous hierarchical components adhering to SystemVerilog class                                  the first systematic framework to realise an automated, LLM-
+                                        conventions and UVM library specifications [15]–[17], while ensuring                              driven function verification. By integrating domain-knowledge-
+                                        accurate connections to the interfaces and protocol behaviours of                                 guided prompt engineering with syntactic rule constraints [37]–[40],
+                                        the Design-Under-Test (DUT). As a result, verification testbench                                  UVM2 automatically generates UVM-based verification testbench,
+                                        codebase typically grows to 4 or 5 times the size of the original                                 and iteratively refines test stimuli based on coverage feedback.
+                                        RTL codes, imposing a substantial engineering burden.                                             This approach not only lowers the barrier to adopting UVM-based
+                                           The second challenge lies in testcase supplement, which involves                               verification by significantly reducing the need for human involvement,
+                                        generating effective test cases to achieve comprehensive function                                 but also turns a promising concept into a practical and scalable
+                                        coverage [18]–[20]. This requires iterative refinement of test cases,                             solution, demonstrating improved verification outcomes (e.g., more
+                                        including the careful generation of scenarios to capture boundary                                 than 20% improvement over the the state-of-the-art solutions) and
+                                        conditions, rare event sequences, and intricate state transitions. Cov-                           increased efficiency (e.g., reducing setup time by more than 15×).
+                                        erage achieved, defined as the fulfilment of all user-defined function                               The main contributions of this paper are:
+                                        points, becomes increasingly more challenging as design complexity                                    • An automated framework for UVM testbench generation:
+                                                                                                                                                UVM2 employs LLMs guided by domain-specific strategies to
+                                          *Corresponding authors: xinwei.fang@york.ac.uk, xi.wang@seu.edu.cn,
+                                        and zhejiang.uk@gmail.com.
+                                                                                                                                                produce industrial-grade, UVM testbench, significantly alleviat-
+                                        This paper was accepted by ICCAD 2025. Please cite the published version                                ing manual development overhead.
+                                        with DOI: 10.1109/ICCAD66269.2025.11240679.                                                           • Automated stimuli generation with an iterative refinement:
+                    1 Test Planning                             2 Testbench Generation                                     3 Simulation Analysis                       4 Testcase Supplement
+                                                                                                    Iteration                                                               Iteration
+                                      TXT
+                                                                               </.sv>           </.sv>                  TXT                       TXT
+                                    Test Plan                                  Driver                                   UVM                      Coverage
+               Analyse Spec.                                                                    Sequence               Error(s)    UVM            Report                                 </.sv>
+                                                                                                                                   FAIL                                                 Targeted
+                                                                                                                                                                                          Test
+                                                                AgentG
+                                     TXT                                                                                                                               AgentO
+                                    Function                                        </.sv>
+                                                                                                                                                      Compiler
+          AgentA                     Point                                          Interface
+                                                                                                                                                      Simulator                 Add Stimulus Based
+                                                                                                                                                      Elaborator                on Coverage Report
+                                                                                                                            UVM PASS DUT FAIL
+                Bridge Design and                                              Codebase
+                Verification
+      Inputs                                                      UVM Top                                           Outputs                                        Figure Legends
+                                                                                                                    * DUT Error Information                                     Data Flow
+           MD             JSON                                            Testcase
+                                                               Sequence                                             Feedback to DUT design engineers
+           Spec.          Config.                                                                                                                                               UVM Transaction Flow
+                                                                        Environment                                   UVM_ERROR @ 100ns (pid:1)
+                                                                                                                      [DUT_CHECK] tb.dut.checker:                               LLM Agents
+                                                                                           Reference                  Data Mismatch!
+                                                              Sequencer                     Model                     Expected: 0x55; Actual: 0xAA
+                                                                                                                                                                                Templates
+                                                                           Driver                                   * Test Coverage Information
+                                                Interface
+
+
+
+
+                </.v>                                       In_Agent                                                                                                            EDA Tools
+                               Stimulus                                                                             Starting point for verification engineers
+                DUT
+                               Results                                                    Scoreboard
+                                                                                                                      name: dut                                                 Agent-Generated
+                                                                Monitor                                               SCORE: 98.31% LINE: 99.99%                                Component
+                                                                                           Subscriber                 TOGGLE: 95.33% BRANCH: 99.61%                             Template-Generated
+                                                            Out_Agent                                                 FUNCTION: 92.24%
+                                                                                                                                                                                Component
+
+
+Fig. 2: Overview of the UVM2 Framework, which integrates UVM with LLM agents to automate the IC verification workflow. The framework
+includes Analysis Agent (AgentA) for test planning, Generation Agent (AgentG) for automatic testbench creation and error-driven regeneration, and
+Optimisation Agent (AgentO) for iterative testcase supplement based on coverage analysis.
+
+      UVM2 iteratively improves function coverage by analysing                                                  guided by domain-specific prompts. The overall flow is developed
+      collected coverage data and supplementing test stimuli, thereby                                           through the following iterative processes:
+      accelerating coverage achieved.                                                                              • Test Planning. The Analysis Agent (AgentA) examines the input
+  •   End-to-end integration into practical verification workflows:                                                   design specification to identify function points and constructs a
+      UVM2 supports the complete functional verification, demon-                                                      coverage-driven testcase plan.
+      strating its scalability and adaptability across diverse and real                                            • Testbench Generation. Leveraging the identified test plan, the
+      RTL designs and protocols.                                                                                      Generation Agent (AgentG) and the pre-validated templates
+  •   Open-source release of the UVM2 framework and bench-                                                            jointly produce a UVM-based verification testbench.
+      mark: we release the complete UVM2 framework and all                                                         • Simulation Analysis. Any errors in the generated UVM test-
+      component within it to support wider adoption. In addition,                                                     bench are captured during simulation and used to refine the
+      we publish our evaluation benchmark comprising 10 real RTL                                                      verification testbench, while coverage data are also collected for
+      designs (ranging from 400 to 1,600 lines of code) for cross-                                                    analysis and supplement.
+      comparison and future research at https://anonymous.4open.                                                   • Testcase Supplement. If coverage remains insufficient, the Op-
+      science/r/UVM Machine-7806/.                                                                                    timization Agents (AgentO) create additional targeted sequences
+   The rest of this paper is organised as follows. Section II introduces                                              to improve stimulus diversity, iteratively refining the testbench
+the overall architecture of UVM2 . Section III then details the key                                                   until coverage goals or user-defined iterations are reached.
+techniques in each workflow and their rationales. Section IV assesses                                           Modularity and flexibility. To allow UVM2 to evolve with future
+our work based on the five proposed research questions. Section V                                               verification techniques, all artefacts are exchanged via well-defined
+concludes the paper and outlines future research directions.                                                    formats, enabling designers to swap in a domain-specific LLM,
+                                                                                                                replace an EDA tool, or insert additional processes without impacting
+                               II. UVM 2 : A N OVERVIEW                                                         the validity of the workflow.
+   Aiming to accelerate the verification execution loop, UVM2 utilises                                                                    III. T HE F RAMEWORK P IPELINE
+task-specific LLM agents with templates within a standardised UVM
+tool-chain as shown in Fig. 2. It comprises three specialised agents,                                              We first present test planning from input specifications (Sec-
+one each for analysis, generation and optimisation, and a library                                               tion III-A) and UVM testbench generation (Section III-B), both
+of reusable templates as predefined scripts that ensure generation                                              serving as the foundation of the framework. We then describe simula-
+accuracy and reduce LLM usage. UVM2 produces the verification                                                   tion analysis with error handling (Section III-C) and coverage-driven
+results as an error information report and a coverage report and                                                supplementation (Section III-D) to refine the UVM testbench and
+assumes following three inputs:                                                                                 improve verification quality. Finally, we introduce the benchmarking
+                                                                                                                setup used to assess framework performance (Section III-E).
+  •   Design specifications: which define the intended functionality
+      and behaviour of the DUT, written in Markdown format.                                                     A. Test planning
+  •   Configuration files: in which the user specifies the target DUT                                              In IC design, the design process focuses on implementing func-
+      and the reset state using a JSON file.                                                                    tional behaviour, while functional verification ensures all possible
+  •   DUT: the design entity implemented in RTL code.                                                           scenarios, including edge cases, are handled correctly. Effective veri-
+  These inputs are already expected in existing industrial verification                                         fication relies on interpreting the design specification and identifying
+and align with the standard workflow followed by verification engi-                                             function points for testing, a task requiring domain expertise. In
+neers, enabling UVM2 to integrate seamlessly without the need for                                               UVM2 , we automate this process with LLM-based agents, AgentA.
+additional formats or tool dependencies. To maximise accuracy while                                             However, general-purpose LLMs often struggle with complex spec-
+keeping token usage predictable, each LLM agent is fine-tuned and                                               ifications due to their lack of structured memory and tendency to
+                                                                                                          Figure Legends
+  //Role customisation                                                                       Top
+    You are a professional IC verification engineer, skilled in systematically                                    Agent-Generated          TXT    External
+  decomposing and creating a series of test cases based on function points.                                       Component                       Files
+    Parse input Spec/Function files and extract key elements.                                                     Template-Generated
+     ....                                                                                 Testcase                Component
+                                                                                                                                                  Dependency
+  //Test plan formulation
+    Basic Testing: (Automatically cover all functional points)
+     ....                                                                                                                                          TXT
+  //Output template construction                                                                                                                 Test Plan
+     Test Point ID: <Function_Hash>                                                         Env.           Sequence
+     Test Type:
+  <Automatically classified: Functional/Boundary/Error/Performance>
+       .....
+                                                                                                                                                 Reference
+                  Fig. 3: Prompt Instructions for AgentA.                                  Agent          Scoreboard        Subscriber
+                                                                                                                                                  Model
+
+hallucinate [41]–[43], leading to missed edge cases. To address this,
+UVM2 breaks down the analysis into a structured reasoning pipeline                        Monitor            Driver         Sequencer
+that mimics expert verification engineers.
+   As shown in Fig. 3, our approach follows a three-step analysis                                                                                 TXT
+flow, designed to isolate the high-level cognitive tasks involved in                                       Interface
+                                                                                                                                                 Function
+                                                                                                                                                  Point
+human-driven verification planning:
+ 1) Role customisation: AgentA is first guided through prompts to
+    act as an IC verification engineer, enabling it to identify the func-        Fig. 4: Dependency-Driven UVM Testbench Generation Workflow with
+    tional expectations stated in the specification, including signal                            Optimisation
+                                                                                 Hierarchical Organization      Agent Dependencies.
+                                                                                                           and External Prompting flow
+    dataflow, control dependencies, input/output interaction patterns,
+    and state transitions. From these elements, the agent extracts
+                                                                                   module AES_Top();
+    specific functional points, leading to a deeper understanding of
+                                                                                     import uvm_pkg::*;
+    the design’s intended behavior.                                                  `include "uvm_macros.svh"
+ 2) Test plan formulation: based on the function points, AgentA                      AES_if ifc();
+    is required to define testing strategies for each functional point,              AES #(128,10,4) dut (.in(ifc.in),.key(ifc.key),.out(ifc.out));
+    including stimulus conditions, observability points, and coverage                   initial begin
+                                                                                        uvm_config_db#(virtual AES_if)::set(null, "uvm_test_top", "vif", ifc);
+    goals. For example, testing an arithmetic unit involves exercising
+                                                                                        run_test("AES_test");
+    the full range of operands and all signed/unsigned combinations                  end
+    under both overflow and underflow scenarios.                                          .....
+ 3) Output template construction: to ensure consistency, all re-                   endmodule
+    lated files, including the test plan and functional points (stored in
+    .txt format), follow a predefined template. This template captures           Fig. 5: The “Top” module Template in the Testbench. This template fa-
+    each functional point along with its associated test strategy                cilitates the integration of the testbench with the DUT. The DUT instance
+                                                                                 name (blue text) and DUT ports (green text) are customizable parameters
+    and a draft test case, thereby enabling integration with UVM
+                                                                                 that allow the template to be configured for various verification scenarios.
+    components and supporting manual inspection and refinement.
+   This three-step process not only ensures that critical functional             The process begins with shared infrastructure (e.g., Interface), pro-
+points are consistently extracted from the specification, but also               ceeds to leaf-level components (Driver, Monitor), then composites
+improves LLM reliability by enforcing deterministic reasoning paths.             (Agents), and concludes with environment-level modules (Score-
+The generated test plan serves as the foundation for subsequent ver-             board, Top, Testcase). This ensures each component is generated with
+ification stages, ensuring alignment between spec-driven objectives              complete contextual awareness of its dependencies.
+and testbench implementation.                                                       Once the flow is defined, component generation strategies must be
+                                                                                 selected. Analysis reveals that certain UVM modules exhibit deter-
+B. Verification Testbench Generation                                             ministic and repetitive patterns, with variations primarily in signal
+   A robust verification testbench must not only support a broad range           names and data widths. These can be efficiently synthesised using
+of stimuli and monitoring strategies but also reflect the structure and          template-based generation. In contrast, modules involving behavioural
+interaction logic of the underlying design. In UVM-based flows, the              logic, such as transaction sequencing or protocol-specific checks,
+generation of testbenches is extremely time-consuming, largely due               require semantic understanding and are better suited for LLM-based
+to component dependencies. UVM components are tightly coupled                    generation. Accordingly, UVM2 employs a hybrid synthesis strategy
+structurally and behaviourally. For instance, the Driver and Monitor             (Fig. 4), combining templates for structurally regular components
+are inseparable from the Interface: the Driver needs signal-level                with LLMs for functionally complex ones to optimise efficiency,
+connectivity to drive transactions, and the Monitor must observe                 correctness, and robustness.
+the same signals to collect functional responses. Likewise, an Agent             Template-Based Generation. Templates are employed for modules
+encapsulates and coordinates multiple sub-components (Sequencer,                 that show high regularity across designs. This choice is motivated by
+Driver, Monitor), and cannot be constructed without knowing their                three main factors: stability, speed, and reduced hallucination risk.
+details. Naı̈vely generating each module in isolation risks producing            Interface modules follow near-identical formats, varying primarily in
+structurally invalid or semantically inconsistent testbenches.                   the number and naming of input/output ports. Top modules serve as
+Dependency-Driven UVM Testbench Flow. To address this, UVM2                      wrappers that instantiate all lower-level components and connect them
+employs a dependency-driven testbench generation flow as shown in                via DUT ports; their structure is fixed and easily scriptable. Sequencer
+Fig. 4 that sequences component creation based on interdependencies.             modules exhibit a rigid control pattern that dispatches sequences to
+                  Generation Agent Prompting flow
+                                                                                Algorithm 1: Repair Mechanism.
+  //Role customisation                                                           Input: Verification log Vlog
+     You are an IC verification engineer and you need to use UVM                 Output: repaired Uvm Component UCTrue
+   to build a tesebench.
+  --UVM {component name} Generation Specification for {module name} --
+                                                                           1     Function Fixed Err(Vlog ):
+                                                                            2       / ∗ Err : Error message o f component ∗ /
+  //Dependency definition                                                   3       / ∗ GeneAgentMap =
+    The content of {new component name} shall be generated based on:                 {
+  {existing component_names}
+                                                                                     “driver′′ : “G driver agent ′′ ,
+  //Function expectation                                                             “monitor′′ : “G monitor agent ′′ ,
+    1.This file is part of the UVM tesebench components, used to {basic              ...
+  requirements}                                                                      }∗/
+    2. At the beginning of the code, add {code requirements}                4       for phase ∈ phases do
+    3. Pay attention to the input signals must be declare as {functional
+  requirements}                                                             5            if ErrInPhase(Vlog , phase) then
+                                                                            6                PhaseErr = GetErr(Vlog , phase);
+  //Mistake mitigation                                                      7                for UC,Err ∈ PhaseErri do
+    The following mistakes must be prevented: {frequent errors}             8                    AgentID = GeneAgentMap[UC];
+                                                                            9                    UCTrue = CallAgent(AgentID, Err);
+                 Fig. 6: Prompt Instructions for AgentG.                   10                end
+the Driver and rarely require complex logic. Fig. 5 is an example          11            end
+generated by the top module using a template. After extracting             12       end
+the module name and port signal from the spec, the template will           13       return UCTrue
+automatically fill in and generate the complete component.                 14    End Function
+LLM-Based Generation. In contrast, components with complex
+behaviour, such as Driver, Monitor, and Scoreboard, require precise
+functional encoding tailored to specific testcase semantics and veri-                          Testcase Supplement
+                                                                                                                                  Classifier
+fication goals identified earlier. These modules necessitate adaptable                                                                         AgentO
+                                                                                                                                    Line
+code generation that aligns with both design behaviour and test intent.                         name: dut
+                                                                                                LINE: 85.48%                      Condition
+To support this, UVM2 applies a structured prompting framework                                  TOGGLE: 95.33%                     Branch
+for each LLM generation task, as shown in Fig. 6. Each prompt                                   BRANCH: 99.61%
+                                                                                 TXT            ……                                 Toggle
+is systematically constructed in four stages to guide the LLM in                Coverage
+                                                                                 Report                                             FSM
+producing accurate, context-aware SystemVerilog code.
+                                                                                                name: dut
+ 1) Role customisation: we guide AgentG to act as an IC verifi-                                 FUNCTION: 82.24%
+    cation expert through prompt engineering, enabling it to more
+    accurately understand the design functionality, verification ob-                              UVM
+                                                                                                 Codebase
+    jectives, and the required UVM components. This prompt-driven                                           </.sv>     </.sv>                   </.sv>
+    fine-tuning effectively constrains the relevance and scope of the                                       Testcase   Sequence                Targeted
+                                                                                                                                                 Test
+    generated content.
+ 2) Dependency definition: dependency information is provided               EDA Tools
+    to ensure consistency with related components. For example,
+                                                                                  Fig. 7: Testcase Supplement Workflow with Coverage Analysis.
+    a Monitor must reference signal definitions from the Interface
+    and transaction structures from the Sequence Item.                     collects reports on function coverage, code coverage, and runtime
+ 3) Function expectation: the prompt outlines the component’s              logs, which are essential for evaluating testbench quality and iden-
+    functional responsibilities, such as capturing rising-edge events,     tifying verification gaps. If design bugs are found, UVM2 provides
+    introducing random timing variations, or detecting protocol            detailed diagnostics to assist in debugging.
+    violations. It also includes guidance on recommended coding            Repair Mechanism. However, due to the generative nature of our
+    patterns, such as TLM port usage.                                      framework, initial outputs from LLMs or templates may contain
+ 4) Mistake mitigation: typical mistakes are outlined in the prompt        errors, such as syntax issues, interface mismatches, or improper
+    to reduce the impact of hallucinations caused by AgentG, such          sequencing, particularly when LLMs receive ambiguous context or
+    as missing reset logic, inconsistent transaction identifiers, or       insufficient dependency information. Inspired by prior work such as
+    incorrect signal directions.                                           MEIC, which demonstrated the value of iterative LLM refinement
+                                                                           through feedback, we introduce a repair mechanism into UVM2 . As
+   Together, these four stages emulate the thought process of skilled
+                                                                           outlined in Algorithm 1, if simulation fails, the framework attempts
+verification engineers, ensuring the generated code is functionally
+                                                                           to repair faulty components using LLMs by taking UVM error logs
+valid and integrable into the overall testbench architecture.
+                                                                           as structured prompts. These are then fed back into the AgentG
+   By integrating dependency-driven planning, template-based gen-
+                                                                           to drive a second (or third) round of regeneration, focusing on
+eration for structural components, and guided LLM synthesis for
+                                                                           correcting specific structural or behavioural issues. This iteration
+behavioural modules, UVM2 delivers a scalable and automation-
+                                                                           cycle is repeated iteratively until one of two termination conditions
+friendly workflow for UVM testbench construction. This division of
+                                                                           is met: (i) the simulation completes successfully, or (ii) a predefined
+labour not only accelerates testbench generation but also improves
+                                                                           maximum iteration is exhausted.
+modular correctness and robustness in industrial-scale projects.
+                                                                           D. Testcase Supplement
+C. Simulation Analysis
+                                                                             Ensuring the correctness of a testbench is only one part of the
+  Once the UVM testbench is assembled, the DUT is simulated                verification process—it does not by itself ensure completeness. In
+using Synopsys VCS to verify functionality and assess coverage. VCS        hardware verification, both code and functional coverage are essential
+compiles the DUT and testbench, executes generated testcases, and          indicators, and low or plateaued coverage often suggests that the
+                 Optimisation Agent Prompting flow
+                                                                                 arithmetic units (ALU), memory controllers (DDR3, SDRAM), data
+  //Role customisation                                                           compression (Huffman Encoder - HUF), and peripheral communica-
+  You are an IC verification engineer and you need to use UVM to build a         tion interfaces (SPI, UART). Each module presents unique structural
+  tesebench.
+  --{modulename}_add_{type_name}_seq Generation Specification --
+                                                                                 and behavioral characteristics, ranging from highly sequential logic
+                                                                                 (e.g., SHA256, HUF) to pipelined arithmetic computation (e.g., ALU)
+  //Coverage analysis                                                            and complex control flow (e.g., DDR3, SDRAM).
+  The new {type_name}_seq shall be generated based on: {existing files}
+  Consider the following characteristics of this type: {analysis_guidance}          We deliberately selected modules with varying design sizes and
+                                                                                 complexities, as reflected by their line counts, to assess the scalability
+  //Stimulus supplement                                                          and adaptability of our approach. For instance, the AES and HUF
+  To generate effective content, ensure the stimulus meets these requirements:
+  {stimulus_requirements}                                                        modules involve intricate data-path logic and state machines, posing
+                                                                                 significant coverage challenges. Memory controllers like DDR3 and
+  //Mistake mitigation                                                           SDRAM demand rigorous protocol compliance, while modules such
+  Within randomize() with {} blocks:
+  * Prohibited: {common mistakes}                                                as UART and SPI, though smaller, require nuanced handling of
+                                                                                 asynchronous communication and timing constraints.
+                  Fig. 8: Prompt Instructions for AgentO.
+                                                                                                            IV. E VALUATION
+applied stimuli are not effectively exercising key parts of the DUT. To
+tackle this issue, we introduce a testcase optimisation mechanism that              This section presents our experimental setup, evaluation metrics,
+enhances stimulus generation through sequence refinement, focusing               research questions, and results to answer the questions.
+on the protocol-level behaviours defined within UVM.                             Experimental setup. In our experiment, we employed LLM agents
+   As shown in Fig. 7, testcase supplement phase in UVM2 analyzes                via the Deepseek API, with Deepseek-v3 as the default model.
+coverage gaps, categorizing them by logic region, transaction stage,             We set the temperature of the agents, which controls the output
+or stimulus dependency. Deficient types are passed to AgentO, which              randomness of the LLM, to 0.3. Then we used our benchmark
+revises sequences to target these gaps, generating new testcases until           for assessment and adopted VCS as the simulation tool for our
+satisfactory coverage is achieved. Precise prompting is crucial, as              testbench. Additional, we set the iteration times of the iteration
+LLMs without guidance may repeat patterns or miss gaps, making                   mechanism in both Testcase Analysis and Testcase Supplement to
+goal-oriented context essential for effective coverage improvement.              2, since little improvement can be observed based on pre-experiment
+   To resolve this, we design a prompting instructions for each                  results. Following the pass@5 evaluation standard commonly used in
+coverage type. As shown in Fig. 8, it includes four stages that                  the LLM field, each component was generated five times per module
+collaboratively shape the LLM’s response:                                        to minimise experimental randomness.
+  1) Role customisation: We assign AgentO the role of an IC veri-
+                                                                                 A. Evaluation Metrics
+      fication expert, equipped with sufficient knowledge to generate
+      and optimize the UVM testbench.                                              To evaluate the performance of our work in correct and complete
+  2) Coverage analysis: We also provide the DUT section, relevant                UVM-based testbench, we propose the following metrics:
+      protocols, and reference the specific coverage metrics or types            Success Rate of Generation (SRG ): This metric evaluates the
+      that remain unsatisfied. For the test points that do not satisfy the       correctness of the generated UVM testbenches by comparing them
+      coverage criteria, we offer explanations to facilitate the process.        against a reference testbench manually constructed by experienced
+  3) Stimulus supplement: This part includes specific constraints,               engineers. A generated testbench is considered correct if it passes
+      such as generating sequences with varying payload sizes or                 the full VCS simulation flow and produces results that match the
+      triggering edge-case interrupts. These information are used to             expected outputs defined by the reference testbench. Otherwise, it is
+      assist the LLM in supplementing missing stimuli.                           categorized as a generation failure. This metric reflects the functional
+  4) Mistake mitigation: To reduce LLM hallucination during stim-                validity of the generation framework.
+      ulus supplementation, we explicitly forbid certain potentially                                             Ncorrect
+      problematic stimulus sequences in the prompt, including those                                      SRG =            × 100%                       (1)
+                                                                                                                  Ntotal
+      with syntactic errors or functionally invalid behaviors.
+                                                                                 Coverage: This metric quantifies the test completeness of a generated
+Optimisation mechanism. The refinement loop is designed to be                    testbench after it has successfully passed the simulation phase. It is
+fault-tolerant. If the updated testbench fails simulation, UVM2 reverts          composed of two standard components:
+to the last valid version. The loop continues until either the target
+coverage is achieved or the number of optimization iterations exceeds              •   Code Coverage (Ccode ): Automatically provided by simulation
+a user-defined maximum. This closed-loop, coverage-driven refine-                      tools such as VCS, this measures the percentage of RTL code
+ment strategy mirrors expert workflows while dramatically reducing                     exercised by the testbench (e.g., line, branch, toggle coverage).
+manual effort, resulting in faster, more reliable verification cycles.             •   Functional Coverage (Cfunc ) : This represents how thoroughly
+                                                                                       the testbench exercises the RTL design with respect to the
+E. Benchmark                                                                           functional scenarios outlined in the design specification.
+   While simpler benchmarks such as RTLLM [44] and Verilog-                      Completion Time: This denotes the time to complete the entire
+Eval [38], which target designs with fewer than 200 lines of code,               functional verification process depicted in Fig. 1. In our work, it
+are useful for testing basic LLM capabilities in RTL design and ver-             corresponds to the time to execute the entire functional verification
+ification, they do not accurately reflect the complexities of industrial         process under the premise that UVM2 generates a correct Testbench.
+scenarios. As such, they are not suitable for assessing the full scope
+and scalability of UVM2 in real-world applications.                              B. Research Questions
+   To evaluate the effectiveness of UVM2 , we curated a diverse set                We conducted experiments to evaluate UVM2 with respect to five
+of hardware design modules that collectively represent a wide spec-              key research questions (RQs):
+trum of real-world verification challenges, as illustrated in Table I.           RQ1: How effective is UVM2 in generating syntactically and
+These benchmarks span cryptographic cores (AES, SHA256, SM4),                    semantically correct UVM testbenches? This research question
+TABLE I: Benchmark designs used for evaluation, including a variety of commonly implemented hardware modules such as cryptographic cores
+(AES, SHA256, SM4), arithmetic units (ALU), memory and communication controllers (DFI, SDRAM, SPI, UART), and a Huffman encoder.
+                                                                                                                                               Module
+        Design   Description                                                                                                                            Line Counts
+                                                                                                                                               Counts
+         AES     Encrypts a 128-bit plaintext input using a configurable key (128, 192, or 256 bits) and outputs 128-bit ciphertext.             8         684
+         ALU     A 32-bit unit that performs FP arithmetic, logical operations (OR, AND, XOR), shifts, FP to INT conversion, and complement.     7         409
+         DFI     A lightweight DDR3 memory controller that efficiently manages the interface between a system and DDR3 memory devices.           2         430
+                 A synchronous Huffman encoding system that compresses 4-bit input data symbols by calculating their frequencies,
+         HUF                                                                                                                                    10         1,572
+                 generating Huffman codes, and outputting a compressed serial bitstream.
+       SDRAM     A controller for synchronous dynamic random-access memory (SDRAM) with a Wishbone bus interface.                                1         604
+       SHA256    A cryptographic unit that computes a 256-bit hash value from a 24-bit input message using the SHA-256 algorithm.                3         1,412
+                 A synchronous implementation of the SM4 encryption/decryption algorithm, supporting both modes through a 128-bit key
+         SM4                                                                                                                                     9         1,142
+                 and data interface.
+         SPI     A lightweight SPI controller supporting Master mode with FIFO-based data transfer and interrupt-driven operation.               1         839
+        UART     Facilitates serial communication between a host and peripherals, supporting configurable baud rates and stop bits.              3         639
+
+
+
+
+                                           Fig. 9: SRG of 11 UVM components with UVM2 against SOTA LLMs
+
+
+evaluates the capability of UVM2 to produce valid UVM testbenches                           used to replace the corresponding module in a manually crafted UVM
+that conform to standard structure and compile without errors.                              testbench developed by experienced engineers, while the remaining
+RQ2: How does the verification completeness achieved by UVM2                                components were kept unchanged. This approach ensures a valid
+compare to existing LLM-based verification approaches? This                                 evaluation since individual components cannot be tested in isolation
+question investigates whether UVM2 can generate testbenches that                            due to inherent interdependencies, as illustrated in Fig. 4. For each
+reach comparable or higher code and functional testcase coverage                            generation task, the rest of the testbench was provided as reference
+than other LLM-driven methods.                                                              context. Among these baselines, Deepseek-v3 achieves the highest
+RQ3: How much of a performance gain in terms of efficiency can                              overall success rate at 34.54%. In contrast, UVM2 reaches a success
+end-to-end verification using UVM2 achieve compared to that of                              rate that is 2.59× higher, surpassing all baselines across every compo-
+expert engineers? This question explores whether UVM2 can reduce                            nent category. Notably, in the agent and seq item categories, where
+the total time needed to complete the functional verification process                       UVM2 particularly excels, baseline performance is minimal, as agent
+relative to manual effort.                                                                  success rates are 8.88%, 6.66%, and 15.55%, and seq item success
+RQ4: How does the repair mechanism influence the success rate                               rates are 2.22%, 8.89%, and 2.22% for Deepseek-v3, Qwen2.5-72b,
+of UVM testbench generation? This question examines whether                                 and GPT-4o, respectively. This significant discrepancy underscores
+incorporating automatic repair significantly improves the ability of                        critical limitations in baseline capabilities.
+UVM2 to generate usable testbenches after initial failures.                                    Fig. 10 provides concrete examples of such errors and their
+RQ5: How does the optimisation mechanism in UVM2 affect                                     corrected versions, illustrating how LLM outputs deviate from UVM
+functional coverage improvement? This research question evalu-                              design norms without structured guidance.
+ates the effectiveness of the optimization strategy in increasing the                       Insufficient protocol analysis/constraint generation. UVM re-
+achieved coverage metrics during simulation.                                                quires precise sequence constraints (e.g., DFI protocol specifications).
+C. Results and Discussions                                                                  Legacy LLMs fail to parse protocols, generating invalid constraints
+   The results of our experiments are presented as follows, with each                       (e.g., incorrect address ranges). This oversight can derail simulations
+aligned to its respective research question.                                                entirely, as critical scenarios remain unaddressed, not merely reducing
+Result 1: Fig. 9 illustrates the SRG of UVM2 for various UVM                                coverage but rendering verification incomplete and unreliable
+components, achieving an average success rate of 89.70%. Notably,                           Hallucinations in naming/logic. LLMs invent invalid UVM class
+the three components generated from the template technique achieve a                        names or misapply methods. Naming like HUF Driver driver (as
+100% success rate, validating the reliability of this approach. Among                       presented in Fig. 10) isn’t inherently wrong. However, in this UVM
+components generated by AgentG, agent, env, testcase, and seq item                          component, other parts are named as drv. This naming inconsistency
+exceed 90% SRG . However, driver and monitor, two components                                leads to mismatches during instantiation, triggering runtime errors.
+requiring in-depth domain knowledge of timing information like                              Such lapses in naming coherence violate UVM’s structural norms,
+handshakes, show lower success rates (approximately 80%), reflecting                        severely undermining the testbench’s reliability.
+the challenge of encoding complex designs without explicit guidance.                        Inadequate understanding of TLM mechanism. LLMs often omit
+   UVM2 is also compared with three widely-used LLM baselines:                              critical TLM declarations, such as uvm analysis imp decl. With-
+GPT-4o (closed-source), Deepseek-v3, and Qwen2.5-72b (two open-                             out these foundational elements, subsequent method usage becomes
+source models widely adopted for their strong problem-solving capa-                         flawed, including incorrect instantiation of uvm analysis imp. This
+bilities). To ensure experimental rigor, each generated component was                       combination of missing declarations and misapplied methods disrupts
+        Category 1：Insufficient protocol analysis / constraint generation
+        class DFI_seq_item extends uvm_sequence_item;                     class DFI_seq_item extends uvm_sequence_item;
+         ....                                                              ....
+         constraint valid_address_range {               Constraints Error  constraint valid_address_range {
+              address_i inside {[0:12'h7563131F98F]}; }                         address_i inside {[0:15'h7FFF]}; }
+
+        Category 2：Hallucinations in naming / logic
+         class HUF_Agent extends uvm_agent;                               class HUF_Agent extends uvm_agent;
+            ...                                                              ...
+            HUF_Driver driver;       Naming Error                         HUF_Driver drv；
+            HUF_Sequencer seqr;                                           HUF_Sequencer sqr;
+
+        Category 3：Inadequate understanding of the TLM mechanism
+                                   Missing TLM header file declaration   `uvm_analysis_imp_decl(_actual)
+                                                                         `uvm_analysis_imp_decl(_expected)
+       class AES_Encrypt_scoreboard extends uvm_scoreboard;              class AES_Encrypt_scoreboard extends uvm_scoreboard;
+         ....                                                              ....
+       uvm_analysis_imp#(AES_seq_item, AES_scoreboard)expected_imp;      uvm_analysis_imp_actual#(AES_seq_item,AES_scoreboard) actual_imp;
+       uvm_analysis_imp#(AES_seq_item, AES_scoreboard)actual_imp;        uvm_analysis_imp_expected #(AES_seq_item, AES_scoreboard) expected_imp;
+        Category 4：Ambiguous component responsibilities
+        module uvm_Top();                                                  module uart_Top();
+         ...                                                                ...
+         uart_if ifc();                                                     uart_if ifc();
+                                    Lack of exemplification of DUT          uart_top #(9,1,0) dut (... );
+
+                           Fig. 10: Four categories of errors in LLM-generated UVM components and their corrections.
+
+
+
+
+                                     Fig. 11: Code Coverage and Function Coverage of UVM2 , UVLLM, MEIC
+the TLM-based communication that underpins UVM verification,                   the number of sub-modules grows, the coverage of UVM2 decreases
+ultimately rendering components non-functional.                                but still remains competitive. HUF, an RTL code with nearly 1,500
+Ambiguous component responsibilities. Each UVM module must                     lines and containing ten submodules, has a code coverage of 73.07%,
+adhere to its role. For instance, the top module’s duty includes proper        however, the function coverage is 91.21% since several code segments
+DUT instantiation. Failing this (as in the incorrect example) violates         contribute to just one function point in this design. Moreover, the
+the principle of clear - cut responsibilities. Such role - neglect doesn’t     coverage of UVM2 in the verification of each module is higher than
+just cause minor issues but invalidates the entire verification setup,         that of the other two works. This result indicates that UVM2 sig-
+highlighting that overlapping or overlooked duties can collapse the            nificantly improves the test completeness in LLM-based verification.
+UVM testbench’s effectiveness.invalidates testbench correctness.               Meanwhile, UVM2 also practices the theory of applying LLM to
+   These results demonstrate that relying solely on legacy LLMs for            UVM-based verification, demonstrating that LLM-based testing does
+UVM testbench generation is infeasible due to domain knowledge                 not have to rely solely on random stimuli.
+gaps. By contrast, UVM2 significantly enhances feasibility through             Result 3: We recorded the time required for UVM2 to complete each
+targeted techniques (e.g., templates, iterative repair), achieving robust      process, as well as the total time, comparing it with the time taken
+performance across both simple and complex components.                         by experienced verification engineers to build UVM testbenches.
+Result 2: We measured the coverage of the testbench generated by                  As shown in Table II, UVM2 significantly outperforms human
+UVM2 across 9 modules and compared it with two instances (MEIC                 verification engineers in achieving similar coverage conditions. For
+and UVLLM) of LLMs applied in functional verification. Notably,                the HUF module, UVM2 achieves a speedup of 14.68×, while
+since function coverage relies on the setting of expected functional           for less complex modules like DFI, the performance gap widens,
+scenarios by humans, the function coverage in this experiment used             with a speedup of up to 38.82×. The two most time-consuming
+the functional scenarios defined by experienced engineers when                 phases, testbench generation and testcase supplement, have average
+constructing the testbench as the expected scenarios.                          execution time of 41.34 minutes and 20.84 minutes, respectively.
+   Fig. 11 demonstrates the verification coverage of UVM2 and the              As illustrated in Fig. 1, these phases account for approximately
+other two control groups in each module. Specifically, the average             30% and 50% of the total workflow time. In comparison, human
+code coverage of UVM2 reaches 87.44%, which is 20.96% and                      experts typically spend 8.10 hours and 13.51 hours on these tasks,
+27.24% higher than UVLLM and MEIC respectively. In terms of                    yielding speedups of 11.75× and 38.90× for UVM2 respectively.
+function coverage, UVM2 achieves 89.58%, which is 23.51% and                   These results demonstrate UVM2 ’s potential to significantly reduce
+28.40% higher than UVLLM and MEIC respectively. Among them,                    verification time and highlight its competitiveness in accelerating
+DDR3 achieves the highest code coverage of 98.31% and function                 functional verification.
+coverage of 94.44%. As the number of RTL code lines increases and              Result 4: We evaluated the generation success rate of UVM test-
+TABLE II: Completion Time of UVM2 against Human Verification Engineers. The time statistics for each stage incorporate multiple generation
+attempts as required. The “Simulation” time includes compile, elaboration, simulation and repair iterations for components.
+                                                                  UVM2                                 Human
+                          Design                                                                                  Speedup
+                                     Planning    Generation    Simulation    Supplement     Total       Total
+                          AES        3.55min      12.52min      6.47min        5.83min    28.37min     16.22h      34.30x
+                           ALU       3.43min      15.22min      5.28min        8.51min    32.44min     16.13h      29.83x
+                           DFI       2.12min      11.53min      5.90min        5.41min    24.96min     16.15h      38.82x
+                          HUF        25.45min     72.22min     40.85min       25.42min    163.94min    40.12h      14.68x
+                         SDRAM       32.18min     80.22min     45.24min       25.35min    182.99min    39.34h      12.90x
+                         SHA256      22.48min     48.43min     30.52min       30.74min    132.17min    33.26h      15.10x
+                          SM4        22.52min     50.31min     35.50min       30.32min    138.65min    30.25h      13.09x
+                           SPI       24.46min     65.25min     42.32min       35.47min    167.50min    31.26h      11.20x
+                          UART       4.29min      16.33min     12.52min       20.55min    53.69min     20.32h      22.71x
+                         Average     15.61min     41.34min     24.96min       20.84min    102.75min    27.01h      15.77x
+
+
+TABLE III: SRG of UVM2 -generated UVM testbenches across three
+iterative verification rounds. “Gain” indicates the percentage improvement
+from the previous round.
+     Design      Round1     Round2       Gain     Round3       Gain
+      AES        93.33%     95.56%      2.23%     95.56%      0.00%
+       ALU       86.67%     91.11%      4.44%     93.33%      2.22%
+       DFI       82.22%     91.11%      8.89%     91.11%      0.00%
+      HUF        44.44%     77.78%     33.34%     77.78%      0.00%
+     SDRAM       42.22%     86.67%     44.45%     86.67%      0.00%
+     SHA256      66.67%     84.44%     17.77%     84.44%      0.00%
+      SM4        57.77%     82.22%     24.45%     82.22%      0.00%
+       SPI       64.44%     80.00%     15.56%     80.00%      0.00%
+      UART       84.44%     86.67%      2.23%     88.89%      2.22%
+     Average     69.13%     86.17%     17.04%     86.67%      0.50%                  Fig. 12: Coverage improvement via testcase supplement
+
+benches with different iterations for the repair mechanism in UVM2 .         the competitiveness and effectiveness of the optimisation mechanism.
+   Table III presents the generation success rate of UVM testbenches                                    V. C ONCLUSION
+for each module across three rounds (including one initial generation           In this work, we explored the use of LLMs for hardware design ver-
+round, followed by two repair iterations) under the condition of             ification and identified key challenges that hinder their effectiveness.
+multiple tests. The results show that with our repair mechanism,             To address these issues, we introduced UVM2 a structured framework
+the final generation success rate is 86.67%, reflecting an increase of       that enhances LLM capabilities through hierarchical guidance and
+17.54% compared to the initial generation success rate of 69.13%. We         systematic prompting. UVM2 enables the generation of UVM test-
+observed that in AES and UART, the generation success rate could             bench with a generation success rate of 86.67%. With approximately
+reach 93.33% in the round 1, while for RTL like HUF and SDRAM,               88% coverage, the average runtime is 102.75 minutes, achieving up
+multiple rounds were needed to generate a correct UVM testbench.             to 38.82x speedup in development efficiency.
+This reveals the model’s deficiency in understanding in-depth domain            Recognizing the limitations of existing benchmarks, where most
+expertise regarding timing handshakes, interface protocols in IC             DUTs are under 150 lines, we developed a new benchmark(up to
+design, and verification domains. Meanwhile, the improvement in              2k lines) to better reflect real-world verification demands. UVM2
+the generation success rate between the third and second rounds is           seamlessly integrates with industrial tools such as Synopsys VCS
+insignificant, merely 0.50%. Further increasing the number of repair         to automate the entire verification workflow. It also incorporates a
+iterations would not yield better results. This validates that setting       optimisation mechanism, allowing generated testbenches to reach an
+the number of iterations in the repair mechanism to 2 is reasonable,         average 87.44% code coverage and 89.58% function coverage, outper-
+avoiding unnecessary resource waste.                                         forming state-of-the-art solutions by 20.96% and 23.51% respectively.
+Result 5: We evaluated the effect of the optimization mechanism                 Our results demonstrate that UVM2 significantly narrows the
+in UVM2 on verification coverage by comparing the coverage with              gap between LLM capabilities and the stringent requirements of
+and without the testcase supplement phase. The results, presented            industrial-grade hardware verification. However, challenges remain.
+in Fig. 12, highlight the improvements in both code and function             Enhancing LLM understanding of hardware protocols and semantics,
+coverage. Specifically, the optimization mechanism led to an increase        and embedding richer verification knowledge into the generation
+of 7.6% and 9.7% in code and function coverage, separately.                  process, are essential directions for future work. By advancing
+   Notably, the optimization is especially beneficial for certain mod-       these areas, we move closer to realizing autonomous, expert-level
+ules. For instance, the SPI module witnesses a 17.7% increase in code        verification assistance powered by foundation models.
+coverage, while the ALU module experiences a 29.5% improvement                                    VI. ACKNOWLEDGEMENT
+in function coverage. However, some modules showed slight gains. In
+the SM4 module, for example, despite a 5.1% rise in code coverage,              We appreciate the reviewers for their insightful and helpful feed-
+functional coverage hasn’t improved noticeably. This outcome can be          back. This work is supported by the National Key Research and
+attributed to the fact that, in practical designs, certain function points   Development Program (Grant No. 2024YFB4405600), the National
+require the joint triggering of multiple code blocks. In the case of the     Natural Science Foundation of China (Grant No. 62472086 and
+SM4 module, once function coverage reached 83.5%, an additional              No. 92464301), the Basic Research Program of Jiangsu (Grant No.
+5.4% in code coverage was insufficient to trigger new function points.       BK20243042), the Science and Technology Major Special Program
+                                                                             of Jiangsu (Grants No. BG2024010), and the Start-up Research Fund
+   It is important to note that the average time required for the testcase
+                                                                             of Southeast University (Grant No. RF1028624005).
+supplement phase was 20.84 minutes, as shown in Table II. Despite
+the time-cost overhead, the improvements in coverage demonstrate
+                               R EFERENCES                                              IEEE 17th International Conference on Anti-counterfeiting, Security, and
+                                                                                        Identification (ASID). IEEE, 2023, pp. 21–24.
+ [1] S. Lahti, P. Sjövall, J. Vanne, and T. D. Hämäläinen, “Are we there     [23]   K. V. Reddy, “Uvm methodology: Industry-specific applications in
+     yet? a study on the state of high-level synthesis,” IEEE Transactions              modern hardware verification,” International Journal of Computer En-
+     on Computer-Aided Design of Integrated Circuits and Systems, vol. 38,              gineering and Technology (IJCET), vol. 15, no. 6, pp. 20–32, 2024.
+     no. 5, pp. 898–911, 2018.                                                   [24]   S. Thakur, B. Ahmad, H. Pearce, B. Tan, B. Dolan-Gavitt, R. Karri, and
+ [2] P. Ashar and V. Viswanath, “Closing the verification gap with static               S. Garg, “Verigen: A large language model for verilog code generation,”
+     sign-off,” in 20th International Symposium on Quality Electronic Design            arXiv preprint arXiv:2308.00708, 2023.
+     (ISQED). IEEE, 2019, pp. 343–347.                                           [25]   J. Blocklove, S. Garg, R. Karri, and H. Pearce, “Chip-chat: Challenges
+ [3] K. A. Ismail and M. A. Abd El Ghany, “High performance machine                     and opportunities in conversational hardware design,” arXiv preprint
+     learning models for functional verification of hardware designs,” in               arXiv:2305.13243, 2023.
+     2021 3rd Novel Intelligent and Leading Emerging Sciences Conference         [26]   Y. Tsai, M. Liu, and H. Ren, “Rtlfixer: Automatically fixing rtl syntax
+     (NILES). IEEE, 2021, pp. 15–18.                                                    errors with large language models,” arXiv preprint arXiv:2311.16543,
+ [4] G. M. Danciu and A. Dinu, “Coverage fulfillment automation in hard-                2023.
+     ware functional verification using genetic algorithms,” Applied Sciences,   [27]   B. Ahmad, S. Thakur, B. Tan, R. Karri, and H. Pearce, “Fixing
+     vol. 12, no. 3, p. 1559, 2022.                                                     hardware security bugs with large language models,” arXiv preprint
+ [5] R. Gal and A. Ziv, “Machine learning in the service of hardware                    arXiv:2302.01215, 2023.
+     functional verification,” in Machine Learning Applications in Electronic    [28]   W. Fu, K. Yang, R. G. Dutta, X. Guo, and G. Qu, “Llm4sechw:
+     Design Automation. Springer, 2022, pp. 377–424.                                    Leveraging domain-specific large language model for hardware debug-
+ [6] J. L. Hennessy and D. A. Patterson, Computer architecture: a quantita-             ging,” in 2023 Asian Hardware Oriented Security and Trust Symposium
+     tive approach. Elsevier, 2011.                                                     (AsianHOST). IEEE, 2023, pp. 1–6.
+ [7] S. Harris and D. Harris, Digital Design and Computer Architecture,          [29]   M. DeLorenzo, A. B. Chowdhury, V. Gohil, S. Thakur, R. Karri, S. Garg,
+     RISC-V Edition. Morgan Kaufmann, 2021.                                             and J. Rajendran, “Make every move count: Llm-based high-quality rtl
+ [8] K. Salah, “A uvm-based smart functional verification platform: Concepts,           code generation using mcts,” arXiv preprint arXiv:2402.03289, 2024.
+     pros, cons, and opportunities,” in 2014 9th International Design and Test   [30]   M. Liu, M. Kang, G. B. Hamad, S. Suhaib, and H. Ren, “Domain-
+     symposium (IDT). IEEE, 2014, pp. 94–99.                                            adapted llms for vlsi design and verification: A case study on formal
+ [9] R. Madan, N. Kumar, and S. Deb, “Pragmatic approaches to implement                 verification,” in 2024 IEEE 42nd VLSI Test Symposium (VTS). IEEE,
+     self-checking mechanism in uvm based testbench,” in 2015 International             2024, pp. 1–4.
+     Conference on Advances in Computer Engineering and Applications.            [31]   X. Yao, H. Li, T. H. Chan, W. Xiao, M. Yuan, Y. Huang, L. Chen, and
+     IEEE, 2015, pp. 632–636.                                                           B. Yu, “Hdldebugger: Streamlining hdl debugging with large language
+[10] B. Vineeth and B. B. T. Sundari, “Uvm based testbench architecture                 models,” arXiv preprint arXiv:2403.11671, 2024.
+     for coverage driven functional verification of spi protocol,” in 2018       [32]   W. Fang, M. Li, M. Li, Z. Yan, S. Liu, H. Zhang, and Z. Xie, “Assertllm:
+     International conference on advances in computing, communications and              Generating and evaluating hardware verification assertions from design
+     informatics (ICACCI). IEEE, 2018, pp. 307–310.                                     specifications via multi-llms,” arXiv preprint arXiv:2402.00386, 2024.
+[11] Y.-N. Yun, J.-B. Kim, N.-D. Kim, and B. Min, “Beyond uvm for practical      [33]   B. Yao, N. Wang, J. Zhou, X. Wang, H. Gao, Z. Jiang, and N. Guan,
+     soc verification,” in 2011 International SoC Design Conference. IEEE,              “Location is key: Leveraging large language model for functional bug
+     2011, pp. 158–162.                                                                 localization in verilog,” arXiv preprint arXiv:2409.15186, 2024.
+[12] L. Piccolboni and G. Pravadelli, “Simplified stimuli generation for         [34]   J. Zhou, Y. Ji, N. Wang, Y. Hu, X. Jiao, B. Yao, X. Fang, S. Zhao,
+     scenario and assertion based verification,” in 2014 15th Latin American            N. Guan, and Z. Jiang, “Insights from rights and wrongs: A large
+     Test Workshop-LATW. IEEE, 2014, pp. 1–6.                                           language model for solving assertion failures in rtl design,” arXiv
+[13] G. Visalli, “Uvm-based verification of ecc module for flash memories,”             preprint arXiv:2503.04057, 2025.
+     in 2017 European Conference on Circuit Theory and Design (ECCTD).           [35]   K. Xu, J. Sun, Y. Hu, X. Fang, W. Shan, X. Wang, and
+     IEEE, 2017, pp. 1–4.                                                               Z. Jiang, “Meic: Re-thinking rtl debug automation using llms,” in
+[14] A. Vintila, I. Tolea, H. Du, and Q. Gong, “Portable stimulus driven                Proceedings of the 43rd IEEE/ACM International Conference on
+     systemverilog/uvm verification environment for the verification of a               Computer-Aided Design, ser. ICCAD ’24. New York, NY, USA:
+     high-capacity ethernet communication endpoint,” in Proceedings of the              Association for Computing Machinery, 2025. [Online]. Available:
+     2018 DVCON Conference and Exhibition Europe, Munich, Germany,                      https://doi.org/10.1145/3676536.3676801
+     2018, pp. 24–25.                                                            [36]   Y. Hu, J. Ye, K. Xu, J. Sun, S. Zhang, X. Jiao, D. Pan, J. Zhou,
+[15] J. Bromley, “If systemverilog is so good, why do we need the uvm?                  N. Wang, W. Shan et al., “Uvllm: An automated universal rtl verification
+     sharing responsibilities between libraries and the core language,” in              framework using llms,” arXiv preprint arXiv:2411.16238, 2024.
+     Proceedings of the 2013 Forum on specification and Design Languages         [37]   J. White, Q. Fu, S. Hays, M. Sandborn, C. Olea, H. Gilbert, A. El-
+     (FDL). IEEE, 2013, pp. 1–7.                                                        nashar, J. Spencer-Smith, and D. C. Schmidt, “A prompt pattern
+                                                                                        catalog to enhance prompt engineering with chatgpt,” arXiv preprint
+[16] J. Francesconi, J. A. Rodriguez, and P. M. Julian, “Uvm based testbench
+                                                                                        arXiv:2302.11382, 2023.
+     architecture for unit verification,” in 2014 Argentine Conference on
+                                                                                 [38]   M. Liu, N. Pinckney, B. Khailany, and H. Ren, “Verilogeval: Evaluating
+     Micro-Nanoelectronics, Technology and Applications. IEEE, 2014, pp.
+                                                                                        large language models for verilog code generation,” in 2023 IEEE/ACM
+     89–94.
+                                                                                        International Conference on Computer Aided Design (ICCAD). IEEE,
+[17] L. S. Tavares, W. J. Chau, and F. J. Fonseca, “Case study: Uvm-fie:
+                                                                                        2023, pp. 1–8.
+     Enhancing uvm-based fault injection library for complex designs,” in
+                                                                                 [39]   K. Chang, Y. Wang, H. Ren, M. Wang, S. Liang, Y. Han, H. Li, and
+     2025 IEEE 26th Latin American Test Symposium. IEEE, 2025.
+                                                                                        X. Li, “Chipgpt: How far are we from natural language hardware design,”
+[18] T. Pavithran and R. Bhakthavatchalu, “Uvm based testbench architecture
+                                                                                        arXiv preprint arXiv:2305.14019, 2023.
+     for logic sub-system verification,” in 2017 International Conference on
+                                                                                 [40]   P. Sahoo, A. K. Singh, S. Saha, V. Jain, S. Mondal, and A. Chadha,
+     Technological Advancements in Power and Energy (TAP Energy). IEEE,
+                                                                                        “A systematic survey of prompt engineering in large language models:
+     2017, pp. 1–5.
+                                                                                        Techniques and applications,” arXiv preprint arXiv:2402.07927, 2024.
+[19] M. Dharani, M. Bharathi, N. Padmaja, and K. Praveena, “Design and           [41]   G. Perković, A. Drobnjak, and I. Botički, “Hallucinations in llms:
+     verification process of combinational adder using uvm methodology,” in             Understanding and addressing challenges,” in 2024 47th MIPRO ICT
+     2023 International Conference on Advances in Electronics, Communica-               and Electronics Convention (MIPRO). IEEE, 2024, pp. 2084–2088.
+     tion, Computing and Intelligent Information Systems (ICAECIS). IEEE,        [42]   G. P. Reddy, Y. P. Kumar, and K. P. Prakash, “Hallucinations in large
+     2023, pp. 359–362.                                                                 language models (llms),” in 2024 IEEE Open Conference of Electrical,
+[20] P. S. Kumar, R. Rajalakshmi, N. H. Kumar, B. P. Gupta, C. H.                       Electronic and Information Sciences (eStream). IEEE, 2024, pp. 1–6.
+     Nikhilesh, and J. S. P. Pavan, “Robust serial driver verification through   [43]   S. Tonmoy, S. Zaman, V. Jain, A. Rani, V. Rawte, A. Chadha, and A. Das,
+     uvm framework,” in 2024 Control Instrumentation System Conference                  “A comprehensive survey of hallucination mitigation techniques in large
+     (CISCON). IEEE, 2024, pp. 1–6.                                                     language models,” arXiv preprint arXiv:2401.01313, 2024.
+[21] M. A. Salem and K. I. Eder, “Modified condition decision coverage: A        [44]   Y. Lu, S. Liu, Q. Zhang, and Z. Xie, “Rtllm: An open-source benchmark
+     hardware verification perspective,” in 2013 14th International Workshop            for design rtl generation with large language model,” arXiv preprint
+     on Microprocessor Test and Verification. IEEE, 2013, pp. 8–13.                     arXiv:2308.05345, 2023.
+[22] S. Wu, K. Zhao, X. Wang, S. He, and D. Guo, “An uvm-based
+     verification platform for hardware and software co-design,” in 2023
+

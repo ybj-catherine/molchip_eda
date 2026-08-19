@@ -2515,7 +2515,7 @@ ChipSeek 重点是工具奖励下的 RTL 生成/优化训练闭环；ChipGPT-V �
 当前已经放在：
 
 ```text
-/mnt/d/AI4eda/chipgptv/2407.08473_ChipGPT-V.pdf
+chipgptv/2407.08473_ChipGPT-V.pdf
 ```
 
 ### 37.2 代码

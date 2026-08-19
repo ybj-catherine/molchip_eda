@@ -1122,7 +1122,7 @@ README 指定 Python 3.10.13，setup.py 允许 `<3.13`，并要求 NumPy `<2`。
 ### 15.1 推荐环境
 
 ```bash
-cd /mnt/d/AI4eda/VerilogCoder
+cd VerilogCoder
 conda create -n verilogcoder python=3.10.13
 conda activate verilogcoder
 ```
@@ -1368,4 +1368,3 @@ VerilogCoder 是目前这批 RTL Agent 论文中非常值得分享的一篇：�
 1. TCRG 建图需要大量 LLM 调用判断 Plan/Signal/Transition/Example 之间的关系，是否可以用确定性 parser 或规则系统替代部分关系抽取以降低成本？
 2. AST-WT 默认把整个 DUT 送回 Agent，若只返回 traced signal 的局部切片，是否仍能维持 94.2% 的修复成功率并减少 token？
 3. 当前 `validate_correct_parse()` 只在聊天记录里找成功标记，没有重跑仿真，这种“文本级成功判定”在 Agent 自我欺骗时会出现什么风险？
-

@@ -1638,7 +1638,7 @@ npass / nsamples
 运行仓库审计：
 
 ```bash
-cd /mnt/d/AI4eda/ChipBench
+cd ChipBench
 PYTHONDONTWRITEBYTECODE=1 python3 runs/audit_repository.py
 ```
 

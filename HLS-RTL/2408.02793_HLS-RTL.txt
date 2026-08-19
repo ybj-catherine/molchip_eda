@@ -1,0 +1,320 @@
+                                        JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015                                                                                   1
+
+
+
+
+                                         Evaluating Large Language Models for Automatic
+                                         Register Transfer Logic Generation via High-Level
+                                                             Synthesis
+                                              Sneha Swaroopa, Graduate Student Member, IEEE, Rijoy Mukherjee, Graduate Student Member, IEEE,
+                                                           Anushka Debnath, and Rajat Subhra Chakraborty, Senior Member, IEEE
+arXiv:2408.02793v1 [cs.AR] 5 Aug 2024
+
+
+
+
+                                           Abstract—The ever-growing popularity of large language mod-              synthesis (HLS) has emerged and matured over the last few
+                                        els (LLMs) has resulted in their increasing adoption for hardware           decades, as a paradigm that helps software developers to de-
+                                        design and verification. Prior research has attempted to assess             sign correct-by-construction hardware, by directly translating
+                                        the capability of LLMs to automate digital hardware design
+                                        by producing superior-quality Register Transfer Logic (RTL)                 code from a high-level programming language like C or C++
+                                        descriptions, particularly in Verilog. However, these tests have            (two most common options), to a target HDL like Verilog [1].
+                                        revealed that Verilog code production using LLMs at current                 For instance, Vitis HLS [2] and Bambu [3] are free-of-cost
+                                        state-of-the-art lack sufficient functional correctness to be prac-         software tools that facilitate rapid hardware logic prototyping
+                                        tically viable, compared to automatic generation of programs                by generating RTL in HDL, based on hardware specifications
+                                        in general-purpose programming languages such as C, C++,
+                                        Python, etc. With this as the key insight, in this paper we assess          in (supersets of) C, C++, and System C.
+                                        the performance of a two-stage software pipeline for automated                 Recent efforts have been aimed at elevating the abstraction
+                                        Verilog RTL generation: LLM based automatic generation of                   level and ease of digital hardware design even further, where
+                                        annotated C++ code suitable for high-level synthesis (HLS),                 the goal is to allow designers to articulate functional speci-
+                                        followed by HLS to generate Verilog RTL. We have benchmarked                fications of the logic to be described in a natural language
+                                        the performance of our proposed scheme using the open-source
+                                        VerilogEval dataset, for four different industry-scale LLMs, and            (NL) [4]. State-of-the-art Large Language Models (LLMs)
+                                        the Vitis HLS tool. Our experimental results demonstrate that our           have the potential to revolutionize digital hardware design and
+                                        two-step technique substantially outperforms previous proposed              validation methodology, by automatically generating correct-
+                                        techniques of direct Verilog RTL generation by LLMs in terms                by-construction circuit descriptions in HDL, and HDL code
+                                        of average functional correctness rates, reaching score of 0.86 in          for hardware validation (“testbench”), when prompted by the
+                                        pass@1 metric.
+                                                                                                                    functional description of the circuit in a natural language, e.g.
+                                          Index Terms—LLM, HLS, Verilog, Hardware Design.                           English.
+                                                                                                                       However, recent studies reported by multiple research
+                                                                 I. I NTRODUCTION                                   groups to evaluate the potential of LLMs at the current state-
+                                           Digital hardware design using a Hardware Description                     of-the-art in producing functionally correct HDL descriptions
+                                        Language (HDL) like Verilog has traditionally been a labor-                 (mostly RTL in Verilog) have identified limitations regarding
+                                        intensive and challenging endeavor. It warrants significant                 their ability to generate correct and complete Verilog [5]. Input
+                                        expertise, and is error-prone, necessitating intense validation             “prompt engineering” targeting LLMs for automatic Verilog
+                                        efforts for large industry-scale designs. Historically, digital             generation also lacks structure and is sometimes ambiguous.
+                                        hardware design using HDLs has been a specialized skill-                    Another constraint is that currently, LLMs cannot perform
+                                        set, and far lesser number of expert designers using HDLs                   top-down digital design, necessitating (relatively) much more
+                                        like Verilog exist than expert programmers in mainstream                    laborious bottom-up design [5]. LLMs often generate HDL
+                                        programming languages such as C, C++, Java, Python, etc.                    descriptions without ensuring functional correctness at the
+                                           Naturally, there is an increasing interest in developing                 hardware level and usually do not perform any design space
+                                        more accessible approaches for producing HDL, intending                     exploration [6]. The main reason for such low effectiveness of
+                                        to simplify design and testing processes. This would make                   LLMs in HDL generation tasks is the relatively small amount
+                                        constructing functionally correct hardware easier for those                 of open-source codebases in HDLs like Verilog and VHDL
+                                        with pre-existing software development experience in main-                  available for training the LLMs. These limitations currently
+                                        stream programming languages. Towards this end, High-level                  prevent seamless integration of LLMs into EDA workflows.
+                                                                                                                       On the other hand, advances in LLMs have led to phe-
+                                           S. Swaroopa, R. Mukherjee and R. S. Chakraborty are with                 nomenal results on automatic code generation tasks [7]. This
+                                        the Dept. of Computer Science and Engineering, Indian Institute             is made possible by the availability of large collections of
+                                        of Technology, Kharagpur, West Bengal, India 721302. Email:
+                                        swaroopasneha202@kgpian.iitkgp.ac.in,       rijoy.mukherjee@iitkgp.ac.in,   open-source codebases in common general-purpose program-
+                                        rschakraborty@cse.iitkgp.ac.in.                                             ming languages, which can be used for fine-tuned training
+                                           A. Debnath is with the Dept. of Computer Science and Engineering,        of the LLMs. LLMs have exhibited unprecedented success
+                                        National Institute of Technology, Durgapur, West Bengal, India 713209.
+                                        Email: anushkadebnath77777@gmail.com.                                       in diverse tasks like suggesting code snippets (“copilots”),
+                                           Manuscript received XXXXXXXX; revised XXXXXXX                            solving complex algorithms, and explaining programming
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015                                                                                2
+
+
+
+
+Fig. 1. Comparison of existing RTL Generation via LLM with the proposed software pipeline with HLS.
+
+
+
+concepts. Therefore, combining HLS which allows logic                     robust, comprehensive dataset called VerilogEval, compris-
+design through higher-level programming interfaces, with                  ing 156 problems sourced from HDLBits [17], an online
+the emerging LLMs, represents progress toward the vision                  Verilog learning platform. The evaluation demonstrated the
+of automatic and error-free hardware logic design via                     Verilog code generation capabilities of pre-trained language
+natural language interaction.                                             models like gpt-3.5 [9] and gpt-4 [18], and the fine-
+   In this paper, we explore the capabilities of LLM in generat-          tuned VeriGen model, which incidentally achieved the best
+ing sophisticated C++ programs suitable for HLS processing,               performance. However, the improvement wasn’t much from
+starting with natural language problem descriptions. We then              the numbers achieved previously. To improve the quality of
+use a HLS tool to convert this generated C++ code to Verilog              Verilog generation by pre-trained models, authors in [19]
+RTL. Since the reliability of hardware design is a key factor,            developed a workflow with a chain of feedback mechanisms
+we enable the evaluation of the generated final Verilog code              called AutoChip to prompt the LLMs for iterative hardware
+through a robust validation procedure [8]. Fig. 1 compares                development. Authors in [20] introduced ChipGPT-FT, a
+the proposed software pipeline of LLM-assisted automated                  Verilog design model, by fine-tuning the Llama-2 [21]
+hardware logic design, with that of the existing works. We                model with the Verilog dataset augmented from GitHub. When
+experimented with four different well-known industry-standard             compared with performance of VeriGen [15] on similar
+LLMs (gpt-3.5 turbo [9], gpt-4o [10], Claude 3                            benchmarks, ChipGPT-FT increases functional correctness
+Haiku [11], Claude 3.5 Sonnet [12]), and Vitis HLS.                       of the generated code from 58.8% to 70.6%.
+We use a subset of the VerilogEval dataset [5], comprising 70                Another branch of work targeting LLMs has focused on
+problems sourced from the HDLBits platform, to evaluate the               the quality of the generated Verilog code regarding creativity,
+approaches (the proposed software pipeline vs. existing tech-             optimization, resource utilization and flexibility [6], [22]–
+niques). We call this the HLSEval dataset, which establishes              [24]. Other prominent works in this domain have focused on
+the superior accuracy (up to pass@1 value of 0.86) for our                using LLMs for hardware testing [25], [26], bug fixing [27],
+proposed approach, over existing LLM-assisted automatic Ver-              generating security assertions [28]–[30] and formal verification
+ilog RTL generation. We have made the HLSEval benchmarks                  of RTL [31]. Works such as [32] and [33] use LLM to enhance
+and LLM scripts open-source on Github [13].                               hardware design productivity by providing a conversational
+   Next, we describe some related work on automated RTL                   interface like an engineering chatbot that helps in task plan-
+generation and validation using LLMs.                                     ning, EDA script generation, bug analysis and task execution
+                                                                          through the invocation of EDA tool APIs.
+    II. LLM- BASED AUTOMATED D IGITAL H ARDWARE                              Very few studies have been conducted in the LLM realm
+               D ESIGN AND VALIDATION                                     regarding high-level synthesis. Authors in [34] proposed a
+   With the escalating popularity of LLMs, several research               workflow called C2HLSC, enabling seamless refactoring of
+works have aimed at harnessing their power to generate                    a traditional C program to HLS-compatible C, to produce
+HDL (primarily Verilog) code, to automate digital hardware                optimized hardware architectures. In [35], authors developed a
+design and validation. Both [14] and [15] fine-tuned the open-            framework called GPT4AIGChip, to design an AI accelerator,
+source CodeGen model [16] with the training data consists of              starting from human language specifications. Specifically, it
+Verilog codes from GitHub and machine-readable Verilog code               used gpt-4 [18] to design the AI accelerator by prompting for
+snippets from electronic copies of Verilog textbooks. Evalua-             decoupled HLS C++ modules. Though the authors investigated
+tion of curated tasks concluded that the resulting VeriGen                the viability of HLS with the conclusion that current LLMs
+model [15] delivered functionally accurate code only 41.9%                struggle with understanding long dependencies, the experi-
+of the time. In [5], the authors designed a benchmarking                  mentation was not thorough and comprehensive enough to
+framework to assess LLM performance in Verilog code gen-                  account for various types of tasks frequently seen for hardware
+eration tasks in hardware design. They also introduced a                  design in HLS.
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015                                                                                3
+
+
+
+                                                                         of concise hardware design tasks that demand problem-solving
+                                                                         skills in circuit optimization, boolean logic reduction, state
+                                                                         transitions, and more. We only consider a subset of 70 com-
+                                                                         binational logic circuits for this evaluation process. Sequential
+                                                                         circuits are realized in HLS in the form of streams [2],
+                                                                         whereas in RTL, they are realized with one or more user-
+                                                                         defined clock signal(s) controlling a module. Thus, a fair
+                                                                         comparison between our proposed two-step approach with that
+                                                                         of direct LLM-generated Verilog is difficult due to contrasting
+                                                                         underlying concepts [2], [36]. So, we did not include those
+Fig. 2. Problem desciption of xnor in HLSEval.
+                                                                         62 sequential problems. Remaining problems in VerilogEval
+                                                                         were related to bug-finding in Verilog codes and text-based
+  III. P ROPOSED S OFTWARE P IPELINE FOR AUTOMATED                       question answers, and are hence unrelated to our scope.
+       V ERILOG G ENERATION AND I TS VALIDATION                             For HLSEval, the problem descriptions from the Verilo-
+                                                                         gEval are converted into a schema suitable for HLS C++
+  In this section, we discuss in detail the HLSEval dataset; our         prompting. A sample for problem statement xnor is shown
+proposed software pipeline for automated Verilog generation,             in Fig. 2. It has two parts: 1) the problem description rep-
+and its evaluation technique.                                            resenting the hardware generation task in simple English,
+                                                                         and, 2) the function description providing a snapshot of the
+A. The HLSEval Dataset                                                   function signature we are expecting from the LLM. Repre-
+                                                                         senting Finite State Machines (FSMs) and Karnaugh maps
+   We assess the functional correctness of the proposed hard-
+                                                                         (K-maps) into textual forms was a challenge, and for this, we
+ware design pipeline on problems selected from the Verilo-
+                                                                         queried gpt-3.5 turbo [9] as shown in Fig. 3 and Fig. 4.
+gEval [5] dataset. VerilogEval encompasses diverse coding
+                                                                         We adopted the textual structure as returned by gpt-3.5
+tasks, ranging from simple combinational circuits to complex
+                                                                         turbo, for further prompting by LLM.
+finite state machines. Our proposed HLSEval dataset consists
+
+                                                                         B. Proposed Software Pipeline for Automated Verilog Gener-
+                                                                         ation
+                                                                            The first stage of the proposed pipeline, as shown in Fig. 1,
+                                                                         consists of the prompting the LLM properly with well-crafted
+                                                                         problem statements in a natural language (English in our
+                                                                         case). Fig. 5 shows an example of such prompting for the
+                                                                         problem fadd (a binary full adder). The system prompt is
+                                                                         concatenated with an “one-shot” example and user prompt,
+                                                                         and sent to the LLM for inference. The one-shot example
+                                                                         helps to address ambiguity within the problem descriptions,
+                                                                         particularly when there is a precise requirement for certain
+                                                                         attributes in the LLM response. The pragmas introduced for
+                                                                         each problem are optional. In our case, we use it to align
+                                                                         the downstream Verilog generated with those generated by
+                                                                         the existing pipeline of [5] for better comparison. Fig. 5
+                                                                         also shows the response produced by LLM, an annotated
+                                                                         HLS-compliant C++ code snippet with the provided function
+Fig. 3. gpt-3.5 turbo response for Finite State Machine (FSM) specifi-   signature, and correct functionality. Next, the generated HLS
+cations.
+                                                                         C++ code produced by LLM is converted to Verilog using
+                                                                         Vitis HLS [2]. Fig. 6 shows the generated Verilog for fadd
+                                                                         by Vitis HLS, corresponding to the C++ code in Fig. 5.
+
+                                                                         C. Evaluation Methodology for Proposed Technique
+                                                                            We use the open-source evaluation harness described in [8]
+                                                                         to validate the Verilog files generated by our pipeline. It com-
+                                                                         pares simulation results between the generated Verilog, and
+                                                                         “golden reference” Verilog implementations. It uses the open-
+                                                                         source Icarus Verilog [37] simulator adapted in a sandbox
+                                                                         environment to safely run the generated Verilog files. We
+                                                                         use the popular pass@k metric [38] to measure functional
+Fig. 4. gpt-3.5 turbo response for Karnaugh map (K-map) specification.   correctness of the generated Verilog RTL, where a problem is
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015                                                                                       4
+
+
+
+
+                                                                                 Fig. 6. Verilog RTL of fadd generated by Vitis HLS.
+
+
+                                                                                   Next, we describe comparative experimental evaluation re-
+                                                                                 sults.
+
+                                                                                                  IV. E XPERIMENTAL R ESULTS
+                                                                                    For testing, we use four of the best state-of-the-art commer-
+                                                                                 cial LLMs, namely, gpt-3.5 turbo [9] and gpt-4o [10]
+                                                                                 from OpenAI, and Claude 3 Haiku [11] and Claude
+                                                                                 3.5 Sonnet [12] by Anthropic (the last two were hosted
+                                                                                 on Amazon Web Services). We set the parameters to be: top
+                                                                                 p = 0.95, temperature = 0.8, and context length = 2048 for all
+                                                                                 the experiments. For measuring pass@k = {1, 5, 10} we use
+                                                                                 Eqn. (1), with n = 20 code completions for each problem.
+
+                                                                                 A. English to Verilog RTL: Direct Conversion vs. Two-stage
+                                                                                 Proposed Software Pipeline
+                                                                                    Table I illustrates the pass@ rates for the HLSEval tasks
+Fig. 5. Example of prompting for fadd (full adder) in HLSEval. The
+logic description includes a description of the problem in natural language, a
+                                                                                 using the various LLMs, and compares both techniques. NL to
+function description, and a sample one-shot input and output definition.         Verilog refers to existing technique [5], where LLM generates
+                                                                                 Verilog based on natural language, whereas NL to Verilog via
+                                                                                 HLS refers to our proposed approach where LLM generates
+considered solved if any one of k randomly selected samples                      HLS-compatible C++ based on natural language, that is then
+pass the unit tests:                                                             converted to Verilog. From the study in [5], more capable and
+                                 "        #       n−c                           larger LLMs generally result in better Verilog code generation
+                                                    k
+                pass@k := EProblems 1 −             n       ,             (1)    capability. This observation is consistent with our results for
+                                                    k                            the four LLMs, both for the NL to Verilog scheme, as well as
+where we generate n ≥ k samples per problem among which                          the NL to Verilog via HLS scheme. However, we obtained
+c ≤ n samples pass testing. In practice, the number of samples                   significant improvement in pass@ values for the proposed
+n must be sufficiently large (at least twice the value of k) to                  NL to Verilog via HLS software pipeline, compared to the
+produce low-variance estimates for pass@k.                                       NL to Verilog technique.
+
+
+                                                                 TABLE I
+                               C OMPARISON OF DIFFERENT MODELS ON HLSE VAL DATASET ( AVERAGE pass@k VALUES )
+
+                                                                                                   NL to Verilog via HLS
+                                                                   NL to Verilog
+                                    Model                                                               (This Work)
+                                                         pass@1      pass@5      pass@10      pass@1 pass@5 pass@10
+                            gpt-3.5 turbo                  0.36        0.53        0.56         0.60       0.66       0.68
+                               gpt-4o                      0.67        0.75        0.77         0.80       0.83       0.84
+                           Claude 3 Haiku                  0.50        0.63        0.66         0.64       0.72       0.74
+                          Claude 3.5 Sonnet                0.70        0.80        0.83         0.86       0.87       0.87
+JOURNAL OF LATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2015                                                                                                     5
+
+
+
+                                                                                  [10] ——, “gpt-4o,” https://openai.com/index/hello-gpt-4o/[Online; accessed
+                                                                                       12-July-2024].
+                                                                                  [11] Anthropic, “Claude 3 Haiku,” https://www.anthropic.com/news/
+                                                                                       claude-3-haiku[Online; accessed 12-July-2024].
+                                                                                  [12] ——, “Claude 3.5 Sonnet,” https://www.anthropic.com/news/
+                                                                                       claude-3-5-sonnet[Online; accessed 12-July-2024].
+                                                                                  [13] R. Mukherjee, “HLSEval,” https://github.com/rijoym/HLSEval[Online;
+                                                                                       accessed 19-July-2024].
+                                                                                  [14] E. Dehaerne et al., “A deep learning framework for verilog
+                                                                                       autocompletion towards design and verification automation,” 2023.
+                                                                                       [Online]. Available: https://arxiv.org/abs/2304.13840
+                                                                                  [15] S. Thakur et al., “Verigen: A large language model for verilog code
+                                                                                       generation,” ACM Trans. Des. Autom. Electron. Syst., vol. 29, no. 3,
+Fig. 7. An example of K-map problem.                                                   apr 2024. [Online]. Available: https://doi.org/10.1145/3643681
+                                                                                  [16] E. Nijkamp et al., “Codegen: An open large language model for code
+                                                                                       with multi-turn program synthesis,” ICLR, 2023.
+                                                                                  [17] H.      Wong,      “HDLBits,”       https://hdlbits.01xz.net/wiki/Problem
+B. Current Limitations                                                                 sets[Online; accessed 12-July-2024].
+   One major challenge we found in automated logic design                         [18] OpenAI, “gpt-4,” https://openai.com/index/gpt-4-research/[Online; ac-
+                                                                                       cessed 12-July-2024].
+from natural language is realising the circuits corresponding to                  [19] S. Thakur et al., “Autochip: Automating hdl generation using llm
+K-map problems like those of Fig. 7. Even though we prompt                             feedback,” 2024. [Online]. Available: https://arxiv.org/abs/2311.04887
+the LLM with the schema provided in Fig. 4, none of the                           [20] K. Chang et al., “Data is all you need: Finetuning llms for chip
+                                                                                       design via an automated design-data augmentation framework,” 2024.
+four LLMs generated correct code. By analyzing the generated                           [Online]. Available: https://arxiv.org/abs/2403.11202
+(incorrect) Verilog RTL codes, we found that the LLMs could                       [21] H. Touvron et al., “Llama 2: Open foundation and fine-tuned chat
+not minimize the K-maps, or correctly identify the minterms                            models,” 2023. [Online]. Available: https://arxiv.org/abs/2307.09288
+                                                                                  [22] M. DeLorenzo et al., “Make every move count: Llm-based high-
+or maxterms. This could be a future work domain for LLMs                               quality rtl code generation using mcts,” 2024. [Online]. Available:
+to solve, by fine-tuning with more data or advanced prompting                          https://arxiv.org/abs/2402.03289
+techniques.                                                                       [23] M. DeLorenzo, V. Gohil, and J. Rajendran, “Creativeval: Evaluating
+                                                                                       creativity of llm-based hardware code generation,” 2024. [Online].
+                                                                                       Available: https://arxiv.org/abs/2404.08806
+                            V. C ONCLUSION                                        [24] J. Blocklove et al., “Chip-chat: Challenges and opportunities in
+                                                                                       conversational hardware design,” in 2023 ACM/IEEE 5th Workshop on
+   Researchers have applied LLMs to generate RTL descrip-                              Machine Learning for CAD (MLCAD). IEEE, Sep. 2023. [Online].
+tions for digital hardware from hardware specifications written                        Available: http://dx.doi.org/10.1109/MLCAD58807.2023.10299874
+in natural language. This paper proposes an alternative as a                      [25] R. Qiu et al., “Autobench: Automatic testbench generation and
+                                                                                       evaluation using llms for hdl design,” 2024. [Online]. Available:
+software pipeline for automatic hardware logic design, where                           https://arxiv.org/abs/2407.03891
+LLMs are prompted to produce HLS-compatible C++ code,                             [26] J. Blocklove et al., “Evaluating llms for hardware design and test,”
+followed by HLS of the generated C++ code to Verilog RTL.                              2024. [Online]. Available: https://arxiv.org/abs/2405.02326
+                                                                                  [27] B. Ahmad et al., “On hardware security bug code fixes by prompting
+Detailed experiments on a standard benchmark suite demon-                              large language models,” IEEE Transactions on Information Forensics
+strated that Verilog code generation through the proposed                              and Security, vol. 19, pp. 4043–4057, 2024.
+software pipeline achieves much higher functional correctness                     [28] S. Paria, A. Dasgupta, and S. Bhunia, “Divas: An llm-based end-to-end
+                                                                                       framework for soc security analysis and policy-based protection,” 2023.
+rate.                                                                                  [Online]. Available: https://arxiv.org/abs/2308.06932
+                                                                                  [29] R. Kande et al., “(security) assertions by large language models,” IEEE
+                              R EFERENCES                                              Transactions on Information Forensics and Security, vol. 19, pp. 4374–
+                                                                                       4389, 2024.
+ [1] J. Cong et al., “High-level synthesis for fpgas: From prototyping to de-     [30] X. Meng et al., “Unlocking hardware security assurance: The potential
+     ployment,” IEEE Transactions on Computer-Aided Design of Integrated               of llms,” 2023. [Online]. Available: https://arxiv.org/abs/2308.11042
+     Circuits and Systems, vol. 30, no. 4, pp. 473–491, 2011.                     [31] M. Orenes-Vera, M. Martonosi, and D. Wentzlaff, “Using llms
+ [2] AMD,           “Vitis         HLS,”         https://docs.amd.com/r/en-US/         to facilitate formal verification of rtl,” 2023. [Online]. Available:
+     ug1399-vitis-hls[Online; accessed 12-July-2024].                                  https://arxiv.org/abs/2309.09437
+ [3] F. Ferrandi et al., “Invited: Bambu: an open-source research framework       [32] H. Wu et al., “Chateda: A large language model powered autonomous
+     for the high-level synthesis of complex applications,” in 58th ACM/IEEE           agent for eda,” IEEE Transactions on Computer-Aided Design of Inte-
+     Design Automation Conference (DAC). IEEE, Dec 2021, pp. 1327–                     grated Circuits and Systems, pp. 1–1, 2024.
+     1330.                                                                        [33] M. Liu et al., “Chipnemo: Domain-adapted llms for chip design,” 2024.
+ [4] H. Pearce, B. Tan, and R. Karri, “Dave: Deriving automatically verilog            [Online]. Available: https://arxiv.org/abs/2311.00176
+     from english,” in Proceedings of the 2020 ACM/IEEE Workshop on               [34] L. Collini, S. Garg, and R. Karri, “C2hlsc: Can llms bridge
+     Machine Learning for CAD, ser. MLCAD ’20. New York, NY,                           the software-to-hardware design gap?” 2024. [Online]. Available:
+     USA: Association for Computing Machinery, 2020, p. 27–32. [Online].               https://arxiv.org/abs/2406.09233
+     Available: https://doi.org/10.1145/3380446.3430634                           [35] Y. Fu et al., “Gpt4aigchip: Towards next-generation ai accelerator design
+ [5] M. Liu et al., “VerilogEval: evaluating large language models for                 automation via large language models,” in IEEE/ACM International
+     verilog code generation,” in 2023 IEEE/ACM International Conference               Conference on Computer Aided Design (ICCAD), 2023, pp. 1–9.
+     on Computer-Aided Design (ICCAD), 2023.                                      [36] J. Cong et al., “Fpga hls today: Successes, challenges, and
+ [6] K. Chang et al., “Chipgpt: How far are we from natural language                   opportunities,” ACM Trans. Reconfigurable Technol. Syst., vol. 15,
+     hardware design,” 2023. [Online]. Available: https://arxiv.org/abs/2305.          no. 4, aug 2022. [Online]. Available: https://doi.org/10.1145/3530775
+     14019                                                                        [37] S. Williams, “The ICARUS Verilog Compilation System,” https://github.
+ [7] B. Rozière et al., “Code llama: Open foundation models for code,”                com/steveicarus/iverilog[Online; accessed 12-July-2024].
+     2024. [Online]. Available: https://arxiv.org/abs/2308.12950                  [38] M. Chen et al., “Evaluating large language models trained on code,”
+ [8] M.     Liu     et     al.,   “VerilogEval,”     https://github.com/NVlabs/        2021. [Online]. Available: https://arxiv.org/abs/2107.03374
+     verilog-eval[Online; accessed 12-July-2024].
+ [9] OpenAI, “gpt-3.5,” https://openai.com/index/chatgpt/[Online; accessed
+     12-July-2024].
+

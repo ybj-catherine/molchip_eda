@@ -5,6 +5,10 @@ __pycache__/
 *.swo
 *~
 
+# 本地私有工作区：实验、选题分析、论文收集箱与重复备份
+# 只在本机保留，禁止进入提交或上传范围。
+/_本地私有资料/
+
 # 未开源论文 PDF（仅保留链接，不上传 PDF）
 ARCADE/ARCADE_VTS2026.pdf
 DREAMPlace/DAC2019_DREAMPlace.pdf

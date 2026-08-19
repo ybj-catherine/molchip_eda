@@ -1,0 +1,3363 @@
+
+
+[2506.08332] ORFS-agent: Tool-Using Agents for Chip Design Optimization
+
+ function detectColorScheme(){
+ var theme="light";
+ var current_theme = localStorage.getItem("ar5iv_theme");
+ if(current_theme){
+ if(current_theme == "dark"){
+ theme = "dark";
+ } }
+ else if(!window.matchMedia) { return false; }
+ else if(window.matchMedia("(prefers-color-scheme: dark)").matches) {
+ theme = "dark"; }
+ if (theme=="dark") {
+ document.documentElement.setAttribute("data-theme", "dark");
+ } else {
+ document.documentElement.setAttribute("data-theme", "light"); } }
+
+ detectColorScheme();
+
+ function toggleColorScheme(){
+ var current_theme = localStorage.getItem("ar5iv_theme");
+ if (current_theme) {
+ if (current_theme == "light") {
+ localStorage.setItem("ar5iv_theme", "dark"); }
+ else {
+ localStorage.setItem("ar5iv_theme", "light"); } }
+ else {
+ localStorage.setItem("ar5iv_theme", "dark"); }
+ detectColorScheme(); }
+
+ORFS-agent: Tool-Using Agents for Chip Design Optimization
+
+Amur Ghose
+
+Andrew B. Kahng
+
+Sayak Kundu
+
+Zhiang Wang
+
+Email: {aghose,abk,sakundu,zhw033}@ucsd.edu
+
+Affiliation: UC San Diego, La Jolla, CA, USA
+
+Abstract
+
+Machine learning has been widely used to optimize complex engineering workflows
+across numerous domains. In the context of integrated circuit design,
+modern flows (e.g., going from a register-transfer level netlist to physical layouts)
+involve extensive configuration via thousands of parameters, and small changes
+to these parameters can have large downstream impacts on
+desired outcomes - namely design performance, power, and area.
+Recent advances in Large Language Models (LLMs) offer new opportunities
+for learning and reasoning within such high-dimensional optimization tasks.
+In this work, we introduce ORFS-agent, an LLM-based iterative optimization agent
+that automates parameter tuning in an open-source hardware design flow.
+ORFS-agent adaptively explores parameter configurations,
+demonstrating clear improvements over standard Bayesian optimization
+approaches in terms of resource efficiency and final design metrics.
+Our empirical evaluations on two different technology nodes and a range of circuit benchmarks
+indicate that ORFS-agent can improve both routed wirelength and effective clock period by over 13%, all while using 40% fewer optimization iterations.
+Moreover, by following natural language objectives to trade off certain metrics for others,
+ORFS-agent demonstrates a flexible and interpretable framework
+for multi-objective optimization. Crucially, ORFS-agent is modular and
+model-agnostic, and can be plugged in to any frontier LLM without any further fine-tuning.
+
+Index Terms: Open-Source EDA, Physical Design, Autotuning, Large Language Model
+
+I Introduction
+
+Large Language Models (LLMs) have reshaped AI, excelling at natural-language generation, question answering, and zero-/few-shot learning [7]. Their emergent reasoning spans mathematical problem solving, code generation, and multi-step orchestration via agent frameworks [12]. LLMs integrate into agent systems [50], pairing API calls, predefined functions (“tool use”), and context windows to meet language-defined goals. These agents already serve fields from healthcare to voice-controlled computing.
+
+Research on LLMs has seen
+major advances in neural architecture search [13] [32],
+combinatorial optimization [5] [37],
+and heuristic selection [6] [28], all
+relevant to chip design sub-tasks. Chip design relies on a complex
+EDA flow that turns high-level hardware descriptions into manufacturable
+layouts. Each stage exposes hundreds or thousands of hyperparameters (timing constraints,
+placement strategies, routing heuristics, etc.) whose joint settings strongly affect
+power, performance, and area (PPA). At advanced nodes, design complexity and the parameter space balloon further [1].
+
+The Concrete Problem.
+We target LLM-driven black-box optimization across varied objectives,
+circuits, and technology nodes.
+In ML terms, this is context-based Bayesian optimization: LLM agents
+exploit metadata (e.g., log files) as heuristics. Traditional Bayesian optimization
+(BO) tunes EDA parameters well, yet pure black-box methods miss domain knowledge and
+need explicit objectives.
+LLMs, with broad “world knowledge,” use chain-of-thought to iteratively propose and
+refine parameters [62] [53].
+
+LLM agents interface with chip-design tools, parse intermediate results,
+call domain APIs, and adjust flow parameters in a human-like loop.
+They also slot into existing heuristic frameworks (e.g., BO) to boost efficiency.
+
+Distinction from other works: Fine-tuning vs. Model-Agnostic Approaches.
+Many recent efforts apply domain-specific fine-tuning.
+ChatEDA [53], ChipNeMo [33], and
+JARVIS [42] curate EDA-centric corpora, retrain or instruction-
+tune a base model, and then self-host the resulting checkpoint; this entails recurring
+data-collection, training, and maintenance costs whenever a stronger foundation
+model is released. ChatEDA, for instance, fine-tunes an open-source (or API-tunable)
+model on Q-A examples. Each new SOTA model demands another fine-tune: closed models
+(e.g., Claude) seldom allow this, and open models lag the frontier. Fine-tuning plus
+lifecycle management and hosting may cost USD $10k, and the maintainer pays for
+inference.
+
+Alternative approaches avoid retraining, and instead wrap or retrieve around
+frozen SOTA models. EDA-Copilot [4], Ask-EDA [47],
+and ORAssistant [25] combine retrieval-augmented
+generation with off-the-shelf chat models to answer tool-usage questions, while
+surveys (LLM4EDA [62], “Future or Mirage?” [60], and
+the taxonomy in [45])
+highlight the growing appeal of lightweight, model-agnostic agents.
+
+Our agent follows this latter paradigm: it wraps whatever
+SOTA model is available,
+with zero extra training cost; our full experiments can run
+on Grok-Mini for less than USD $10. Further, while previous
+agents such as ChatEDA build general Q-A support for engineers,
+our agent focuses solely on optimizing flow parameters.
+
+Our Contributions.
+We introduce ORFS-agent, an LLM-driven autotuner for an open-source
+chip-design flow that tops Bayesian optimization (BO) with fewer flow runs.
+Our main contributions are:
+
+• 
+
+We embed ORFS-agent in OpenROAD-flow-scripts (ORFS)[70]. It schedules
+parallel ORFS runs, reads intermediate metrics (wirelength, timing, power), and
+iteratively refines parameters to optimize post-route results. Leveraging ORFS’s
+METRICS2.1 logging[22], the agent skips bad configurations and gives
+robust, efficient chip design optimization. Modularity allows instantly switching models.
+
+• 
+
+ORFS-agent obeys natural-language instructions to weight or constrain design
+metrics (e.g., favor timing over wirelength) and taps existing BO libraries inside
+its tool-use loop for extra lift.
+
+• 
+
+On ASAP7 and SKY130HD (three circuits each), ORFS-agent trims ORFS calls and
+improves wirelength and effective clock period by ≥13%\geq 13\% over baseline, beating
+the BO-based ORFS AutoTuner [22].
+
+Fig. 1: ORFS-agent integrated with OpenROAD-flow-scripts (ORFS); metrics gathered via METRICS2.1 [22].
+
+In the following, Section II reviews BO and recent
+LLM-EDA work. Section III gives details of ORFS-agent—prompts, data, iterations.
+Section IV gives experiments. Section V concludes and
+sketches future work. Anonymized code is open-sourced
+for inspection at [71].
+
+II Related Work
+
+We organize our discussion of related work into three subsections,
+covering Open-Source EDA, Bayesian Optimization, and LLMs for
+Optimization in EDA in that order.
+Additional discussion of EDA flow and OpenROAD is given in Appendix
+A.
+
+II-A Open-Source EDA and OpenROAD as an ML Testbed
+
+We target LLM/ML EDA research based on the permissively
+open-sourced OpenROAD[3], where
+code, logs and data can be made public to enable reproducible training
+and evaluation. Tcl/Python APIs expose every flow stage, for capture of
+live metrics and debug – vital for ML agents.
+With its RTL-to-GDSII scope, transparency and active community,
+OpenROAD provides an excellent testbed. ORFS wraps OpenROAD
+in editable JSON/Tcl for large-scale experiments[70]. Other tools
+build on OpenROAD, e.g., DREAMPlace yields 30×30\times faster placement than OpenROAD’s RePlAce
+via CUDA acceleration [30].
+
+II-B Bayesian Optimization in Flow Tuning
+
+Bayesian optimization (BO) is a widely used approach for parameter autotuning
+in EDA flows [22]
+including in commercial tools such as
+Synopsys DSO.ai [68] and
+Cadence Cerebrus [65].
+It enjoys efficiency in terms of samples and solution space search,
+but faces drawbacks:
+
+• 
+
+Contextual and Knowledge Limitations: BO frameworks typically do not
+incorporate domain knowledge unless manually encoded (e.g., at PDK level). Further,
+they do not adapt from past results.
+
+• 
+
+Explicit Objective Functions: BO frameworks require explicitly
+defined objective functions, possibly missing complex or subjective criteria.
+This can hinder effectively balancing PPA in chip design.
+
+• 
+
+Scalability Challenges: High-dimensional spaces and large designs can
+combinatorially overwhelm traditional BO approaches [57].
+
+We seek flexible, context-aware and data-driven
+approaches to parameter tuning. Large Language Models offer a promising solution.
+
+II-C Large Language Models (LLMs) in EDA Optimization
+
+LLMs such as GPT [7] absorb web- and
+paper-scale corpora, giving them broad technical knowledge. They parse design logs,
+infer context, and suggest EDA
+optimizations [51] [62] [53].
+
+Contextual knowledge and adaptivity.
+Unlike black-box Bayesian optimization (BO), LLMs ingest circuit data, retrieve
+literature, and adjust strategies on the fly. They read partial metrics (e.g., post-
+CTS timing) and learn user preferences without explicit
+objectives [40].
+
+Recent progress.
+Advisor systems LLM4EDA and ChatEDA guide placement and timing
+fixes [62] [53]. Startups
+Silogy,
+Silimate, Atopile, Diode
+Computers and ChipAgents extend AI across design
+tasks. New methods such as LLAMBO [31, 69], forum posts on r/MachineLearning,
+and the LAD Symposium reinforce the trend.
+Multi-fidelity BO and meta-surrogates [14, 26, 46] improve sampling
+efficiency yet still treat flows as opaque; by contrast, LLMs promise context-aware tuning.
+Large-scale industrial adoption of LLMs for EDA can be seen, e.g., NVIDIA’s MARCO
+framework shows graph-based multi-agent task solving for design
+flows[66].
+Open problems in
+LLM-based hardware verification are mapped in [54].
+
+II-D Working with LLMs and Agent Frameworks
+
+LLMs need scaffolding beyond raw prompts. Key techniques are:
+
+• 
+
+Prompt engineering crafts system/user messages for clarity.
+
+• 
+
+Chain-of-thought reasoning [51] elicits stepwise
+logic.
+
+• 
+
+Retrieval-augmented generation [29] injects
+external documents.
+
+• 
+
+Tool-use / agent
+frameworks [44, 15, 43] let an LLM call
+shells or solvers, parse error logs [20], and orchestrate
+full flows [27].
+
+These methods enable adaptive, metric-driven tuning.
+
+LLM agents for optimization.
+Agents excel at ill-specified goals [58], prompt
+search [16], hyperparameter tuning [34],
+autonomous research [19], and benchmark
+challenges [18].
+EE Times has forecast the advent of collaborating AI agents
+for chip design by 2025 [11].
+
+Coupling with Bayesian optimization.
+LLM-based agents can parse PPAC metrics, narrow BO search spaces, prune bad
+configs, or switch heuristics. Blending BO with symbolic
+reasoning [41] [49] yields targeted, adaptive flows.
+ORFS-agent builds on this foundation.
+
+More modern advances.
+OPRO treats the model itself as the optimizer [58].
+LLAMBO warm-starts BO with zero-shot hints [31].
+ADO-LLM fuses analog priors with BO loops [59].
+ChatEDA and the newer EDAid system wire agents straight into complete RTL-to-GDSII
+flows [53] [55].
+RL efforts such as AutoDMP and Google’s graph-placement policy show tractability of
+end-to-end layout [2] [10] [38].
+
+Tool-centric agent stacks.
+Browser agents such as WebArena surf, click, and scrape constraints for downstream
+solvers [61].
+Terminal aides—ShellGPT and Devin—run make, git, and
+yosys on command, closing the loop between code and
+silicon [73] [67].
+API routers like ToolLLM, Gorilla, and OpenAgents map natural-language tasks onto
+thousands of REST calls and
+plugins [44] [43] [56].
+AutoGPT-style self-looping controllers review results and re-issue
+actions [48], while the AI-Scientist pipeline shows how the same
+pattern can automate hypothesis, experiment, and paper
+generation [74].
+At code level, AlphaCode 2 beats 85% of Codeforces
+competitors [64]; RL-trained VeriSeek and retrieval-guided
+logic synthesis agents trim Verilog area-delay in
+minutes [35] [8].
+Together, browser, tool, and terminal hooks turn LLMs into end-to-end optimization
+engines.
+
+III Proposed Methodology
+
+We now introduce the integration framework of our ORFS-agent
+with the OpenROAD-flow-scripts (ORFS).
+We then present an explanation of a single iteration of the ORFS-agent loop.
+
+III-A Overview of ORFS-agent
+
+ORFS-agent is an end-to-end agent framework
+designed to optimize OpenROAD-based chip design flows
+according to user-specified objectives and constraints.
+ORFS-agent leverages an LLM capable
+of performing internal text-based reasoning and invoking
+external tools (function-calling).
+Our approach supports parallel runs of ORFS, partial metric gathering
+and various optimization strategies.
+Figure 1 shows
+the overall framework of ORFS-agent.
+
+The inputs to ORFS-agent include process design kits (PDKs) for the target
+technology node,
+target circuits described in Verilog files, and user-defined prompts.
+PDKs are sets of files that provide process-related information needed for chip
+implementation.
+In this work, we use two technology nodes: SKY130HD [72]
+and ASAP7 [63].
+The prompts define the objective function and constraints in natural language.
+The objective function in this work is formulated as
+
+F=∑i=1nαi​fi,F=\sum_{i=1}^{n}\alpha_{i}f_{i},
+
+where each fif_{i} is a design metric (e.g., routed wirelength, worst
+negative slack)
+and each αi\alpha_{i} is a nonnegative real weight.
+This formulation allows optimization of either a single metric or a weighted
+combination of multiple metrics.
+Then, ORFS-agent iteratively modifies the configuration file (config.mk) for ORFS
+and SDC files to optimize the specified objectives.
+The ORFS configuration file defines adjustable parameters (knobs) for placement,
+clock tree synthesis and routing.
+The SDC file specifies timing constraints for the target design, such as clock
+period.
+The outputs of ORFS-agent are the optimized configuration file for ORFS and the
+optimized SDC file; together these optimize the user-specified objectives under
+given constraints.
+
+ORFS-agent relies on an LLM (e.g., GPT, Claude, Llama) that can:
+(i) read and modify files and logs,
+(ii) optionally invoke external tools via function calling, i.e., specify
+ argument values for pre-existing functions (e.g., Python functions),
+and (iii) propose new parameter values to improve the objective under given
+constraints.
+There is a key distinction between direct LLM use and the use of LLM-based
+agents with function-calling capabilities.
+In the function-calling paradigm, the LLM is given a goal (e.g., “write a function
+to compute a matrix eigendecomposition”)
+along with a list of tools, which are black-box functions the LLM can invoke
+to facilitate task completion.
+For example, a tool named 𝐈𝐒𝐃𝐈𝐀𝐆𝐎𝐍𝐀𝐋𝐈𝐙𝐀𝐁𝐋𝐄{\mathbf{ISDIAGONALIZABLE}} determines whether
+a matrix MM is diagonalizable
+and returns a Boolean value.
+The tools used in ORFS-agent fall into the following three categories:
+
+• 
+
+INSPECT tools allow the agent to inspect the data collected
+so far without context-level manipulation.
+
+• 
+
+OPTIMIZE tools allow the agent to model and optimize
+the data by a suitable model such as a Gaussian Process.
+
+• 
+
+AGGLOM tools allow the agent to sub-select from possible
+hyperparameters obtained from an OPTIMIZE tool.
+
+In the basic function-calling agent loop,
+at iteration tt with context CtC_{t}, the agent performs the
+following up to K times:
+
+• 
+
+Observe: Load the ORFS configuration file and SDC file,
+execute ORFS, and examine the results of ORFS;
+
+• 
+
+Query: Call tools from the provided list (up to MM times) to
+gather information and update the context to Ct+1C_{t+1}; and
+
+• 
+
+Alter: Modify ORFS config/SDC files based on Ct+1C_{t+1}.
+
+By iterating through these steps, the function-calling agent incrementally refines
+its solutions by using external tools.
+
+III-B Overall Iteration Structure with Example and Tool Usage
+
+We describe one iteration of the ORFS-agent loop,
+which executes K parallel runs of OpenROAD-flow-scripts,
+with K being provided by the user.
+As shown in Figure 2,
+each iteration consists of the following steps: RUN,
+READ,
+COLLATE,
+INSPECT,
+OPTIMIZE,
+AGGLOMERATE (optional)
+and ALTER.
+
+We maintain a GLOBALCONTEXT that collects relevant parameters and
+partial metrics across steps. The initialization of this GLOBALCONTEXT at
+the first iteration is also the LLM prompt; this initialization, along with
+procedures for update between iterations for GLOBALCONTEXT, is separately
+discussed in Appendix E. Let K denote the number of
+parallel
+runs per iteration, and let TIMEOUT specify the maximum runtime for
+each batch. Below, we show an example scenario with
+K=25\texttt{K}=25, TIMEOUT=30\texttt{TIMEOUT}=30 and parameters
+(Core Util, Clock Period) can be integrated, along with
+possible function-calling tools. Let us consider the jj-th iteration.
+Assume that we target the routed wirelength and take the CTS
+wirelength as a surrogate (recalling that the CTS stage occurs earlier and thus
+will likely not time out).
+
+Fig. 2: Overall ORFS-agent flowchart.
+
+Stage 1: RUN K Parallel Jobs.
+Launch K ORFS runs, each with distinct parameters, until the
+TIMEOUT is reached.
+
+• 
+
+Example: For K=25\texttt{K}=25 and TIMEOUT=30\texttt{TIMEOUT}=30
+minutes, we launch 25 parallel runs, each exploring a different
+(Core Util, Clock Period) setting. All will run for at
+most 3030 minutes, producing log files.
+
+• 
+
+Tool use: This set of runs might be derived
+from a previous iteration where OPTIMIZE or AGGLOM
+tools suggest new parameter sets.
+
+• 
+
+No tool use: If tool use is disabled, these parameter files
+arise from simple in-context operations.
+
+Stage 2: READ.
+Gather JSON logs from the files generated by all RUN steps up to this
+iteration, which may contain partial surrogate
+metrics, e.g., from CTS stages as well as ground truth metrics from
+finished runs.
+
+• 
+
+Example: The agent collects 25×j25\times j JSON files, with the
+routed wirelength (ground truth) or the earlier, but rough CTS wirelength
+(surrogate).
+
+• 
+
+No tools, hence identical with or without tool use.
+
+Stage 3: COLLATE.
+Merge the logs into a single dataset, storing outcomes for all
+K ×j\times j runs (e.g., a table or array).
+
+• 
+
+Example: Build a unified array with columns
+(Core Util, Clock Period, CTS wirelength, routed
+wirelength). The routed wirelength can be absent. If the CTS wirelength is
+absent, skip the row.
+
+• 
+
+No tools, hence identical with or without tool use.
+
+Stage 4: INSPECT.
+Analyze the collated data.
+
+• 
+
+Example: For ≤25×j\leq 25\times j (≤\leq from skips) instances,
+find how
+Clock Period varies against the wirelength (actual target)
+and CTS wirelength (surrogate).
+
+• 
+
+Tool use: The agent calls pre-defined INSPECT tools
+to examine distributions, which allows sidestepping inspecting the values in context.
+For example, 𝐈𝐧𝐬𝐩𝐞𝐜𝐭𝐃𝐢𝐬𝐭𝐫𝐢𝐛𝐮𝐭𝐢𝐨𝐧⁡(𝐀𝐑𝐑,𝐗,𝐘,𝐘𝐬𝐮𝐫𝐫𝐨𝐠𝐚𝐭𝐞)\mathbf{InspectDistribution(ARR,X,Y,Y_{surrogate})}
+outputs the distributional relation between an input 𝐗\mathbf{X} and
+targets 𝐘\mathbf{Y} with surrogate targets 𝐘𝐬𝐮𝐫𝐫𝐨𝐠𝐚𝐭𝐞\mathbf{Y_{surrogate}}.
+Here we have Clock Period as 𝐗\mathbf{X}, CTS and routed wirelength
+as 𝐘𝐬𝐮𝐫𝐫𝐨𝐠𝐚𝐭𝐞,𝐘\mathbf{Y_{surrogate},Y} and 𝐀𝐑𝐑\mathbf{ARR} from the COLLATE step.
+
+• 
+
+No tool use: The agent reasons purely in context
+using its chain of thought by inspecting the data.
+
+Stage 5: OPTIMIZE.
+Based on INSPECT, propose new parameter sets for the next iteration.
+
+• 
+
+Example usage: The agent calls a OPTIMIZE tool,
+e.g., a Gaussian Process (𝐆𝐏\mathbf{GP}) with the COLLATE-level
+data, to get 200200 values of candidate Clock Period, Core Util
+pairs, using a Matern kernel, and Expected Improvement
+as search strategy.
+
+• 
+
+Tool use: In general, we may have candidate points from 𝐆𝐏⁡(𝐀𝐑𝐑,𝐚𝐫𝐠𝐬,…)\mathbf{GP}(\mathbf{ARR},\mathbf{args},\dots) or any other
+OPTIMIZE tool, obtaining many potential parameter sets.
+𝐀𝐑𝐑\mathbf{ARR} arises from collate, and the agent decides on which
+OPTIMIZE tool to use,
+i.e., whether to use a Gaussian Process at all, as well as the choice of
+𝐚𝐫𝐠𝐬\mathbf{args} depending on what it finds at the INSPECT phase.
+This may include choices over the kernel used, selection algorithm, and so
+on.
+
+• 
+
+No tool use: The agent solely uses its own context to directly
+suggest a set of parameters.
+
+Stage 6: AGGLOMERATE (optional). If more than K
+candidates are generated in the OPTIMIZE phase, then reduce
+to exactly K,
+often by maximizing diversity or coverage.
+
+• 
+
+Example: Since the 𝐆𝐏\mathbf{GP} produces 200200 new
+(Core Util, Clock Period) pairs; we reduce to
+25 via selecting through a valid AGGLOM tool,
+𝐄𝐧𝐭𝐫𝐨𝐩𝐲𝐒𝐞𝐥𝐞𝐜𝐭⁡(𝐀𝐑𝐑,𝐪𝐮𝐚𝐥𝐢𝐭𝐲,𝐩𝐨𝐢𝐧𝐭𝐬)\mathbf{EntropySelect(ARR,quality,points)}. This function returns
+𝐩𝐨𝐢𝐧𝐭𝐬\mathbf{points}, i.e., 2525 pairs of (Core Util,
+Clock Period) that it thinks are optimal as a set w.r.t. the
+provided 𝐪𝐮𝐚𝐥𝐢𝐭𝐲\mathbf{quality} metric (wirelength improvement) on the same
+𝐀𝐑𝐑\mathbf{ARR} from COLLATE.
+
+• 
+
+Tool use: The agent may use any number of AGGLOM
+tool choices from the LLM’s decisions along with parameters to call
+them with. The final output is of shape K ×\times the number
+of parameters optimized.
+
+• 
+
+No tool use: Here, the OPTIMIZE case uses
+structured outputs to yield exactly K sets of parameter
+choices in context directly, and this step is skipped.
+
+Stage 7: ALTER.
+Update ORFS configuration files with the newly selected parameter sets
+for the next iteration.
+
+• 
+
+Example: Generate 25 updated config/SDC files (or commands),
+each specifying one of the chosen (Core Util,
+Clock Period) combinations.
+
+• 
+
+No tools, hence identical with or without tool use.
+
+This process repeats until the stopping criteria—generally, total serial
+iteration count—are met.
+The outputs of stages READ to AGGLOMERATE enter the context
+window of the ORFS-agent in each iteration, but not necessarily into
+GLOBALCONTEXT.
+Context management and tool-level details appear in Appendix E.
+
+IV Experiments and Results
+
+In our experiments, we use six design instances
+comprising three circuits (IBEX, AES and JPEG) in two technology
+nodes (SKY130HD and ASAP7).
+All experiments are performed on a Google Cloud Platform (GCP)
+virtual machine with 112 virtual CPUs (C2D AMD Milan) and
+220GB RAM. The flow is based on the ce8d36a commit of the
+OpenROAD-flow-scripts repository, along with associated versions
+of OpenROAD, KLayout, Yosys, and other
+dependencies.11
+ 1
+
+ To confirm reproducibility, we transfer the
+DEF files generated during the place-and-route process to another
+server and verify that the results are consistent across environments.
+
+Although the timeout to run depends on the circuit, each “iteration” is
+consistently defined as
+25 parallel runs, with the exception of the JPEG circuits,
+which are run with 1212 parallel runs each. Each of these parallel runs uses four
+vCPUs and 4 GB of RAM. These parallel runs write to different intermediate folders
+for logs and results,
+running Yosys and other steps in parallel without reusing intermediate steps.
+At the end of each iteration, a clean operation moves the logs and
+folders to a separate directory to avoid contamination.
+
+Our experiments cover two settings.
+The first, “4-variable” setting involves optimizing over four
+parameters: Core Utilization, TNS End Percent, LB Add
+On Place Density, and Clock Period. The first three
+are in the configuration files of the respective circuits;
+Clock Period is in the .sdc file.
+The second, “12-variable” setting has eight
+additional tunable parameters that guide the physical design flow
+more comprehensively. We distinguish three experimental cases:
+
+• 
+
+4-variable, no tool use, where the LLM optimizes over four
+variables solely through prompt-tuning and in-context learning;
+
+• 
+
+4-variable with tool use, where Bayesian optimization enhances
+performance; and
+
+• 
+
+12-variable with tool use, which incorporates
+all 12 variables along with the optimization tools.
+
+Our experimental
+choices reflect the LLM requiring more complex tools to deal with
+higher-dimensional optimization problems.
+All of our experiments involve either 375375 (4-variable setting) or
+600600 iterations (12-variable setting).
+The ORFS-agent parameters are configured as follows:
+(i) the model used is claude-3-5-sonnet-20241022;22
+ 2
+
+ We do not
+observe any performance gains from the o1-class of models.
+(ii) temperature is set to 0.10.1;
+(iii) nucleus and top-K sampling are disabled; and
+(iv) to always output 25×4/1225\times 4/12 parameters (the number of
+parameters the LLM is optimizing over) in the specified format,
+we utilize JSON Mode (Structured Outputs
+API).33
+ 3
+
+ In terms of API costs, all of our experiments,
+including all failed runs, cost USD $48. Claude Sonnet 3.5 has since
+been overtaken by models which are simultaneously better
+and cheaper by 5-10×\times per token. As noted above,
+approaches such as ChatEDA require fine-tuning, which costs significantly
+more (by at least 10-20×\times) and requires inference costs for
+serving the custom model.
+Appendix B provides additional experimental details.
+
+Tech
+Circuit
+WL Optimization
+ECP Optimization
+Co-Optimization
+
+WL
+ECP*
+ECP
+WL*
+WL**
+ECP**
+
+OR-AutoTuner Performance: 375 Iterations, 4 Parameters
+
+SKY130HD
+IBEX
+632918
+14.52
+10.17
+811265
+802786
+10.49
+
+AES
+514342
+7.28
+4.08
+639876
+564188
+4.43
+
+JPEG
+1263740
+8.25
+6.77
+1421110
+1304829
+7.24
+
+ASAP7
+IBEX
+104622
+1510
+1252
+109346
+107821
+1264
+
+AES
+68943
+1634
+431
+78152
+72303
+446
+
+JPEG
+269721
+1172
+950
+284539
+276453
+978
+
+Average
+1.00
+1.00
+1.00
+1.00
+1.00
+1.00
+
+OR-AutoTuner Performance: 1000 Iterations, 12 Parameters
+
+SKY130HD
+IBEX
+630598
+14.08
+10.09
+767451
+750769
+10.10
+
+AES
+423730
+5.02
+3.81
+563264
+495781
+3.89
+
+JPEG
+1070038
+7.77
+6.57
+1295066
+1089166
+7.29
+
+ASAP7
+IBEX
+96086
+3244
+1188
+103081
+100837
+1192
+
+AES
+66934
+2220
+430
+77067
+71086
+443
+
+JPEG
+260683
+1130
+882
+279621
+273649
+885
+
+Average
+0.92
+1.18
+0.96
+0.94
+0.93
+0.95
+
+TABLE I: 
+OR-AutoTuner results.
+Top block: 375 iterations with 4 parameters.
+Bottom block: 1000 iterations with 12 parameters.
+Columns are grouped by optimization: WL-only (WL, ECP*), ECP-only (ECP, WL*), and co-optimization (WL**, ECP**). Bold font
+indicates superior results.
+
+Tech
+Circuit
+WL Optimization
+ECP Optimization
+Co-Optimization
+
+WL
+ECP*
+ECP
+WL*
+WL**
+ECP**
+
+375 Iterations, 4 Parameters without Tool Use
+
+SKY130HD
+IBEX
+732793
+11.47
+10.82
+815984
+792947
+11.00
+
+AES
+531721
+5.33
+4.07
+651219
+637490
+4.08
+
+JPEG
+1257231
+7.28
+6.69
+1371607
+1344380
+6.77
+
+ASAP7
+IBEX
+106044
+1324
+1281
+113854
+114576
+1287
+
+AES
+70955
+446
+430
+72427
+71644
+440
+
+JPEG
+277654
+1084
+1016
+289031
+286142
+1069
+
+Average
+1.04
+0.75
+1.02
+1.00
+1.04
+1.00
+
+375 Iterations, 4 Parameters with Tool Use
+
+SKY130HD
+IBEX
+726874
+10.91
+10.74
+752566
+736275
+10.84
+
+AES
+526782
+5.12
+4.02
+601492
+572966
+4.06
+
+JPEG
+1268544
+7.08
+6.64
+132785
+1302494
+6.74
+
+ASAP7
+IBEX
+101788
+1298
+1242
+112788
+106854
+1254
+
+AES
+70288
+448
+435
+72144
+71422
+442
+
+JPEG
+270184
+968
+952
+283544
+273126
+958
+
+Average
+1.03
+0.71
+1.00
+0.82
+0.98
+0.97
+
+600 Iterations, 12 Parameters with Tool Use
+
+SKY130HD
+IBEX
+657091
+12.25
+10.42
+721099
+706087
+11.06
+
+AES
+483426
+4.82
+3.96
+539878
+500296
+4.06
+
+JPEG
+1237829
+6.94
+6.54
+1308171
+1254030
+6.62
+
+ASAP7
+IBEX
+97305
+1278
+1248
+105562
+102205
+1260
+
+AES
+69824
+456
+432
+74582
+71084
+438
+
+JPEG
+270963
+905
+878
+275944
+271822
+882
+
+Average
+0.98
+0.71
+0.98
+0.92
+0.94
+0.96
+
+TABLE II: 
+ORFS-agent results for various tuning settings.
+Top: 375 iterations, 4 parameters (no tool);
+Middle: 375 iterations, 4 parameters (with tool);
+Bottom: 600 iterations, 12 parameters (with tool).
+Each row reports the figures of merit under WL-only, ECP-only, and Co-optimization objectives. Bold font indicates superior results.
+
+The ORFS-agent is tasked with optimizing two specific figures of merit: the
+post-route effective clock period (ECP) and routed wirelength (WL).44
+ 4
+
+ The unit of ECP is n​sns in SKY130HD and p​sps in ASAP7;
+routed wirelength in μ​m\mu m; power in WW; and area in μ​m2\mu m^{2}.
+Due to potential timeouts during execution, these metrics may not always be available.
+Therefore, ORFS-agent also records the corresponding metrics from
+the earlier clock tree synthesis (CTS) stage of the
+flow.55
+ 5
+
+ 𝐖𝐋′\mathbf{WL^{\prime}} denotes the estimated wirelength
+at the end of CTS.
+While our primary objective is to optimize
+either 𝐄𝐂𝐏\mathbf{ECP} or 𝐖𝐋\mathbf{WL},
+we also track the instance area, count,
+power and a derived metric called PDP (PDP = power ×\times ECP).
+Throughout this work, we adopt the following notations:
+
+• 
+
+𝐄𝐂𝐏∗\mathbf{ECP}^{*} (resp. 𝐖𝐋∗\mathbf{WL}^{*}) denotes the value of
+𝐄𝐂𝐏\mathbf{ECP} (resp. 𝐖𝐋\mathbf{WL}) when 𝐖𝐋\mathbf{WL} (resp. 𝐄𝐂𝐏\mathbf{ECP}) is optimized as the objective.
+
+• 
+
+𝐄𝐂𝐏∗⁣∗\mathbf{ECP}^{**} and 𝐖𝐋∗⁣∗\mathbf{WL}^{**} represent the values
+obtained when both metrics are jointly optimized in a multi-objective setting.
+
+We use OR-AutoTuner as the baseline. We run OR-AutoTuner
+for 10001000 iterations with 1212 parameters to optimize, and
+for 375375 iterations with 44 parameters to optimize.
+Results are shown
+in Table I.
+
+In the following, Section IV-A
+presents results for single-objective optimization.
+Then, Section IV-B gives
+results for multi-objective optimization.
+We then demonstrate ORFS-agent’s capability to perform constrained
+optimization guided by natural language commands.
+Appendix C provides
+additional ablation studies for the ASAP7 IBEX design.
+Studies on data leakage, model confidence and robustness
+are presented in Appendix D.
+
+IV-A Single-objective Optimization
+
+In the single-objective optimization scenario
+(e.g., minimizing routed wirelength W​LWL),
+the LLM agent receives an additional natural language instruction appended
+to its prompt. Specifically, the instruction is:
+
+There is only a single objective to optimize in this problem. You observe that
+the value inside the final JSON is 𝐖𝐋\mathbf{WL}, while the corresponding
+baseline value is 𝐖𝐋α\mathbf{WL_{\alpha}}. Your effective loss to minimize
+should be 𝐖𝐋𝐖𝐋α\mathbf{\frac{WL}{WL_{\alpha}}}.”
+
+where 𝐖𝐋α\mathbf{WL_{\alpha}} denotes the routed wirelength obtained using the
+default configuration of OpenROAD-flow-scripts and serves as a fixed baseline for
+normalization.66
+ 6
+
+ The baseline results obtained using the default
+configuration of OpenROAD-flow-scripts are shown in Appendix IV-C.
+
+However, due to runtime timeouts,
+typically occurring during the detailed routing stage,
+the routed wirelength 𝐖𝐋\mathbf{WL} may not always be available.
+In contrast, the estimated wirelength at the end of CTS 𝐖𝐋′\mathbf{WL^{\prime}}
+almost always exists.
+If 𝐖𝐋\mathbf{WL} is absent but 𝐖𝐋′\mathbf{WL^{\prime}}
+exists, we include the following instruction:
+
+You do not observe the correct value 𝐖𝐋\mathbf{WL}, but you observe
+a strong surrogate
+𝐖𝐋′\mathbf{WL^{\prime}}, which you should use as a signal. Your effective loss should be
+𝐖𝐋′𝐖𝐋α′\mathbf{\frac{WL^{\prime}}{WL^{\prime}_{\alpha}}}. 
+
+where 𝐖𝐋α′\mathbf{WL^{\prime}_{\alpha}} denotes post-CTS wirelength obtained under
+the same default configuration.
+This surrogate-based guidance enables the LLM to continue learning from
+partial information while maintaining alignment with the optimization objective.
+
+The experimental results are shown in Table II.
+Before discussing these results, we would like to highlight
+that our results are obtained with the Claude 3.5 class of models.
+
+With respect to Table II,
+key observations are as follows.
+
+• 
+
+Comparison between default ORFS and ORFS-agent: ORFS-agent (600 iterations, 12 parameters with tool use) achieves an average improvement of 13.2%13.2\% in wirelength (or ECP) when configured for wirelength (or ECP) optimization.
+
+• 
+
+Comparison between OR-AutoTuner and ORFS-agent:
+Despite using 40% fewer iterations, ORFS-agent (600 iterations, 12 parameters, with tool use) achieves better results than OR-AutoTuner on 1212 out of 2424 metrics measured for single-objective optimization, thereby exactly drawing on cases of superiority.
+
+• 
+
+Impact of tool use (375 iterations and 4 parameters): ORFS-agent with tool use dominates ORFS-agent without tool use in 5 out of 6 cases, for both wirelength and effective clock period optimization.
+
+• 
+
+We notice that ORFS-agent does not significantly worsen the metric not being optimized. For instance, when optimizing wirelength on ASAP7 IBEX, the ECP obtained by ORFS-agent (600 iterations, 12 parameters with tool use) is 40%40\% of that obtained by OR-AutoTuner.
+We hypothesize this is from the ECP values entering the agent’s context window, causing it to avoid actions that would worsen ECP.
+
+Fig. 3: Optimization trajectory of ASAP7 IBEX
+(co-optimization, 600 iterations, 12 parameters with tool use).
+Wirelength (WL), effective clock period (ECP), instance count (Count) are normalized to
+baseline values from default ORFS settings.
+
+IV-B Multi-objective Optimization
+
+In the case of multiple losses—e.g., 𝐖𝐋\mathbf{WL} and 𝐄𝐂𝐏\mathbf{ECP}—we
+instruct the LLM to consider the loss:
+
+𝐖𝐋𝐖𝐋α+𝐄𝐂𝐏𝐄𝐂𝐏α\mathbf{\frac{WL}{WL_{\alpha}}}+\mathbf{\frac{ECP}{ECP_{\alpha}}}
+
+(1)
+
+with the same substitution, if applicable, for 𝐄𝐂𝐏′,𝐖𝐋′\mathbf{ECP^{\prime},WL^{\prime}} if any of these are
+unavailable, with the same phrasing adopted above.
+The experimental results are shown in Table II.
+Key results are as follows:
+
+• 
+
+Sustained gains. Unlike single-objective optimization, where gains observed exceed 13%13\%, gains on multi-objective cases are roughly 11.3%11.3\% on ECP and 10.5%10.5\% on wirelength simultaneously. This is measured relative to the baselines discussed in subsection IV-C, having 1212 parameters to optimize for 600600 iterations with tool use. Out of 1212 comparisons to OR-AutoTuner, ORFS-agent is superior in 66 of them, thereby exactly drawing.
+
+• 
+
+No worsening. As with single-objective optimization, ORFS-agent does not worsen any metric - either ECP or wirelength, relative to baselines. In fact, both QoRs improve simultaneously.
+
+We visualize the optimization trajectory of instance count alongside wirelength and ECP
+in Figure 3.
+We notice that instance count can actually improve for free.
+To better understand gains on auxiliary metrics (metrics that do not directly enter the optimization function),
+we examine
+correlational properties of metrics in Figure 4.
+We look at how other metrics vary in an optimization run as we carry out ORFS-level
+runs for ASAP7 IBEX under different parameters and differing optimization goals -
+namely wirelength, ECP, or a combination of the two as defined above.
+Some metrics do not “come for free” - ECP and power, for instance, have an inverse relationship with each other.
+
+Fig. 4: Correlation of metrics for ASAP7 IBEX:
+wirelength (WL),
+effective clock period (ECP),
+instance area (Area),
+instance count (Instances) and power (Power).
+Pearson correlation captures linear
+relationships; Kendall correlation captures rank-based relationships.
+
+IV-C Baseline comparisons
+
+We obtain baseline solution metrics using the default ORFS
+flow parameters seen at the cited commit hash. These metrics
+are shown in Tables III and  IV.
+Compared to these baselines, ORFS-agent achieves
+an improvement of over 13% versus the default ORFS flow parameters,
+when averaged across all six testcases and single-metric
+(i.e., ECP and wirelength) comparisons.
+(For all metrics, lower is better.)
+For additional context, we also provide in Table V
+the post-route metrics obtained by a proprietary, closed-source tool
+on ASAP7 circuits; these are quoted
+from [21].77
+ 7
+
+ Via correspondence with
+authors of [21], we understand that OpenROAD uses
+less memory and vCPU resource than the commercial tool, by factors
+of 5×\times or more.
+
+CTSWL
+CTSECP
+DRWL
+ECP
+
+Sky130HD-IBEX
+550963
+10.84
+808423
+11.54
+
+ASAP7-IBEX
+93005
+1308
+115285
+1361
+
+Sky130HD-AES
+428916
+5.34
+589825
+4.72
+
+ASAP7-AES
+61103
+432
+75438
+460
+
+Sky130HD-JPEG
+1199090
+8.00
+1374966
+7.73
+
+ASAP7-JPEG
+266510
+1096
+300326
+1148
+
+TABLE III: Parameter values for original circuits, no changes.
+
+Instance area
+Count
+Power
+PDP
+
+Sky130HD-IBEX
+192784
+20944
+0.097
+1.12
+
+ASAP7-IBEX
+2729
+21831
+0.057
+77.58
+
+Sky130HD-AES
+122361
+18324
+0.411
+1.94
+
+ASAP7-AES
+2046
+17693
+0.149
+68.54
+
+Sky130HD-JPEG
+541327
+65670
+0.811
+6.27
+
+ASAP7-JPEG
+7904
+68287
+0.138
+158.42
+
+TABLE IV: Derived values for original circuits.
+
+Design
+Tool
+ECP
+Area
+Power
+
+AES
+Comm
+582
+40679
+0.3498
+
+ORFS*
+697
+58995
+0.2361
+
+IBEX
+Comm
+1123
+68843
+0.7949
+
+ORFS*
+1654
+47969
+0.4739
+
+JPEG
+Comm
+616
+156700
+0.7522
+
+ORFS*
+899
+182624
+0.7944
+
+TABLE V: Results for AES, IBEX, and JPEG on optimized OpenROAD (ORFS*)
+and proprietary tools (Comm) as cited from [21].
+
+IV-D Constrained Optimization under Natural Language Commands
+
+A human engineer is typically given commands significantly different
+from the utility functions used by
+OR-AutoTuner. Specifically, a common class of optimization commands relayed to
+humans takes the form:
+“Optimize metric XX as much as possible, while not allowing metrics A,B,CA,B,C
+to deteriorate by more than 2%2\%.” This percentage value is with reference to
+the previously mentioned baseline values in Tables III
+and  IV.
+This form of constrained optimization is generally not straightforward with existing
+OR-AutoTuner setups. LLMs can attempt such optimization by incorporating
+these constraints directly into their context. We study this phenomenon in
+Table VI,
+where we optimize E​C​PECP and W​LWL subject to a
+maximum worsening of 2%2\% and 4%4\% in other metrics of interest—Area,
+Instance Count, Power, and PDP. We term the maximum worsening allowed as “leeway”.
+We observe that this often improves multiple metrics
+simultaneously. This avoids the problem of, e.g., worsening power values
+that we observed in Fig 4. Comparisons to OR-AutoTuner and
+further discussion appears in the appendix, alongside tests for robustness and
+prompt-level sensitivity. ORFS-agent respects the constraints (in terms of maximum
+2%2\% or 4%4\% worsening) imposed. Simultaneously, it improves the metrics to be
+optimized relative to baseline values provided previously.
+
+4 parameters and no tools
+
+Metric
+WL Optimization
+ECP Optimization
+
+2% leeway
+4% leeway
+2% leeway
+4% leeway
+
+WL
+-8.18%
+-8.51%
+-7.62%
+-6.34%
+
+ECP
+-1.07%
+2.51%
+-2.98%
+-3.06%
+
+Area
+-1.36%
+-1.68%
+-1.18%
+-0.80%
+
+Count
+-1.55%
+-1.70%
+-1.35%
+-1.17%
+
+PDP
+-2.03%
+-9.04%
+-5.12%
+-0.05%
+
+Power
+-0.97%
+-11.27%
+-2.20%
+3.11%
+
+12 parameters with tools
+
+Metric
+WL Optimization
+ECP Optimization
+
+2% leeway
+4% leeway
+2% leeway
+4% leeway
+
+WL
+-11.24%
+-12.05%
+-7.9%
+-8.3%
+
+ECP
+-3.02%
+-2.12%
+-4.18%
+-4.46%
+
+Area
+-2.17%
+-1.92%
+-1.12%
+0.56%
+
+Count
+-1.62%
+-1.74%
+-1.31%
+-1.06%
+
+PDP
+-3.25%
+-0.27%
+-6.88%
+-0.77%
+
+Power
+-0.24%
+1.87%
+-2.81%
+3.86%
+
+TABLE VI: Constrained optimization results. Red positive numbers indicate worsening, i.e., an increase relative to baseline, and the “leeway” indicates the maximum worsening allowed.
+
+V Conclusion and Future Directions
+
+In this work, we propose ORFS-agent, a plug-in open-source framework that
+integrates LLMs into OpenROAD for hyperparameter optimization.
+Despite using 40% fewer iterations, ORFS-agent achieves results comparable to OR-AutoTuner.
+ORFS-agent adopts a modular, provider-agnostic framework, which makes it user-friendly and easy to adopt.
+ORFS-agent can switch seamlessly among LLM providers (e.g., Anthropic, OpenAI, Gemini)
+without reconfiguration.
+Additionally, ORFS-agent avoids the cost and complexity of fine-tuning and deployment,
+and requires no retraining or infrastructure changes when a new LLM is released.
+Thus, our ORFS-agent can instantly benefit from model breakthroughs.
+Unlike fine-tuning-based approaches, ORFS-agent can rapidly and cost-effectively adopt stronger models, making it both competitive and appealing.
+
+Our future work will explore the following directions.
+(i) The field has seen the emergence of reasoning-based models, which use a longer chain of thought process before making decisions. These reasoning-based models are then fine-tuned to task-specific
+agentic models. We aim to integrate such agentic models into ORFS-agent to enhance its decision-making depth and adaptability.
+(ii) Our current framework uses a fixed set of pre-defined tools.
+In future work, we will enable the LLM agent to generate its own tools dynamically,
+which avoids the hand-coding of specific tools and increases the flexibility in handling different circuits and technology nodes.
+(iii) We plan to integrate ORFS-agent with search APIs and RAG tools, which enable the agent to access documentation, literature or previous published results.
+And (iv) we will evaluate ORFS-agent on larger-scale circuits and with more hyperparameters to assess its scalability and robustness. In combination with open-sourcing and OpenROAD integration, we believe that
+this work will add to the foundations for new research on LLMs for physical design
+and EDA.
+
+References
+
+[1]
+
+A. Agnesina, K. Chang and S. K. Lim,
+“Parameter Optimization of VLSI Placement Through Deep Reinforcement Learning,”
+TCAD, 42 (4) (2022), pp. 1295–1308.
+
+[2]
+
+A. Agnesina, P. Rajvanshi, T. Yang, G. Pradipta, A. Jiao, B. Keller et al.,
+“AutoDMP: Automated DREAMPlace-based Macro Placement,”
+Proc. ISPD, 2023, pp. 149–157.
+
+[3]
+
+T. Ajayi, D. Blaauw, T.-B. Chan, C.-K. Cheng, V. A. Chhabria and D. K. Choo et al.,
+“OpenROAD: Toward a Self-Driving, Open-Source Digital Layout Implementation Tool Chain,”
+Proc. Gov. Microcircuit Applications and Critical Technology Conf., 2019, pp. 1105–1110.
+
+[4]
+
+Z. Xiao, X. He, H. Wu, B. Yu and Y. Guo,
+“EDA-Copilot: A RAG-Powered Intelligent Assistant for EDA Tools,”
+TODAES (2025).
+
+[5]
+
+Y. Bengio, A. Lodi and A. Prouvost,
+“Machine Learning for Combinatorial Optimization: A Methodological Tour d’Horizon,”
+Eur. J. Oper. Res., 290 (2) (2021), pp. 405–421.
+
+[6]
+
+E. K. Burke, M. Gendreau, M. Hyde, G. Kendall, G. Ochoa, E. Özcan and R. Qu,
+“Hyper-Heuristics: A Survey of the State of the Art,”
+J. Oper. Res. Soc., 64 (12) (2013), pp. 1695–1724.
+
+[7]
+
+T. B. Brown, B. Mann, N. Ryder, M. Subbiah, J. Kaplan and P. Dhariwal et al.,
+“Language Models Are Few-Shot Learners,”
+Advances in Neural Information Processing Systems, 33 (2020), pp. 1877–1901.
+
+[8]
+
+A. B. Chowdhury, M. Romanelli, B. Tan, R. Karri and S. Garg,
+“Retrieval-Guided Reinforcement Learning for Boolean Circuit Minimization,”
+Proc. ICLR, 2024.
+
+[9]
+
+M. Chen, J. Tworek, H. Jun, Q. Yuan, H. P. de Oliveira Pinto and J. Kaplan et al.,
+“Evaluating Large Language Models Trained on Code,”
+arXiv preprint arXiv:2107.03374, 2021.
+
+[10]
+
+C.-K. Cheng, A. B. Kahng, S. Kundu, Y. Wang and Z. Wang,
+“Assessment of Reinforcement Learning for Macro Placement,”
+Proc. ISPD, 2023, pp. 158–166.
+
+[11]
+
+N. Dahad,
+“AI Agents Will Work With AI Agents for Chip Design in 2025,”
+EE Times, 20 Dec. 2024.
+
+[12]
+
+I. Drori, S. Zhang, R. Shuttleworth, L. Tang, A. Lu and E. Ke et al.,
+“A Neural Network Solves, Explains, and Generates University Math Problems by Program Synthesis and Few-Shot Learning at Human Level,”
+arXiv preprint arXiv:2112.15594, 2022.
+
+[13]
+
+T. Elsken, J. H. Metzen and F. Hutter,
+“Neural Architecture Search: A Survey,”
+J. Mach. Learn. Res., 20 (55) (2019), pp. 1–91.
+
+[14]
+
+S. Falkner, A. Klein and F. Hutter,
+“BOHB: Robust and Efficient Hyperparameter Optimization at Scale,”
+Proc. ICML, 2018, pp. 1437–1446.
+
+[15]
+
+Y. Ge, W. Hua, K. Mei, J. Ji, J. Tan and S. Xu et al.,
+“OpenAGI: When LLM Meets Domain Experts,”
+arXiv preprint arXiv:2304.04370, 2023.
+
+[16]
+
+Q. Guo, R. Wang, J. Guo, B. Li, K. Song, X. Tan et al.,
+“Connecting Large Language Models With Evolutionary Algorithms Yields Powerful Prompt Optimizers,”
+arXiv preprint arXiv:2309.08532, 2023.
+
+[17]
+
+S. Hooker,
+“The Hardware Lottery,”
+arXiv preprint arXiv:2009.06489, 2020.
+
+[18]
+
+Q. Huang, J. Vora, P. Liang and J. Leskovec,
+“Benchmarking Large Language Models as AI Research Agents,”
+Advances in Neural Information Processing Systems, 2023.
+
+[19]
+
+T. Ifargan, L. Hafner, M. Kern, O. Alcalay and R. Kishony,
+“Autonomous LLM-Driven Research—From Data to Human-Verifiable Research Papers,”
+NEJM AI, 2 (1) (2025), pp. AIoa2400555.
+
+[20]
+
+C. E. Jimenez, J. Yang, A. Wettig, S. Yao, K. Pei, O. Press and K. Narasimhan,
+“SWE-bench: Can Language Models Resolve Real-World GitHub Issues?,”
+arXiv preprint arXiv:2310.06770, 2023.
+
+[21]
+
+J. Jung, A. B. Kahng, S. Kundu, Z. Wang and D. Yoon,
+“IEEE CEDA DATC Emerging Foundations in IC Physical Design and MLCAD Research,”
+Proc. ICCAD, 2023, pp. 1–7.
+
+[22]
+
+J. Jung, A. B. Kahng, S. Kim and R. Varadarajan,
+“METRICS2.1 and Flow Tuning in the IEEE CEDA Robust Design Flow and OpenROAD,”
+Proc. ICCAD, 2021, pp. 1–9.
+
+[23]
+
+A. B. Kahng, J. Lienig, I. L. Markov and J. Hu,
+“VLSI Physical Design: From Graph Partitioning to Timing Closure,”
+Springer, 2011.
+
+[24]
+
+A. B. Kahng,
+“Machine Learning Applications in Physical Design: Recent Results and Directions,”
+Proc. ISPD, 2018, pp. 68–73.
+
+[25]
+
+A. Kaintura, P. R., S. Luar and I. I. Almeida,
+“ORAssistant: A Custom RAG-Based Conversational Assistant for OpenROAD,”
+arXiv preprint arXiv:2410.03845, 2024.
+
+[26]
+
+K. Kandasamy, G. Dasarathy, J. B. Oliva, J. Schneider and B. Póczós,
+“Multi-Fidelity Bayesian Optimisation With Continuous Approximations,”
+Proc. ICML, 2017, pp. 1799–1808.
+
+[27]
+
+O. Khattab, A. Singhvi, P. Maheshwari, Z. Zhang, K. Santhanam and S. Vardhamanan et al.,
+“DSPy: Compiling Declarative Language Model Calls Into Self-Improving Pipelines,”
+arXiv preprint arXiv:2310.03714, 2023.
+
+[28]
+
+L. Kotthoff,
+“Algorithm Selection for Combinatorial Search Problems: A Survey,”
+Data Mining and Constraint Programming, Springer, 2016, pp. 149–190.
+
+[29]
+
+P. Lewis, E. Perez, A. Piktus, F. Petroni, V. Karpukhin and N. Goyal et al.,
+“Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks,”
+Advances in Neural Information Processing Systems, 33 (2020), pp. 9459–9474.
+
+[30]
+
+Y. Lin, S. Dhar, W. Li, H. Ren, B. Khailany and D. Z. Pan,
+“DREAMPlace: Deep Learning Toolkit–Enabled GPU Acceleration for Modern VLSI Placement,”
+Proc. DAC, 2019, pp. 1–6.
+
+[31]
+
+T. Liu, N. Astorga, N. Seedat and M. van der Schaar,
+“Large Language Models to Enhance Bayesian Optimization,”
+arXiv preprint arXiv:2402.03921, 2024.
+
+[32]
+
+H. Liu, K. Simonyan and Y. Yang,
+“DARTS: Differentiable Architecture Search,”
+arXiv preprint arXiv:1806.09055, 2018.
+
+[33]
+
+M. Liu, T.-D. Ene, R. Kirby, C. Cheng, N. Pinckney, R. Liang et al.,
+“ChipNeMo: Domain-Adapted LLMs for Chip Design,”
+arXiv preprint arXiv:2311.00176, 2024.
+
+[34]
+
+S. Liu, C. Gao and Y. Li,
+“Large Language Model Agent for Hyper-Parameter Optimization,”
+arXiv preprint arXiv:2402.01881, 2024.
+
+[35]
+
+M. Liu, N. R. Pinckney, B. Khailany and H. Ren,
+“VeriSeek: Reinforcement Learning With Golden Code Feedback for Verilog Generation,”
+arXiv preprint arXiv:2407.18271, 2024.
+
+[36]
+
+Y. Lu, J. Hu, L. Yang and D. Z. Pan,
+“GAN-CTS: A Deep Learning Framework for Core-Tier Statistical Static Timing Analysis,”
+TCAD, 39 (11) (2019), pp. 3605–3616.
+
+[37]
+
+N. Mazyavkina, S. Sviridov, S. Ivanov and E. Burnaev,
+“Reinforcement Learning for Combinatorial Optimization: A Survey,”
+Comput. & Oper. Res., 134 (2021), p. 105400.
+
+[38]
+
+A. Mirhoseini, A. Goldie, M. Yazgan, J. W. Jiang, E. Songhori,
+S. Wang et al.,
+“A Graph Placement Methodology for Fast Chip Design,”
+Nature, 594 (2021), pp. 207–212.
+
+[39]
+
+A. Mishchenko, S. Chatterjee and R. Brayton,
+“DAG-Aware AIG Rewriting: A Fresh Look at Combinational Logic Synthesis,”
+Proc. DAC, 2006, pp. 532–535.
+
+[40]
+
+L. Ouyang, J. Wu, X. Jiang, D. Almeida, C. Wainwright and P. Mishkin et al.,
+“Training Language Models to Follow Instructions With Human Feedback,”
+Advances in Neural Information Processing Systems, 35 (2022), pp. 27730–27744.
+
+[41]
+
+L. Pan, A. Albalak, X. Wang and W. Yang,
+“Logic-LM: Empowering Large Language Models With Symbolic Solvers for Faithful Logical Reasoning,”
+arXiv preprint arXiv:2305.12295, 2023.
+
+[42]
+
+G. Pasandi, K. Kunal, V. Tej, K. Shan, H. Sun, S. Jain et al.,
+“JARVIS: A Multi-Agent Code Assistant for High-Quality EDA Script Generation,”
+arXiv preprint arXiv:2505.14978, 2025.
+
+[43]
+
+S. G. Patil, T. Zhang, X. Wang and J. E. Gonzalez,
+“Gorilla: Large Language Model Connected With Massive APIs,”
+arXiv preprint arXiv:2305.15334, 2023.
+
+[44]
+
+Y. Qin, S. Liang, Y. Ye, K. Zhu, L. Yan and Y. Lu et al.,
+“ToolLLM: Facilitating Large Language Models to Master 16,000+ Real-World APIs,”
+arXiv preprint arXiv:2307.16789, 2023.
+
+[45]
+
+N. Rai et al.,
+“Enhancing Electronic Design Automation With Large Language Models: A Taxonomy, Analysis and Opportunities,”
+TechRxiv preprint, 2025.
+
+[46]
+
+R. Shu, J. Wang and W. Li,
+“MetaBO: Meta-Learning for Fast Bayesian Optimization in Chip Design,”
+TCAD, 2024, Early Access.
+
+[47]
+
+L. Shi, M. Kazda, B. Sears, N. Shropshire and R. Puri,
+“Ask-EDA: A Design Assistant Empowered With LLM, Hybrid RAG and Abbreviation De-Hallucination,”
+arXiv preprint arXiv:2406.06575, 2024.
+
+[48]
+
+G. Sung,
+“AI Agents: AutoGPT Architecture & Breakdown,”
+Medium, 2023, https://medium.com/@georgesung/ai-agents-autogpt-architecture-breakdown-ba37d60db944.
+
+[49]
+
+T. H. Trinh, Y. Wu, Q. V. Le, H. He and T. Luong,
+“Solving Olympiad Geometry Without Human Demonstrations,”
+Nature, 625 (7995) (2024), pp. 476–482.
+
+[50]
+
+L. Wang, C. Ma, X. Feng, Z. Zhang, H. Yang, J. Zhang et al.,
+“A Survey on Large Language Model Based Autonomous Agents,”
+Frontiers of Computer Science, 18 (6) (2024), p. 186345.
+
+[51]
+
+J. Wei, X. Wang, D. Schuurmans, M. Bosma, B. Ichter and F. Xia et al.,
+“Chain-of-Thought Prompting Elicits Reasoning in Large Language Models,”
+arXiv preprint arXiv:2201.11903, 2022.
+
+[52]
+
+N. H. E. Weste and D. M. Harris,
+“CMOS VLSI Design: A Circuits and Systems Perspective,”
+Addison-Wesley, 2011.
+
+[53]
+
+H. Wu, Z. He, X. Zhang, X. Yao, S. Zheng, H. Zheng and B. Yu,
+“ChatEDA: A Large Language Model–Powered Autonomous Agent for EDA,”
+TCAD, 2024.
+
+[54]
+
+Y.-H. Wu, Y. Lee and E. Lee,
+“Hardware Design and Verification With Large Language Models,”
+Electronics, 14 (1) (2024), pp. 120.
+
+[55]
+
+H. Wu, H. Zheng, Z. He and B. Yu,
+“Divergent Thoughts Toward One Goal: LLM-Based Multi-Agent Collaboration System for Electronic Design Automation,”
+arXiv preprint arXiv:2502.10857, 2025.
+
+[56]
+
+T. Xie, F. Zhou, Z. Cheng, C. Xiong and T. Yu,
+“OpenAgents: An Open Platform for Language Agents in the Wild,”
+arXiv preprint arXiv:2310.10634, 2023.
+
+[57]
+
+L. Xu, F. Hutter, H. H. Hoos and K. Leyton-Brown,
+“SATzilla: Portfolio-Based Algorithm Selection for SAT,”
+J. Artif. Intell. Res., 32 (2008), pp. 565–606.
+
+[58]
+
+C. Yang, X. Wang, Y. Lu, H. Liu, Q. V. Le, D. Zhou and X. Chen,
+“Large Language Models as Optimizers,”
+arXiv preprint arXiv:2309.03409, 2023.
+
+[59]
+
+Y. Yin, Y. Wang, B. Xu and P. Li,
+“ADO-LLM: Analog Design Bayesian Optimization With In-Context Learning of Large Language Models,”
+Proc. ICCAD, 2024.
+
+[60]
+
+Z. He, Y. Pu, H. Wu, B. Yu, Y. Fu, Y. Zhang et al.,
+“Large Language Models for EDA: Future or Mirage?,”
+Proc. ISPD, 2024.
+
+[61]
+
+S. Zhou, F. F. Xu, H. Zhu and G. Neubig,
+“WebArena: A Realistic Web Environment for Building Autonomous Agents,”
+Proc. ICLR, 2024.
+
+[62]
+
+R. Zhong, X. Du, S. Kai, Z. Tang, S. Xu and H.-L. Zhen et al.,
+“LLM4EDA: Emerging Progress in Large Language Models for Electronic Design Automation,”
+arXiv preprint arXiv:2401.12224v1, 2023.
+
+[63]
+
+ASAP7 PDK and Cell Libraries Repo.
+https://github.com/The-OpenROAD-Project/asap7
+
+[64]
+
+“AlphaCode 2,”
+TechCrunch coverage, 2023, https://techcrunch.com/2023/12/06/deepmind-unveils-alphacode-2-powered-by-gemini/.
+
+[65]
+
+“Cerebrus,”
+Cadence Intelligent Chip Explorer, https://www.cadence.com/en_US/home/tools/digital-design-and-signoff/soc-implementation-and-floorplanning/cerebrus-intelligent-chip-explorer.html.
+
+[66]
+
+“Configurable Graph-Based Task Solving With the MARCO Multi-AI Agent Framework for Chip Design,”
+NVIDIA Developer Blog, 2025, https://developer.nvidia.com/.
+
+[67]
+
+“Devin: The First AI Software Engineer,”
+Cognition Labs, 2024, https://devin.ai.
+
+[68]
+
+“DSO.ai,”
+Synopsys, https://www.synopsys.com/ai/ai-powered-eda/dso-ai.html.
+
+[69]
+
+“LLAMBO,”
+https://github.com/tennisonliu/LLAMBO.
+
+[70]
+
+“OpenROAD-Flow-Scripts,”
+https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts.
+
+[71]
+
+“ORFS-Agent Code,”
+https://anonymous.4open.science/r/ORFS-365C/README.md.
+
+[72]
+
+“SkyWater Open Source PDK,”
+https://github.com/google/skywater-pdk.
+
+[73]
+
+“ShellGPT: A Command-Line Productivity Tool Powered by GPT-4,”
+GitHub repository, 2023, https://github.com/TheR1D/shell_gpt.
+
+[74]
+
+“The AI Scientist: Towards Fully Automated Open-Ended Scientific Discovery,”
+Project page, 2024, https://sakana.ai/ai-scientist/.
+
+Appendix A EDA Flow and OpenROAD
+
+The EDA flow is highly iterative , and
+suboptimal outcomes at one step may require going back to earlier steps
+for re-optimization (e.g., re-synthesizing netlist or adjusting placement).
+Each step generates logs and metrics
+that can be integrated into ML pipelines to guide subsequent decisions.
+
+Alongside commercial tools, the OpenROAD project [3] provides
+a fully open-source, end-to-end RTL-to-GDS solution.
+It integrates logic synthesis, floorplanning, placement, clock tree synthesis and routing into
+a fully automated framework.
+OpenROAD is particularly well-suited for ML research due to the following advantages:
+
+• 
+
+Transparency and Instrumentation: Researchers have direct access
+to internal data structures and logs, enabling detailed data collection and analysis.
+
+• 
+
+Reproducibility: The open-source nature of OpenROAD facilitates
+replication by third parties.
+
+• 
+
+Extensibility: APIs are available for integrating
+custom ML modules. For instance, OR-AutoTuner [22]
+applies Bayesian optimization (BO) to tune synthesis and place-and-route (SP&R) recipes.
+
+OpenROAD provides a powerful sandbox for exploring data-driven approaches
+through the digital implementation process.
+Its open-source foundation enables researchers to modify the details of
+each implementation step
+and apply advanced ML techniques for parameter tuning, downstream prediction and
+flow optimization. In contrast, commercial tools are nearly unusable for
+open-source academic ML research, due to extremely high license fees and legal
+constraints on sharing even partial outputs.
+
+Problems with Working with Proprietary Tools. Commercial EDA tools from
+industry leaders like Synopsys and Cadence are integral to modern chip design,
+offering comprehensive solutions that cover the entire design flow, including logic
+synthesis, simulation, and verification. These tools are renowned for their
+robustness and efficiency, making them the go-to choice for many semiconductor
+companies.
+
+However, for machine learning (ML) practitioners and researchers, these proprietary
+tools present several challenges:
+
+• 
+
+Closed Architectures: The proprietary nature of these tools
+means their internal workings are not accessible. This opacity hinders the
+ability to customize or extend functionalities, which is often necessary for
+integrating novel ML algorithms or for conducting in-depth research that
+requires toolchain modifications. Indeed, even the partial outputs
+cannot be shared without violating legal constraints, a strong
+contrast from the open-source ecosystem of Machine Learning.
+
+• 
+
+High Costs: Licensing fees for commercial EDA tools can be
+prohibitively expensive, especially for academic institutions, startups, or
+individual researchers operating under budget constraints. This financial
+barrier limits the accessibility of these tools for experimental and exploratory
+ML applications.
+
+• 
+
+Limited Flexibility: The closed file structures and lack of
+transparency in proprietary tools make it difficult to add customized features
+or promptly address bugs. This rigidity can impede the iterative and
+experimental nature of ML research, where rapid prototyping and testing of new
+ideas are crucial.
+
+These constraints underscore the need for open-source alternatives that provide the
+flexibility, transparency, and cost-effectiveness required for ML-driven EDA
+research and development.
+
+Open-Source EDA and OpenROAD as an ML Testbed. To
+systematically study LLM- and ML-driven EDA optimizations, we focus on the
+OpenROAD project [3]. In contrast to commercial EDA
+offerings, OpenROAD is fully open-source, thus avoiding copyright restrictions and
+enabling access to the internal details of its place-and-route algorithms, log
+files, and data structures. This open access allows the research community to
+replicate and extend experiments, train and evaluate new models, and publish
+results without encountering proprietary barriers. As a result, OpenROAD
+constitutes a natural choice for academic and industrial collaboration, serving as
+a reproducible testbed in which machine learning and LLM-based agents can be
+integrated. The availability of its source code and APIs facilitates seamless
+instrumentation for collecting training data, real-time metrics, and debugging
+information—all of which are vital for applying advanced ML or agent-based
+strategies.
+
+In short, leveraging OpenROAD allows us to (1) faithfully represent the full
+digital implementation flow (floorplanning, placement, clock tree synthesis,
+routing, etc.), (2) integrate with a community-driven research ecosystem, and (3)
+avoid opaque “black-box” workflows that impede effective ML experimentation. This
+environment provides an ideal launchpad for exploring the potential of LLM-based
+EDA agents that can dynamically interpret intermediate results and fine-tune the
+flow for improved outcomes.
+
+Appendix B Additional Experimental Details
+
+B-A Details on Parameters, Metrics Tracked, and Surrogates
+
+The details of parameters are shown in Table VII.
+Table VIII summarizes metrics tracked and surrogates.
+
+Parameter
+Description
+Type
+Range
+
+Clock Period
+Target clock period (ns/ps)
+Float
+(0, ∞\infty)
+
+Core Utilization
+% core utilization
+Integer
+[20, 99]
+
+TNS End Percent
+% violating endpoints to fix
+Integer
+[0, 100]
+
+Global Padding
+Global placement padding level
+Integer
+[0, 3]
+
+Detail Padding
+Detailed placement padding level
+Integer
+[0, 3]
+
+Enable DPO
+Detailed placement optimization
+Binary
+{0, 1}
+
+Pin Layer Adjust
+Routing adjust for metal2/3
+Float
+[0.2, 0.7]
+
+Above Layer Adjust
+Routing adjust for metal4 and above
+Float
+[0.2, 0.7]
+
+Density Margin Add-On
+Global density margin increase
+Float
+[0.00, 0.99]
+
+Flatten Hierarchy
+Flatten design hierarchy
+Binary
+{0, 1}
+
+CTS Cluster Size
+Number of sinks per CTS cluster
+Integer
+[10, 40]
+
+CTS Cluster Diameter
+Physical span of each CTS cluster
+Integer
+[80, 120]
+
+TABLE VII: Overview of optimization parameters for both 4- and 12-parameter tuning. The top four rows in bold form the 4-parameter case.
+
+Optimized Metrics
+
+ECP
+
+Final stage effective clock period,
+defined as the clock period minus the
+worst slack at the final stage of the
+build process.
+
+DRWL (W​LWL)
+
+Post-DR wirelength.
+
+Surrogates of Optimized Metrics
+
+CTSECP (E​C​P′ECP^{\prime})
+
+Effective clock period calculated at CTS
+
+CTSWL (W​L′WL^{\prime})
+
+Estimated wirelength at CTS
+
+Other Desirable Figures of Merit
+
+Instance Area
+
+Total area of instances at the end
+of the optimization process
+
+Instance Count
+
+Number of instances at the
+end of the optimization process
+
+EPC (PDP)
+
+Energy per clock cycle, a.k.a. Power Delay Product (PDP)
+
+Power
+
+Power consumption at the end
+of the optimization process
+
+TABLE VIII: Definitions of key metrics.
+
+The Clock Period is specified to one decimal place. Core Utilization and
+TNS End Percent are integers between 00 and 100100 inclusive, while
+LB Add On Place Density (henceforth LB Add On) is a real number specified
+to two decimal places between 00 and 11. Thus, the latter three variables
+have 100100 discrete values each, while the Clock Period remains unbounded.
+
+The Effective
+Clock Period is defined as the clock period minus the worst slack at the finish stage.
+These metrics, along with their CTS-level surrogates and other desirable figures
+of merit, are defined in Table VIII. These are based on the METRICS2.1
+suite. The Optimized metrics directly enter the natural language
+optimization process for the LLM. The Surrogates are included
+only if the primary metrics are unavailable due to timeouts. The remaining
+parameters—Instance Area, Instance Count, PDP, Power—are
+not directly optimized but are tracked as meaningful quantities.
+In the expanded separate configuration (“12-variable setting”), we introduce eight additional
+tunable parameters that guide the physical design flow more comprehensively. Specifically:
+
+• 
+
+GP Pad: Cell padding added during global placement to ensure sufficient spacing.
+
+• 
+
+DP Pad: Refinement of cell spacing in detailed placement for higher-quality placement.
+
+• 
+
+DPO Enable: A binary toggle for detailed placement optimization.
+
+• 
+
+Pin Layer Adjust: Routing resource adjustment on metal2 and metal3 layers.
+
+• 
+
+Above Layer Adjust: Similar routing resource adjustment for metal4 and higher layers.
+
+• 
+
+Flatten: A binary toggle that flattens design hierarchy.
+
+• 
+
+CTS Cluster Size: Target number of sinks grouped in each clock tree cluster.
+
+• 
+
+CTS Cluster Diameter: Target physical span of each clock tree cluster.
+
+Appendix C Analysis and Ablations under ASAP7 IBEX
+
+Effects of Iterations and Indirect Optimization. We will consider the
+results of the joint W​L,E​C​PWL,ECP optimization as a
+function of the total serial iterations (keeping the number of parallel runs
+fixed at 2525). The results are shown in Table IX, along with the
+other relevant figures of merit from Table VIII. Note that each row
+represents a separate run that is run upto the corresponding number of serial
+iterations with 2525 parallel runs. That is, 55 should be considered as
+a total of 25×5=12525\times 5=125 OpenROAD calls.
+
+WL
+ECP
+Area
+Count
+PDP
+Power
+
+5
+108267
+1353
+2711
+21614
+78.474
+0.058
+
+10
+108530
+1334
+2701
+21529
+73.37
+0.055
+
+15
+111557
+1294
+2742
+21875
+89.286
+0.069
+
+20
+110776
+1293
+2735
+21831
+89.217
+0.069
+
+25
+112495
+1298
+2729
+21796
+85.734
+0.066
+
+30
+108409
+1328
+2711
+21614
+77.024
+0.058
+
+TABLE IX: Optimization trajectory 5−305-30 iterations, no tool use, 4 parameters.
+
+This phenomenon can be well understood in the light of the strong
+inter-correlations of the data, presented in the main text.
+
+Reversibility. From Table IX, it is clear that optimizing
+wirelength and Effective Clock Period (ECP) jointly also
+optimizes other parameters.
+We now reverse this procedure to analyze the effect on wirelength and ECP when
+any one of these parameters is optimized individually. The results of this process
+are presented in Table X. Notably, this process appears to be
+asymmetric—these iterations yield noticeably worse outcomes on ECP while
+resulting in significantly lower power consumption.
+
+Count
+Area
+PDP
+Power
+WL
+ECP
+
+Count
+21419
+2679
+68.632
+0.046
+109084
+1492
+
+Area
+21437
+2674
+70.952
+0.049
+117411
+1448
+
+PDP
+21432
+2686
+68.310
+0.046
+106070
+1485
+
+Power
+21516
+2689
+68.540
+0.046
+107350
+1490
+
+WL
+21540
+2701
+76.828
+0.058
+106044
+1324
+
+ECP
+21799
+2748
+86.483
+0.067
+113854
+1281
+
+TABLE X: Results of optimizing the row-level objective on column-level
+outcomes, ASAP7 IBEX, no tool use, 4 parameter setting.
+
+To ensure that our results stay consistent across tool use choices,
+we replicate this experiment on ASAP7 IBEX with 12 parameters
+and tool use enabled in Table XI.
+
+Count
+Area
+PDP
+Power
+WL
+ECP
+
+Count
+21356
+2683
+75.28
+0.054
+112984
+1394
+
+Area
+21382
+2642
+76.21
+0.058
+120811
+1314
+
+PDP
+21486
+2706
+59.41
+0.047
+107822
+1264
+
+Power
+21416
+2683
+59.06
+0.046
+104622
+1284
+
+WL
+21682
+2672
+99.68
+0.078
+97305
+1278
+
+ECP
+21674
+2684
+102.34
+0.082
+105562
+1248
+
+TABLE XI: Results of optimizing the row-level objective on column-level
+outcomes, ASAP7 IBEX, tool use and 12 parameter setting.
+
+Constrained Optimization under Natural Language Commands. We presented
+the results of the constrained optimization setup in the main text. Here, we
+continue on this vein. A human engineer is typically
+given commands significantly different from the utility functions used by
+OR-AutoTuner. Specifically, a common class of optimization commands relayed to
+humans takes the form:
+
+“Optimize metric XX as much as possible, while not allowing metrics A,B,CA,B,C
+to deteriorate by more than 2%2\%.”
+
+This form of constrained optimization is generally not straightforward with existing
+OR-AutoTuner setups. LLMs can attempt such optimization by incorporating
+these constraints directly into their context. We study this phenomenon in
+Table XII and compare it to OR-AutoTuner in
+Tables XIII
+and  XIV, where we
+optimize E​C​PECP and W​LWL subject to a
+maximum worsening of 2%2\% and 4%4\% in other metrics of interest—Area,
+Instance Count, Power, and PDP. These percentage values are always with
+respect to the baseline values generated from default OR-AutoTuner parameters.
+
+4 parameters and no tools
+
+Metric
+WL Optimization
+ECP Optimization
+
+2% leeway
+4% leeway
+2% leeway
+4% leeway
+
+WL
+-8.18%
+-8.51%
+-7.62%
+-6.34%
+
+ECP
+-1.07%
+2.51%
+-2.98%
+-3.06%
+
+Area
+-1.36%
+-1.68%
+-1.18%
+-0.80%
+
+Count
+-1.55%
+-1.70%
+-1.35%
+-1.17%
+
+PDP
+-2.03%
+-9.04%
+-5.12%
+-0.05%
+
+Power
+-0.97%
+-11.27%
+-2.20%
+3.11%
+
+12 parameters with tools
+
+Metric
+WL Optimization
+ECP Optimization
+
+2% leeway
+4% leeway
+2% leeway
+4% leeway
+
+WL
+-11.24%
+-12.05%
+-7.9%
+-8.3%
+
+ECP
+-3.02%
+-2.12%
+-4.18%
+-4.46%
+
+Area
+-2.17%
+-1.92%
+-1.12%
+0.56%
+
+Count
+-1.62%
+-1.74%
+-1.31%
+-1.06%
+
+PDP
+-3.25%
+-0.27%
+-6.88%
+-0.77%
+
+Power
+-0.24%
+1.87%
+-2.81%
+3.86%
+
+TABLE XII: Constrained optimization results. Red positive numbers indicate worsening, i.e. an increase relative to baseline, and the “leeway” indicates the maximum worsening allowed.
+
+Metric
+WL Optimization
+ECP Optimization
+
+2% leeway
+4% leeway
+2% leeway
+4% leeway
+
+WL
+-9.03%
+-5.69%
+-3.23%
+-1.41%
+
+ECP
+1.40%
+1.03%
+-1.31%
+-2.60%
+
+Area
+-1.59%
+-1.22%
+-0.39%
+-0.08%
+
+Count
+-1.80%
+-1.71%
+0.58%
+-0.02%
+
+PDP
+-4.16%
+-7.87%
+-0.55%
+-0.06%
+
+Power
+-5.49%
+-8.81%
+0.77%
+2.61%
+
+TABLE XIII: Constrained optimization results for OR-AutoTuner (with 375 iterations, four parameters). Red positive numbers indicate worsening, i.e., an increase relative to baseline, and the “leeway” indicates the maximum worsening allowed.
+
+Metric
+WL Optimization
+ECP Optimization
+
+2% leeway
+4% leeway
+2% leeway
+4% leeway
+
+WL
+-12.53%
+-9.26%
+1.59%
+-7.04%
+
+ECP
+1.07%
+2.46%
+-0.46%
+-2.67%
+
+Area
+-1.86%
+-1.65%
+-0.49%
+-1.95%
+
+Count
+-2.0%
+-1.47%
+0.16%
+-1.57%
+
+PDP
+-7.17%
+-4.17%
+-1.10%
+-2.31%
+
+Power
+-8.15%
+-6.47%
+-0.65%
+0.37%
+
+TABLE XIV: Constrained optimization results for OR-AutoTuner (with 1000
+iterations, 12 parameters). Red positive numbers indicate
+worsening, i.e., an increase relative to baseline, and the “leeway” indicates
+the maximum worsening allowed.
+
+The 4%4\% tolerance case naturally gives rise to a Pareto frontier scatterplot of
+Effective Clock Period (ECP) versus wirelength (WL), which is shown in
+Figure 5.
+
+Fig. 5: Pareto frontier of ECP vs. WL under 4%4\% tolerance, relative to
+the baseline. The blue line represents the case with 4 parameters and no tool
+use, and the red line represents the case with 12 parameters and tool use.
+
+Appendix D Ablations for Data Leakage, Confidence and Robustness
+
+We begin by analyzing statistical significance in table XV,
+and testing prompt-level changes in tables XVI and
+ XVII. The “role” here should be understood as the role of an EDA
+expert that the LLM is asked to pose as. The details exist separately on the level
+of PDK / platform, circuit, and parameters. Each of these is ablated against. The
+reader should carefully also check the implementation codebase provided with the
+paper to understand the nature of this metadata.
+
+TABLE XV: Statistical significance over 20 independent ORFS-agent runs on the
+ASAP7 IBEX circuit. Percentile columns report the kk-th worst value
+(k=1,5,10,15,19k\!=\!1,5,10,15,19) among the 20 outcomes; “Reported” is the single-run
+value quoted in the main paper.
+
+Metric
+55-th
+2525-th
+Median
+7575-th
+9595-th
+Reported
+
+WL
+99820
+98512
+97360
+96075
+94980
+97305
+
+ECP*
+1335
+1301
+1275
+1251
+1223
+1278
+
+ECP
+1294
+1271
+1246
+1224
+1197
+1248
+
+WL*
+108430
+107180
+105598
+104125
+102470
+105562
+
+WL**
+105230
+103720
+102178
+10162
+99740
+102205
+
+ECP**
+1311
+1283
+1259
+1232
+1201
+1260
+
+TABLE XVI: Ablation on domain-knowledge content in prompts for ASAP7 IBEX.
+“PDK” removes technology-node details; “circuit” removes design-specific
+details; “Both” drops both. Higher WL/ECP indicate worse quality of result.
+
+Configuration
+WL
+ECP*
+ECP
+WL*
+WL**
+ECP**
+
+Baseline
+97305
+1278
+1248
+105562
+102205
+1260
+
+No PDK
+99874
+1385
+1296
+107284
+105210
+1275
+
+No circuit
+98743
+1368
+1301
+106938
+104782
+1280
+
+Both removed
+106044
+1324
+1281
+113854
+114576
+1287
+
+TABLE XVII: Sensitivity of ORFS-agent to prompt simplifications on ASAP7 IBEX.
+“Removed role” deletes the system-role description; “Removed param” deletes
+parameter-guidance text.
+
+Prompt variant
+WL
+ECP*
+ECP
+WL*
+WL**
+ECP**
+
+Baseline
+97305
+1278
+1248
+105562
+102205
+1260
+
+No role
+98044
+1292
+1255
+106114
+102934
+1267
+
+Blank params
+99130
+1310
+1270
+107039
+103848
+1278
+
+Throughout the process, the large amount of data from Anthropic raises concerns
+about whether the LLM is simply caching or memorizing what it observes. This
+includes the possibility of interactions with other OpenROAD users who may be
+testing Claude models on similar outputs. We test these concerns in the following
+ways:
+
+Circuit Obfuscation. To assess potential memorization, we obfuscate the
+name of the ASAP7-IBEX circuit and subject it to the same iteration vs. performance
+ablation test. The circuit name is changed to obfs, while the design
+platform input to the ORFS-agent remains ASAP7. Additionally, configuration settings
+are modified to rename the top-level module from “IBEX” to obfs. The ORFS-agent is
+also restricted from grepping log outputs that refer to the original name or netlist
+identifiers. The results appear in Table XVIII and Table XIX.
+
+WL
+ECP
+Area
+Count
+PDP
+Power
+
+5
+110605
+1311
+2731
+21728
+86.526
+0.066
+
+10
+113186
+1304
+2741
+21972
+89.976
+0.069
+
+15
+110358
+1296
+2735
+21735
+88.128
+0.068
+
+20
+111918
+1281
+2746
+21854
+89.670
+0.070
+
+25
+110965
+1283
+2733
+21732
+85.961
+0.067
+
+30
+112645
+1273
+2746
+21882
+90.383
+0.071
+
+TABLE XVIII: Obfuscated results—ASAP7 IBEX, no tools and with 4 parameters.
+
+WL
+ECP
+Area
+Count
+PDP
+Power
+
+5
+114861
+1316
+2716
+22015
+84.22
+0.064
+
+10
+105788
+1294
+2728
+21986
+90.58
+0.070
+
+15
+106724
+1286
+2735
+21924
+87.45
+0.068
+
+20
+106245
+1278
+2704
+21864
+84.35
+0.066
+
+25
+103871
+1276
+2694
+21882
+90.60
+0.071
+
+30
+103244
+1272
+2711
+218008
+94.13
+0.074
+
+TABLE XIX: Obfuscated results—ASAP7 IBEX, with tools and with 12 parameters, including PDP = ECP ×\times Power.
+
+Statistical Significance. We run the ASAP7-IBEX optimization for
+E​C​P,W​LECP,WL 1010 times, with results in Table XX
+and  XXI. Even the worst of the 1010 produces a result
+that is superior in terms of ECP against OR-AutoTuner.
+Each individual row indicates the outcome with the lowest ECP in the final 2525
+iterations of an individual run.
+
+WL
+ECP
+Area
+Count
+PDP
+Power
+
+Run 1
+116479
+1290
+2744
+21781
+90.300
+0.070
+
+Run 2
+110232
+1286
+2736
+21775
+90.020
+0.070
+
+Run 3
+121092
+1287
+2778
+22181
+91.377
+0.071
+
+Run 4
+114576
+1287
+2746
+22013
+84.942
+0.066
+
+Run 5
+109107
+1303
+2720
+21636
+80.786
+0.062
+
+Run 6
+111054
+1275
+2740
+21816
+91.800
+0.072
+
+Run 7
+116722
+1279
+2758
+22098
+89.530
+0.070
+
+Run 8
+115933
+1281
+2766
+21918
+90.951
+0.071
+
+Run 9
+109230
+1309
+2724
+21656
+82.467
+0.063
+
+Run 10
+109342
+1299
+2728
+21734
+88.332
+0.068
+
+TABLE XX: 1010-fold runs, ASAP7 IBEX, 4 parameters and no tools.
+
+WL
+ECP
+Area
+Count
+PDP
+Power
+
+Run 1
+102289
+1288
+2726
+21688
+100.464
+0.078
+
+Run 2
+102677
+1285
+2715
+21722
+102.800
+0.080
+
+Run 3
+104200
+1254
+2705
+21782
+102.828
+0.082
+
+Run 4
+103384
+1270
+2674
+22092
+109.220
+0.086
+
+Run 5
+104922
+1268
+2678
+21954
+84.956
+0.067
+
+Run 6
+102874
+1269
+2691
+21894
+91.368
+0.072
+
+Run 7
+103982
+1289
+2712
+21866
+95.386
+0.074
+
+Run 8
+103581
+1275
+2732
+21895
+96.900
+0.076
+
+Run 9
+106742
+1248
+2725
+21906
+88.608
+0.071
+
+Run 10
+105864
+1252
+2698
+21967
+87.640
+0.070
+
+TABLE XXI: 10-fold runs, ASAP7 IBEX, 12 parameters and with tools.
+
+Robustness Testing. We perform two layers of robustness testing.
+First, we add noise to every measurement: we multiply every observation OO, at
+random, with the variable 1+XO1+X_{O}, where each XOX_{O} is an i.i.d. uniform random
+variable from [−0.05,0.05][-0.05,0.05]. Next, we consider the case where our specification of
+the surrogate has gone astray - it is a common occurrence in EDA for the variable
+being optimized to not really track what is desired. For this, we change all the
+CTS-level observations to be multiplied by 1+XC​T​S1+X_{CTS}, where XC​T​SX_{CTS} is an
+uniform random variable i.i.d drawn from [−0.2,0.2][-0.2,0.2]. The results on ASAP7 IBEX
+are presented below in Table XXII.
+
+Run
+WL
+CP
+Area
+Count
+PDP
+Power
+
+Overall perturbation, per objective case
+
+WL
+104427
+1318
+2741
+21782
+92.26
+0.070
+
+ECP
+106872
+1268
+2708
+21905
+98.90
+0.078
+
+WL & ECP6
+107848
+1274
+2685
+21802
+96.82
+0.076
+
+CTS perturbation, per objective case
+
+WL
+106898
+1305
+2673
+21917
+93.96
+0.072
+
+ECP
+112824
+1272
+2711
+21904
+96.67
+0.076
+
+WL & ECP
+109873
+1281
+2705
+21877
+93.51
+0.073
+
+TABLE XXII: Perturbed runs, 12 parameters, tool use permitted.
+
+Appendix E Global Context, Initialization, and the Toolbox
+
+The FunctionalORFS-agent maintains a GLOBALCONTEXT containing
+the design environment details (PDK, circuit, task specifics, etc.). Each LLM
+call in the pipeline includes this global context, plus the relevant logs and
+data extracted at runtime. The GLOBALCONTEXT is initialized as
+the prompt, defined below.
+
+LLM calls made within each part of an iteration - i.e., INSPECT, etc. -
+add the LOCALCONTEXT of that particular iteration. However, they are not
+necessarily passed on to the GLOBALCONTEXT. As we move from iteration jj
+to j+1j+1, GLOBALCONTEXT is modified to only include a small subset of all
+the LOCALCONTEXT within the particular iteration jj.
+
+E-A Initialization
+
+At the very first iteration, the prompt is
+initialized based on a set of the following inputs:
+
+• 
+
+The design platform (e.g., ASAP7).
+
+• 
+
+The circuit under consideration (e.g., AES).
+
+• 
+
+The optimization task (e.g., minimize wire length (WL)).
+
+• 
+
+The inputs, which include design parameters (e.g., the 12 parameters
+such as core utilization, etc.).
+
+• 
+
+The outputs, specifying the variable sets (e.g., detailed WL) and
+variable sets of its surrogate(s) (e.g., CTS WL).
+
+• 
+
+The exact output to optimize from the variables (e.g., -WL for
+maximization or WL for minimization).
+
+• 
+
+The domains of the inputs, including whether they are Boolean,
+integers with min/max bounds, or continuous values converted to integers
+(e.g., converting float ranges like 0.01–0.99 to integer ranges 1–99,
+and scaling back to original values for PARAMETERS generation).
+
+• 
+
+Suggested ranges for inputs.
+
+E-B Toolbox
+
+We define three separate kinds of tools. All of them require
+a Description, a set of ideally typed arguments, and a return
+object Return with description and type specifications to be efficiently
+made a part of LLM function-calling frameworks. All of them are summarized in
+section F.
+
+INSPECT Tools. These tools enable quick analysis of numeric datasets by
+computing summary statistics, correlations, outlier indices, or performing
+principal component analysis. They do not consume raw data token-by-token but
+instead return concise analytical results that aid downstream decision-making.
+
+OPTIMIZE Tools. These tools propose new points (parameter sets)
+to explore in an optimization process. Each one uses a different strategy—ranging
+from random sampling and grid-based approaches to more sophisticated algorithms
+like Bayesian optimization or genetic algorithms—to balance exploration and
+exploitation.
+
+AGGLOM Tools. These tools agglomerate (reduce or cluster) a large
+set of candidate solutions into a smaller or more representative subset. Methods
+include selecting the Pareto front for multi-objective problems, maximizing
+coverage or diversity, or clustering to find the most central or diverse candidates.
+
+Appendix F Tool Details
+
+INSPECT Tools
+
+AnalyzeManifold analyzes the underlying manifold structure using PCA,
+TSNE, and MDS. It takes X: np.ndarray and an optional config:
+Dict, and returns a summary as a Dict.
+
+AnalyzeLocal examines local structure using LOF and DBSCAN. It accepts
+X: np.ndarray and an optional config: Dict, and returns a summary
+Dict.
+
+InspectDistribution analyzes statistical properties of input/output data.
+It requires X: np.ndarray, Y: np.ndarray, and optionally
+Y_surrogate: np.ndarray. The output is a summary: Dict.
+
+InspectStructure inspects structural properties and gives model
+recommendations. Inputs include X: np.ndarray, Y: np.ndarray, and
+optionally config: Dict. It returns a summary: Dict.
+
+OPTIMIZE Tools
+
+CreateModel creates and configures a Gaussian Process model. It takes
+X: np.ndarray, y: np.ndarray, noise_level: float, and
+kernel_type: str, returning a model of type
+GaussianProcessRegressor.
+
+CreateKernel generates a kernel from a given specification. The required
+inputs are kernel_spec: str and input_dim: int. It outputs a
+GPR kernel.
+
+ExpectedImprovement calculates the Expected Improvement (EI) acquisition
+function. Inputs include mu: np.ndarray, std: np.ndarray, and
+y_best: float. The return is ei: np.ndarray.
+
+HandleSurrogate processes and combines true and surrogate data. It uses
+X: np.ndarray, y: np.ndarray, and surrogate_values:
+np.ndarray, and returns a tuple (X, y_combined, uncertainty).
+
+LatinHypercube generates Latin Hypercube samples. The inputs are
+n_points: int and n_dims: int, returning samples:
+np.ndarray.
+
+AGGLOM Tools
+
+SelectPoints selects points based on a specified method. It accepts
+X: np.ndarray, quality_scores: np.ndarray, method: str,
+and n_points: int, and returns selected_indices: np.ndarray.
+
+HybridSelect combines quality and diversity for point selection. Required
+arguments are X: np.ndarray, quality_scores: np.ndarray,
+distance_matrix: np.ndarray, and n_points: int, with return
+selected_indices: np.ndarray.
+
+EntropySelect uses entropy-based diversity for selection. It takes
+X: np.ndarray, quality_scores: np.ndarray, and
+n_points: int, returning selected_indices: np.ndarray.
+
+GraphSelect applies graph-based diversity metrics for point selection. It
+accepts X: np.ndarray, quality_scores: np.ndarray, and
+n_points: int, returning selected_indices: np.ndarray.
+
+CreateQualityScores computes quality scores from model predictions. Inputs
+include X: np.ndarray, y: np.ndarray, model_predictions:
+np.ndarray, and optionally model_uncertainties: np.ndarray. It returns
+quality_scores: np.ndarray.
+
+Each of the tools used here can be implemented using standard python packages. For
+instance, scikit-learn, numpy and related Python packages offer support
+for Gaussian Processes, t-SNE modeling, and so on. By combining these existing
+libraries with domain-specific logic, we create a modular, maintainable toolbox
+that reflects the iterative exploration process a human data scientist would perform
+—streamlining tasks like outlier detection, dimensionality reduction, and
+optimization-driven design.
+
+◄
+
+ Feelinglucky?
+
+ Conversionreport
+ Reportan issue
+ View originalon arXiv►
+
+Copyright
+Privacy Policy
+
+Generated by LaTeXML oxide
+
+ var canMathML = typeof(MathMLElement) == "function";
+ if (!canMathML) {
+ var body = document.querySelector("body");
+ body.firstElementChild.setAttribute('style', 'opacity: 0;');
+ var loading = document.createElement("div");
+ loading.setAttribute("id", "mathjax-loading-spinner");
+ var message = document.createElement("div");
+ message.setAttribute("id", "mathjax-loading-message");
+ message.innerText = "Typesetting Equations...";
+ body.prepend(loading);
+ body.prepend(message);
+
+ var el = document.createElement("script");
+ el.src = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js";
+ document.querySelector("head").appendChild(el);
+
+ window.MathJax = {
+ startup: {
+ pageReady: () => {
+ return MathJax.startup.defaultPageReady().then(() => {
+ body.removeChild(loading);
+ body.removeChild(message);
+ body.firstElementChild.removeAttribute('style');
+ }); } } };
+ }
+
+ // Auxiliary function, building the preview feature when
+ // an inline citation is clicked
+ function clicked_cite(e) {
+ e.preventDefault();
+ let cite = this.closest('.ltx_cite');
+ let next = cite.nextSibling;
+ if (next && next.nodeType == Node.ELEMENT_NODE && next.getAttribute('class') == "ar5iv-bibitem-preview") {
+ next.remove();
+ return; }
+ // Before adding a preview modal,
+ // cleanup older previews, in case they're still open
+ document.querySelectorAll('span.ar5iv-bibitem-preview').forEach(function(node) {
+ node.remove();
+ })
+
+ // Create the preview
+ preview = document.createElement('span');
+ preview.setAttribute('class','ar5iv-bibitem-preview');
+ let target = document.getElementById(this.getAttribute('href').slice(1));
+ target.childNodes.forEach(function (child) {
+ preview.append(child.cloneNode(true));
+ });
+ let close_x = document.createElement('button');
+ close_x.setAttribute("aria-label","Close modal for bibliography item preview");
+ close_x.textContent = "×";
+ close_x.setAttribute('class', 'ar5iv-button-close-preview');
+ close_x.setAttribute('onclick','this.parentNode.remove()');
+ preview.append(close_x);
+ preview.querySelectorAll('.ltx_tag_bibitem').forEach(function(node) {
+ node.remove();
+ });
+ cite.parentNode.insertBefore(preview, cite.nextSibling);
+ return;
+ }
+ // Global Document initialization:
+ // - assign the preview feature to all inline citation links
+ document.querySelectorAll(".ltx_cite .ltx_ref").forEach(function (link) {
+ link.addEventListener("click", clicked_cite);
+ });
+
