@@ -1,0 +1,524 @@
+                                                      NetlistBench: Evaluating LLM Reliability in SPICE Netlist
+                                                                   Recognition and Manipulation
+                                                                    Jiarui Ma                                                 Jianghan Wang                                      Yuheng Ma
+                                                 Southern University of Science and                              Southern University of Science and                 Southern University of Science and
+                                                            Technology                                                      Technology                                         Technology
+                                                     School of Microelectronics                                      School of Microelectronics                         School of Microelectronics
+                                                         Shenzhen, China                                                 Shenzhen, China                                    Shenzhen, China
+                                                   12312626@mail.sustech.edu.cn                                    12311107@mail.sustech.edu.cn                       12412108@mail.sustech.edu.cn
+
+                                                                                                 Ziyi Zhuang                                         Xiaoguang Liu
+                                                                                 Southern University of Science and                        Southern University of Science and
+                                                                                            Technology                                                Technology
+                                                                                     School of Microelectronics                                School of Microelectronics
+                                                                                         Shenzhen, China                                            Shenzhen, China
+                                                                                   12412728@mail.sustech.edu.cn                                  liuxg@sustech.edu.cn
+arXiv:2608.12197v1 [eess.SY] 12 Aug 2026
+
+
+
+
+                                           Abstract                                                                                        ACM Reference Format:
+                                           Large Language Models (LLMs) are increasingly used in circuit                                   Jiarui Ma, Jianghan Wang, Yuheng Ma, Ziyi Zhuang, and Xiaoguang Liu.
+                                                                                                                                           2026. NetlistBench: Evaluating LLM Reliability in SPICE Netlist Recognition
+                                           design workflows, yet their reliability on simulator-facing SPICE
+                                                                                                                                           and Manipulation. In Proceedings of . ACM, New York, NY, USA, 8 pages.
+                                           netlist recognition and manipulation remains poorly understood
+                                           and is rarely separated from high-level design reasoning. Although
+                                           netlists are textual, they encode structured circuit objects through                            1    Introduction
+                                           topology and parameters. We present NetlistBench, a structure-                                  Large language models (LLMs) are increasingly explored across the
+                                           verified benchmark for SPICE netlist recognition and manipulation.                              lifecycle of integrated circuit (IC) design, including domain-adapted
+                                           NetlistBench contains 2,342 cases across 24 task families, cover-                               chip-design assistance, analog circuit generation, simulation-driven
+                                           ing parameter and connectivity recognition and edits, hierarchical                              optimization, and multimodal netlist extraction [10, 15, 16, 20, 21,
+                                           operations, equivalence judgment, and long-horizon compound                                     29, 31]. By treating hardware artifacts as structured code, LLM-
+                                           editing. Model outputs are evaluated by a deterministic structure-                              based systems hold the potential to accelerate electronic design
+                                           aware oracle. Across six non-thinking LLMs, performance varies                                  automation (EDA) by translating specifications, editing topologies,
+                                           substantially with operation-level structural complexity. Simple                                and driving simulator- or layout-facing tools.
+                                           local edits reach 96%–100% accuracy, while device addition drops to                                 Despite differences in their inputs, objectives, and tool interfaces,
+                                           41%–83% and equivalence judgment to 49%–90%. Enabling reason-                                   many of these workflows share SPICE netlists as a recurring rep-
+                                           ing substantially improves weaker models but does not eliminate                                 resentation layer (Figure 1). In generation-oriented settings, LLMs
+                                           structure-preservation failures, with performance still degrading                               may synthesize netlists from specifications, schematics, or circuit
+                                           sharply as the edit horizon increases. NetlistBench identifies netlist                          images [1, 10, 15, 31]. In simulation-driven optimization loops, they
+                                           reliability as a distinct bottleneck for trustworthy LLM-based circuit                          often revise existing netlists according to performance or simulator
+                                           design automation.                                                                              feedback [20, 26, 29]. In netlist-to-schematic or netlist-to-layout
+                                                                                                                                           workflows, they may interpret connectivity, hierarchy, and device
+                                           CCS Concepts                                                                                    relationships to guide downstream visualization or physical de-
+                                           • Hardware → Electronic design automation; • Computing                                          sign [5, 8, 13, 14, 17]. Across these settings, key model actions fre-
+                                           methodologies → Natural language processing.                                                    quently take the form of reading, generating, editing, or reasoning
+                                                                                                                                           over netlist text.
+                                           Keywords                                                                                            Errors at this representation layer can directly corrupt down-
+                                                                                                                                           stream simulation, optimization, or layout reasoning. Consequently,
+                                           Large language models, circuit representation, SPICE netlists, netlist                          failures in LLM-based circuit workflows may originate either from
+                                           recognition and manipulation                                                                    high-level design reasoning or from low-level netlist corruption,
+                                           Permission to make digital or hard copies of all or part of this work for personal or           yet existing evaluations rarely separate these two sources. Reli-
+                                           classroom use is granted without fee provided that copies are not made or distributed           able netlist operation is therefore a prerequisite for trustworthy
+                                           for profit or commercial advantage and that copies bear this notice and the full citation       LLM-based circuit design workflows.
+                                           on the first page. Copyrights for components of this work owned by others than the
+                                           author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or              However, this prerequisite has not been directly quantified. Gen-
+                                           republish, to post on servers or to redistribute to lists, requires prior specific permission   eral LLM-for-code benchmarks commonly evaluate executable func-
+                                           and/or a fee. Request permissions from permissions@acm.org.
+                                                                                                                                           tional correctness through unit tests or repository test suites [3, 12],
+                                           ,
+                                           © 2026 Copyright held by the owner/author(s). Publication rights licensed to ACM.               but do not capture the device-specific terminal semantics, shared-
+                                                                                                                                           node connectivity, and ordered subcircuit interfaces of SPICE netlists.
+,,                                                                                                                                       Ma et al.
+
+
+                                                                         2 Background
+                                                                         2.1 SPICE Netlists as Structured Circuit
+                                                                             Representations
+                                                                         SPICE netlists are simulator-facing circuit descriptions that encode
+                                                                         devices, terminals, nodes, parameters, models, ports, and subcir-
+                                                                         cuit hierarchies in a compact, positional textual format [18, 19].
+                                                                         Although a netlist appears as a sequence of text lines, its underly-
+                                                                         ing semantics correspond to a structured circuit object. Each device
+                                                                         statement typically begins with an instance prefix, followed by
+                                                                         an ordered sequence of node names connected to specific device
+                                                                         terminals, a model reference, and optional parameter assignments.
+                                                                         For hierarchical circuits, subcircuit definitions (.subckt) establish
+                                                                         ordered port interfaces, and each subcircuit instance binds external
+                                                                         nodes to internal ports strictly according to their positional order
+                                                                         in the instance statement.
+                                                                            A defining characteristic of this representation is that electri-
+Figure 1: SPICE netlists as a common representation layer in             cal connectivity is encoded implicitly through node-name sharing
+LLM-based circuit design workflows.                                      rather than explicit terminal-to-terminal links. For circuit simula-
+                                                                         tion, node labels are sufficient because devices contribute equations
+                                                                         to the modified nodal analysis (MNA) system according to the nodes
+                                                                         attached to their terminals [9]. Terminals sharing the same node
+Existing evaluations of LLM-based circuit design typically focus         name are treated as electrically connected. For structural analysis
+on end-to-end outcomes, such as syntactic validity, simulation           and manipulation, however, these connections are not represented
+success, specification improvement, or downstream task comple-           as explicit terminal-to-terminal links; the circuit topology must
+tion [15, 20, 26]. Recent circuit-oriented benchmarks mainly assess      be reconstructed from terminal–node bindings across the entire
+domain-level capabilities, including circuit interpretation, topol-      netlist.
+ogy reasoning, schematic understanding, AMS-domain multimodal               These properties make netlist operations different from ordinary
+reasoning, or graph-structured reasoning [23, 25, 27]. While these       text editing. A correct edit must preserve terminal-role bindings,
+evaluations reveal important limitations, they do not isolate the ele-   maintain consistent node identities, and avoid unintended changes
+mentary operations required to interpret and modify SPICE netlists       to unrelated devices or subcircuit interfaces. NetlistBench there-
+correctly. Accordingly, the reliability of LLMs in performing            fore evaluates netlist outputs through structural equivalence to a
+core SPICE netlist operations remains unclear.                           canonical circuit representation rather than through surface-string
+   To address this gap, we introduce NetlistBench, a structure-          similarity.
+verified benchmark for evaluating whether LLMs can reliably rec-
+ognize and manipulate analog SPICE netlists as structured circuit
+representations. NetlistBench focuses on structure-level operations
+that test a model’s ability to recover circuit structure or apply        2.2    Reported Limitations of LLMs on SPICE
+explicit modifications without introducing unintended changes.                  Netlists
+Model outputs are evaluated through a deterministic canonical cir-
+                                                                         Existing studies have reported several limitations of LLMs in pro-
+cuit representation that captures devices, ordered terminal bindings,
+                                                                         cessing circuit representations and SPICE-like netlists. At the circuit-
+node identities, parameters, directives, and hierarchy.
+                                                                         reasoning level, benchmarks such as CIRCUIT and AMSbench show
+   The main contributions of this work are:
+                                                                         that LLMs can struggle with topology-heavy circuit interpreta-
+     • We formulate SPICE netlist reliability as a representation-       tion and multi-step circuit reasoning [23, 25]. At the generation
+       level evaluation problem, focusing on whether LLMs can            and adaptation level, systems such as SPICEPilot, SPICEAssistant,
+       correctly recognize and manipulate netlists as structured         AnalogCoder, and Spice Wizard rely on simulation feedback, syn-
+       circuit artifacts.                                                tax checks, or tool-assisted repair loops to improve SPICE code or
+     • We introduce NetlistBench, a structure-verified benchmark         netlist generation, indicating that unvalidated LLM outputs may not
+       covering netlist structural-property recognition and natural-     provide sufficient reliability for direct downstream use [6, 15, 20, 26].
+       language-guided netlist manipulation. Using NetlistBench,         At the netlist-analysis level, SPICED studies LLM-aided detection
+       we evaluate representative frontier, flash-class, and open-       and localization of syntactical bugs and analog Trojans in A/MS
+       weight LLMs and show that reliability varies sharply across       netlists, further showing that node, parameter, subcircuit, and con-
+       operation type and task horizon.                                  nectivity errors are meaningful failure classes in SPICE-like repre-
+     • We develop a structure-aware evaluation pipeline based on         sentations [2].
+       canonical circuit representations, enabling manipulation out-        Complementary representation-oriented work suggests why
+       puts to be verified beyond raw text matching or final simu-       these failures are difficult to avoid with ordinary text modeling
+       lation outcomes.                                                  alone. CircuitFormer highlights the mismatch between standard
+NetlistBench: Evaluating LLM Reliability in SPICE Netlist Recognition and Manipulation                                                                       ,,
+
+
+language tokenization and the graph-structured semantics of cir-
+cuits, while Image2Net evaluates diagram-to-netlist conversion
+using graph-structured netlist comparison rather than raw string
+matching [11, 31]. Taken together, these findings suggest that LLM
+failures on SPICE netlists are not merely surface-level syntax issues,
+but are closely related to the difficulty of preserving structured
+circuit semantics in a positional textual representation.
+   However, these studies evaluate netlists within broader gener-
+ation, simulation, conversion, or reasoning pipelines rather than
+isolating representation-level netlist operations.
+
+3     Benchmark Design
+NetlistBench evaluates representation-level netlist reliability through
+two modalities: recognition, which extracts or compares circuit
+structure, and manipulation, which applies explicit natural-language
+edits to SPICE netlists. This design separates structure interpre-
+tation and structure-preserving transformation from high-level
+design reasoning, simulator behavior, and optimization.                                  Figure 2: NetlistBench pipeline for generating benchmark
+                                                                                         cases and evaluating model outputs with a structure-aware
+    Table 1: Composition of the NetlistBench source corpus.                              oracle.
+
+
+       Source subset               Count Structural summary                                                             (𝑖 )      (𝑖 )
+                                                                                         used for evaluation. Both Tinst     and Ytarget are produced by deter-
+       AnalogGenie–Simple             492 Median: 5 devices                              ministic, family-specific templates, ensuring that each instance has
+       AnalogGenie–Medium           1,752 Median: 20 devices                             an unambiguous instruction and reproducible ground truth.
+       AnalogGenie–Complex            594 Median: 36 devices;                                                (𝑖 )
+                                                                                             The form of Ytarget  depends on the task type. For manipulation
+                                          maximum: 69
+                                                                                         tasks, it is the uniquely determined target SPICE netlist that realizes
+       Flat subtotal                2,838 Approximately 58,000                           the requested structural transformation. For recognition tasks, it
+                                          device instances                               is the canonical JSON answer derived from the source netlist. For
+       ALIGN hierarchical             931 21 topology families; 3–4                      equivalence judgment tasks, it is the binary structural-equivalence
+                                          subcircuits per netlist                        verdict.
+       Total                        3,769                                                    All instances undergo automated construction-time validation
+                                                                                         before inclusion. The checker ensures that manipulation targets
+                                                                                         implement exactly the specified structural changes without un-
+3.1     Source Corpus                                                                    intended edits, and that recognition and equivalence targets are
+NetlistBench uses two complementary SPICE netlist sources, sum-                          consistent with the canonical IR of the corresponding input netlist
+marized in Table 1. AnalogGenie provides flat CMOS analog netlists                       or netlist pair.
+originally developed for topology discovery [7]; after normalization,
+these circuits are used to construct flat recognition and manipu-                        3.3    Structure-Aware Evaluation Oracle
+lation tasks. ALIGN provides hierarchical analog netlists from a                         This structure-aware evaluation follows the broader principle that
+layout automation flow [5]; its circuits contain multiple .subckt                        circuit artifacts should be compared through their underlying con-
+definitions and top-level instance calls and are used for hierarchical                   nectivity and device structure rather than by surface text. Simi-
+tasks.                                                                                   lar graph-structured evaluation ideas have been used in diagram-
+                                                                                         to-netlist conversion, where generated and reference netlists are
+3.2     Instance Construction Pipeline                                                   compared through heterogeneous circuit graphs rather than raw
+NetlistBench constructs evaluation instances through a determin-                         strings [31].
+istic, template-driven pipeline rather than stochastic or uncon-                            Concretely, each model output and the reference target are
+strained generation. Starting from source SPICE netlists, the pipeline                   parsed into the canonical IR —a normalized structure that lists
+applies family-specific transformation rules, syntax perturbations,                      every device by instance name with its device kind, ordered termi-
+and prompt templates to produce reproducible benchmark cases.                            nal nodes, and parameters, together with top-level directives and,
+Each instance is represented as a self-contained triplet:                                for hierarchical circuits, each subcircuit’s port interface and inter-
+                                                                                       nal devices. An output passes only if its IR matches the reference IR
+                               (𝑖 )    (𝑖 )    (𝑖 )
+                      I𝑖 = Nsrc     , Tinst , Ytarget   ,          (1)                   under a fixed set of semantics-preserving normalizations: the two
+          (𝑖 )                                    (𝑖 )
+                                                                                         must contain the same set of named devices, with no missing or ex-
+where Nsrc     denotes the source SPICE netlist, Tinst denotes the ex-                   tra device, identical terminal-node bindings, parameters equal up to
+                                (𝑖 )
+plicit task instruction, and Ytarget denotes the task-specific target                    numeric normalization (e.g., 1k equals 1000), and identical top-level
+,,                                                                                                                                    Ma et al.
+
+
+
+
+Figure 3: Overview of the NetlistBench benchmark, showing the distribution of cases across task families and representative
+task examples.
+
+
+directives; symmetric two-terminal passives (𝑅/𝐶/𝐿) are compared         contains 800 cases across eight families. Seven evaluate structured
+with unordered terminals, and subcircuit definitions must agree          extraction of device parameters, terminal connectivity, node in-
+on their port interface (port order treated as semantic except for       cidence, subcircuit interfaces, and instance mappings, while the
+extraction tasks), internal devices, and directives. This exact-match-   eighth evaluates structural equivalence between netlist pairs.
+up-to-normalization rule directly encodes the name-preservation             The manipulation modality contains 1,542 cases across 16 fami-
+and locality constraints of edit tasks: renaming an untouched node,      lies. Six single-edit families cover connectivity editing, device ad-
+dropping or duplicating a device, or perturbing an unrelated param-      dition, removal and replacement, parameter editing, and rename
+eter each surfaces as an IR mismatch and fails the case. The same        propagation. Five flat compound families combine 3, 6, 9, 12, or 15
+canonical-IR comparator scores SPICE and PySpice [22] outputs            dependent operations, and five hierarchical families evaluate sub-
+through a uniform interface.                                             circuit expansion, interface modification, and multi-step internal
+   For the equivalence-judgment family, the task is instead to decide    editing.
+whether two netlists denote the same circuit up to consistent node
+and instance renaming. To validate the generated ground-truth
+labels for this family, we projected the IR into a labeled bipartite     4 Evaluation
+device–net graph—device nodes labeled by type, model, and normal-        4.1 Experimental Setup and Protocol
+ized parameter signatures, and device–net edges labeled by terminal
+                                                                         We evaluate six single-shot non-thinking models spanning fron-
+roles—and ran a VF2 graph-isomorphism check [4] confirming that
+                                                                         tier, flash-class, and open-weight tiers: Claude Sonnet 4.6, GPT-4.1,
+positive pairs are isomorphic and negative pairs are not. This iso-
+                                                                         Gemini 2.5 Flash, DeepSeek-V4-Flash, Qwen3.6-Flash, and Qwen3-
+morphism check audits equivalence-case labels only and is not part
+                                                                         30B-A3B. All are queried through official provider APIs with explicit
+of scoring model outputs: scoring must instead preserve device
+                                                                         reasoning modes disabled, so the main comparison measures base
+and node names, whereas VF2 equates circuits up to renaming and
+                                                                         netlist-operation reliability rather than reasoning elicitation. As a
+would therefore mask the very name- and locality-violations that
+                                                                         reasoning reference, we additionally evaluate the same DeepSeek-
+the edit tasks are designed to detect.
+                                                                         V4-Flash with its native thinking mode enabled; this column is
+                                                                         reported separately and excluded from the non-thinking compar-
+3.4    Task Families                                                     ison. We also run two controlled secondary analyses on a paired
+NetlistBench contains 24 task families across recognition and ma-        stratified subset: SPICE versus PySpice output representation, and
+nipulation, as summarized in Figure 3. The recognition modality          direct prompting versus native thinking and CoT prompting [28].
+NetlistBench: Evaluating LLM Reliability in SPICE Netlist Recognition and Manipulation                                                                       ,,
+
+
+Table 2: Per-family NetlistBench pass rates (%).
+C/G/Ge/QF/Q30/DS denote Claude-S4.6, GPT-4.1, Gemini-
+2.5-F, Qwen3.6-F, Qwen3-30B, and DeepSeek-V4-F. DS+R† is
+the reasoning reference, excluded from bolding; underlines
+exceed all non-thinking models.
+
+   Task                    𝑛    C     G     Ge     QF    Q30    DS    DS+R†
+   Conn. edit            100 97 91 93              59     47    85      99
+   Dev. add              100 83 72 57              54     43    41      55
+   Dev. remove           100 100 100 100           98     97   100      100              Figure 4: Pass rates under compound editing with increasing
+   Dev. replace          100 95 93 86              75     61    78      91               numbers of dependent edits for (a) flat netlists and (b) hier-
+   Param. edit           100 100 99 98             99     96    98      99               archical subcircuit netlists. Lines show the mean pass rates,
+   Rename prop.          100 99 98 97              85     89    92      100
+   Comp. 3               100 80 71 70              34     28    44      74
+                                                                                         and shaded regions indicate the corresponding variation.
+   Comp. 6               100 57 58 33              6      1     18      63
+   Comp. 9               100 56 51 21              2      1     6       50
+   Comp. 12              100 41 39 17              0      0     1       33               4.2    Performance Across Task Families
+   Comp. 15               97 26 34    6            0      0     0       31
+   Subckt inline          45 56 62 33              16     2     42      98               Table 2 shows substantial variation across operation types. Local
+   Port swap             100 88 80 83              33     19    65      97               operations that primarily modify explicit text are the most reliable:
+   Subckt comp. 3        100 79 69 55              39     21    32      66               device removal and parameter editing reach 96%–100% across mod-
+   Subckt comp. 6        100 67 55 36              5      4     8       54               els. Reliability decreases for operations that require maintaining
+   Subckt comp. 9        100 42 43 41              1      1     3       47               connectivity or introducing new structure, including connectiv-
+   Edit subtotal        1542    74    70     59    39     33    45      71               ity editing, device replacement, device addition, subcircuit port
+   Dev. param.           100 99 100 100 100 99 100                      100
+                                                                                         swapping, and inline expansion.
+   Sem. term. conn.      100 99 73 74 25     6   82                     100                 Recognition exhibits a similar distinction. Explicit attributes such
+   Ord. term. conn.      100 100 100 99 99 100 100                      100              as device parameters, ordered terminal lists, and subcircuit ports
+   Node inc.             100 98 42 59 21     15  53                     96               are extracted with high accuracy, whereas relational queries vary
+   Subckt ports          100 100 100 100 100 99 100                     100              substantially across models. Node incidence ranges from 15% to
+   Inst. port map        100 100 96 87 89    65  96                     100              98%, semantic terminal connectivity from 6% to 99%, and terminal-
+   Term. neigh. inc.     100 97 13 20     4  2   12                     93
+                                                                                         neighbor incidence from 2% to 97%. Structural equivalence judg-
+   Equiv. judge          100 90 67 61 55     56  49                     97
+                                                                                         ment also remains challenging, with pass rates from 49% to 90%.
+   Recog. subtotal       800    98    74     75    62     55    74      98                  Overall non-thinking pass rates range from 41% to 82%. The re-
+   Overall              2342    82    71     64    47     41    55      81               sults indicate that current models are considerably more reliable on
+                                                                                         localized attribute extraction and substitution than on recovering
+                                                                                         or preserving the implicit connectivity graph. Enabling reasoning
+                                                                                         raises DeepSeek-V4-Flash from 55% to 81%, but does not consis-
+                                                                                         tently surpass the strongest non-thinking model.
+   Each model is queried once per case with deterministic decoding,
+and retries are used only for transport failures. Responses are graded
+by the structure-aware oracle in Section 3.3 and reduced to binary                       4.3    Long-Horizon Compound Editing
+pass/fail outcomes: manipulation outputs must match the reference                        The compound editing families chain 3, 6, 9, 12, and 15 mutually
+structure, recognition outputs must match the canonical JSON an-                         dependent edits into a single instruction, revealing a substantial
+swer, and equivalence judgments must match the reference verdict.                        reliability degradation in NetlistBench. Accuracy declines consis-
+The parser tolerates incidental code fences, but empty, unparsable,                      tently as the edit horizon increases (Figure 4). Even models with
+or structurally invalid outputs fail. We report pass rates with Wil-                     strong short-horizon performance degrade substantially: Claude
+son 95% confidence intervals [30]; Table 2 gives the per-family                          drops from 80% at 3 steps to 26% at 15 steps, while GPT-4.1 drops
+case count 𝑛, and aggregate ablation intervals are stated explicitly.                    from 71% to 34%. The remaining models decline to near-zero ac-
+Subtotals and overall scores are case-weighted. Reasoning-mode                           curacy at longer horizons, with Gemini decreasing from 70% to
+results are single samples and may carry run-to-run variance.                            6%, DeepSeek-V4-Flash from 44% to 0%, and both Qwen3.6-Flash
+                                                                                         and the open-weight Qwen3-30B from 34%/28% to 0%. Crucially,
+   Availability. NetlistBench is publicly available at https://github.                   reasoning does not eliminate this trend: DeepSeek-V4-Flash with
+com/WoshiMayou/NetlistBench. The repository contains all 2,342                           reasoning enabled, although far stronger at short horizons (74% at
+benchmark cases across the 24 task families, the deterministic                           3 steps), still falls to 31% at 15 steps.
+structure-aware oracle, seeded case-generation scripts, evaluation                          The degradation is not simply a consequence of weak atomic
+runners, and the per-family prompt templates required to repro-                          editing. Long-horizon compound tasks require models to track mul-
+duce the benchmark evaluation. The code is released under the                            tiple dependent edit intents, update intermediate circuit state, and
+Apache-2.0 license, while the benchmark cases and prompts are                            preserve edit locality across an extended instruction sequence. Be-
+released under CC BY 4.0.                                                                cause the edits are mutually dependent, errors compound across
+,,                                                                                                                                         Ma et al.
+
+
+Table 3: Mitigation results on the paired subset (𝑛=718), with                This error pattern follows directly from the representation prop-
+Wilson 95% confidence intervals.                                           erties described in Section 2.1. Local substitutions and deletions
+                                                                           often require only limited changes to already explicit text, while
+         Model            Direct    Native    CoT      PySpice             attachment, hierarchy, equivalence, and compound editing require
+                                                                           the model to maintain an implicit circuit graph across terminal
+         DeepSeek-V4-F      52       81       75         58
+                                                                           roles, node identities, and subcircuit interfaces. The observed fail-
+                          [48, 55] [78, 83] [72, 78]   [55, 62]
+                                                                           ures therefore indicate a structure-preservation bottleneck: models
+         Qwen3.6-F          45       85       78         45
+                          [41, 48] [82, 88] [75, 81]   [42, 49]
+                                                                           can often produce syntactically plausible netlists, but still lose edit
+                                                                           locality, perturb unrelated bindings, or fail to maintain consistent
+                                                                           topology across multiple dependent operations.
+                                                                              These results suggest that current LLMs should not be treated
+the sequence: even a high per-edit success rate yields a low joint         as standalone, unverified netlist editors. Reasoning modes and al-
+success probability once many edits must all be correct. The same          ternative surface representations can mitigate some failures, but
+downward trend appears in the hierarchical compound family, in-            neither fully resolves the structure-preservation problem. More
+dicating that this effect is not limited to flat netlists. These results   robust workflows may need to decompose complex edits, verify
+show that high reliability on isolated edits does not translate into       each intermediate netlist structurally, and provide feedback when
+reliable multi-step netlist transformation. This pattern is consis-        unintended changes are detected. Future work may also explore
+tent with broader observations that small per-step error rates can         graph-based or other structured circuit representations that expose
+compound sharply over long execution horizons [24].                        connectivity more directly than raw SPICE text.
+
+4.4    Representation and Reasoning                                        5.2    Limitations
+We study two mitigations on DeepSeek-V4-Flash and Qwen3.6-                 NetlistBench evaluates bounded, circuit-block-level netlists rather
+Flash: changing the circuit representation (SPICE→PySpice) and en-         than industrial-scale post-layout decks. Although the compound
+abling explicit reasoning (native thinking and CoT prompting [28]).        tasks increase the number of dependent edits, all evaluated netlists
+Both analyses use the same paired, stratified subset (30 cases per         fit within the tested models’ context windows. The benchmark
+family, 28 for Comp. 15, 𝑛=718); Table 3 reports overall pass rates        therefore does not assess long-context retrieval, hierarchical parti-
+with Wilson 95% intervals, and paired arms are compared with               tioning, or direct processing of extracted netlists containing millions
+McNemar’s test.                                                            of device and parasitic statements.
+   On this subset, reasoning gives the larger aggregate gains: native          The current release also covers a restricted circuit and syn-
+thinking raises both models by roughly 30–40 points (𝑝 < 10−6 ),           tax domain, primarily flat and hierarchical analog CMOS blocks
+while CoT also improves performance but less strongly. The task-           from AnalogGenie and ALIGN. It does not comprehensively cover
+level results in Table 5 and Figure 6 show similar gains across            symbolic .param expressions, complex .model cards, behavioral
+several structure-heavy families. By contrast, PySpice has a smaller       or controlled sources, include hierarchies, extracted parasitics, or
+and less consistent effect: it improves DeepSeek-V4-Flash overall          simulator- and PDK-specific syntax. The reported results therefore
+(𝑝 < 0.001), but not Qwen3.6-Flash (𝑝 = 0.51), with task-level trends      should not be assumed to transfer unchanged to RF, power, digital,
+shown in Table 4 and Figure 5.                                             or mixed-signal netlists.
+   Because each per-family cell has only 30 cases, we treat task-level         Finally, task instructions are generated from deterministic tem-
+patterns as descriptive. Overall, reasoning is the stronger mitigation     plates to isolate structural capabilities and enable unambiguous
+here, but errors still concentrate on long-horizon compound edits,         grading. They do not capture the full linguistic variability or de-
+hierarchical operations, and relational structural queries; neither        sign intent of real designer–assistant interactions. Each model–case
+mitigation makes current LLMs sufficiently reliable for unverified         pair is evaluated once, so the results characterize the tested API
+netlist editing.                                                           snapshots rather than complete output distributions.
+
+5 Discussion                                                               6     Conclusion
+5.1 Implications for LLM-Based Netlist Editing                             NetlistBench shows that netlist reliability is a distinct bottleneck for
+                                                                           LLM-based circuit design. Current models often handle local substi-
+NetlistBench shows that netlist reliability cannot be reduced to           tutions and simple extraction, but remain fragile on connectivity-
+general circuit knowledge or output-format compliance. Models              sensitive edits, hierarchy manipulation, structural equivalence, and
+tend to perform better on localized edits, such as parameter changes       long-horizon compound transformations. Reasoning improves per-
+and device removal, while showing reduced reliability on tasks in-         formance, yet does not make LLMs reliable unverified editors of
+volving structural attachment, ordered port handling, equivalence          simulator-facing netlists. These findings motivate decomposed edit-
+judgment, or multi-step edits. The observed failures are frequently        ing workflows, structure-aware verification after each edit, and
+structural rather than purely procedural: recognition outputs usu-         circuit representations that expose topology more directly than raw
+ally follow the required JSON schema but contain incorrect circuit         SPICE text.
+facts, while manipulation failures involve omitted edits, duplicated
+edits, loss of locality, unintended terminal rebinding, and topology
+drift.
+NetlistBench: Evaluating LLM Reliability in SPICE Netlist Recognition and Manipulation                                                                                        ,,
+
+
+References                                                                                     arXiv:2507.10639 [cs.AR]
+ [1] Jitendra Bhandari, Vineet Bhat, Yuheng He, Siddharth Garg, Hamed Rahmani,            [21] Jingyu Pan, Guanglei Zhou, Chen-Chia Chang, Isaac Jacobson, Jiang Hu, and
+     and Ramesh Karri. 2024. Masala-CHAI: A Large-Scale SPICE Netlist Dataset for              Yiran Chen. 2025. A Survey of Research in Large Language Models for Electronic
+     Analog Circuits by Harnessing AI. arXiv:2411.14299 [cs.AR]                                Design Automation. ACM Transactions on Design Automation of Electronic Systems
+ [2] Jayeeta Chaudhuri, Dhruv Thapar, Arjun Chaudhuri, Farshad Firouzi, and Krish-             30, 3, Article 34 (2025), 21 pages. doi:10.1145/3715324
+     nendu Chakrabarty. 2024. SPICED: Syntactical Bug and Trojan Pattern Identifica-      [22] Fabrice Salvaire. 2021. PySpice: Simulate Electronic Circuit using Python and the
+     tion in A/MS Circuits using LLM-Enhanced Detection. arXiv:2408.16018 [cs.AR]              Ngspice/Xyce Simulators. Software. https://pyspice.fabrice-salvaire.fr/ Accessed
+ [3] Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de Oliveira              2026-07-28.
+     Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman,      [23] Yichen Shi, Ze Zhang, Hongyang Wang, Zhuofu Tao, Zhongyi Li, Bingyu Chen,
+     et al. 2021. Evaluating Large Language Models Trained on Code. arXiv preprint             Yaxin Wang, Zhiping Yu, Ting-Jung Lin, and Lei He. 2025. AMSbench: A
+     arXiv:2107.03374 (2021).                                                                  Comprehensive Benchmark for Evaluating MLLM Capabilities in AMS Circuits.
+ [4] Luigi P. Cordella, Pasquale Foggia, Carlo Sansone, and Mario Vento. 2004. A               arXiv:2505.24138 [cs.LG]
+     (Sub)Graph Isomorphism Algorithm for Matching Large Graphs. IEEE Trans-              [24] Akshit Sinha, Arvindh Arun, Shashwat Goel, Steffen Staab, and Jonas Geiping.
+     actions on Pattern Analysis and Machine Intelligence 26, 10 (2004), 1367–1372.            2025. The Illusion of Diminishing Returns: Measuring Long Horizon Execution
+     doi:10.1109/TPAMI.2004.75                                                                 in LLMs. arXiv:2509.09677 [cs.AI]
+ [5] Tonmoy Dhar, Kishor Kunal, Yaguang Li, Meghna Madhusudan, Jitesh Poojary,            [25] Lejla Skelic, Yan Xu, Matthew Cox, Wenjie Lu, Tao Yu, and Ruonan Han. 2025.
+     Arvind K. Sharma, Wenbin Xu, Steven M. Burns, Ramesh Harjani, Jiang Hu,                   CIRCUIT: A Benchmark for Circuit Interpretation and Reasoning Capabilities of
+     Desmond A. Kirkpatrick, Parijat Mukherjee, Soner Yaldiz, and Sachin S. Sapat-             LLMs. arXiv:2502.07980 [cs.LG]
+     nekar. 2021. ALIGN: A System for Automating Analog Layout. IEEE Design &             [26] Deepak Vungarala, Sakila Alam, Arnob Ghosh, and Shaahin Angizi. 2024. SPI-
+     Test 38, 2 (2021), 8–18. doi:10.1109/MDAT.2020.3042177                                    CEPilot: Navigating SPICE Code Generation and Simulation with AI Guidance.
+ [6] Aakash Divakar, Aditya Anekar, and Manas Kulkarni. 2026. Spice Wizard: A Uni-             arXiv:2410.20553 [cs.AR]
+     fied AI Agent for Netlist Generation. doi:10.36227/techrxiv.177162431.10627206       [27] Heng Wang, Shangbin Feng, Tianxing He, Zhaoxuan Tan, Xiaochuang Han, and
+     Preprint.                                                                                 Yulia Tsvetkov. 2023. Can Language Models Solve Graph Problems in Natural
+ [7] Jian Gao, Weidong Cao, Junyi Yang, and Xuan Zhang. 2025. AnalogGenie: A                   Language?. In Advances in Neural Information Processing Systems, Vol. 36. 30840–
+     Generative Engine for Automatic Discovery of Analog Circuit Topologies. In The            30861.
+     Thirteenth International Conference on Learning Representations.                     [28] Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian Ichter, Fei
+ [8] Helmut Graeb and Markus Leibl. 2023. Learning from the Implicit Functional                Xia, Ed H. Chi, Quoc V. Le, and Denny Zhou. 2022. Chain-of-Thought Prompting
+     Hierarchy in an Analog Netlist. In Proceedings of the 2023 ACM International              Elicits Reasoning in Large Language Models. In Advances in Neural Information
+     Symposium on Physical Design (ISPD). Association for Computing Machinery,                 Processing Systems, Vol. 35. 24824–24837.
+     93–100. doi:10.1145/3569052.3578921                                                  [29] Ziming Wei, Zichen Kong, Yuan Wang, David Z. Pan, and Xiyuan Tang. 2025.
+ [9] Chung-Wen Ho, Albert E. Ruehli, and Pierce A. Brennan. 1975. The Modified                 TopoSizing: An LLM-aided Framework of Topology-based Understanding and
+     Nodal Approach to Network Analysis. IEEE Transactions on Circuits and Systems             Sizing for AMS Circuits. arXiv:2509.14169 [cs.LG]
+     22, 6 (1975), 504–509. doi:10.1109/TCS.1975.1084079                                  [30] Edwin B. Wilson. 1927. Probable Inference, the Law of Succession, and Statistical
+[10] Chun-Yen Huang, Hsuan-I Chen, Hao-Wen Ho, Pei-Hsin Kang, Mark Po-Hung                     Inference. J. Amer. Statist. Assoc. 22, 158 (1927), 209–212. doi:10.1080/01621459.
+     Lin, Wen-Hao Liu, and Haoxing Ren. 2025. Netlistify: Transforming Circuit                 1927.10502953
+     Schematics into Netlists with Deep Learning. In Proceedings of the 2025 ACM/IEEE     [31] Haohang Xu, Chengjie Liu, Qihang Wang, Wenhao Huang, Yongjian Xu, Weiyu
+     7th Symposium on Machine Learning for CAD (MLCAD). IEEE, 1–8. doi:10.1109/                Chen, Anlan Peng, Zhijun Li, Bo Li, Lei Qi, Jun Yang, Yuan Du, and Li Du. 2025.
+     MLCAD65511.2025.11189145                                                                  Image2Net: Datasets, Benchmark and Hybrid Framework to Convert Analog
+[11] Md Touhidul Islam, Sujan Kumar Saha, Farimah Farahmandi, and Mark Tehra-                  Circuit Diagrams into Netlists. arXiv:2508.13157 [cs.AR]
+     nipoor. 2026. CircuitFormer: A Circuit Language Model for Analog Topology
+     Design from Natural Language Prompt. arXiv:2605.05773 [cs.AR]
+[12] Carlos E. Jimenez, John Yang, Alexander Wettig, Shunyu Yao, Kexin Pei, Ofir Press,
+     and Karthik Narasimhan. 2024. SWE-bench: Can Language Models Resolve Real-
+     World GitHub Issues?. In International Conference on Learning Representations.
+[13] Kishor Kunal, Tonmoy Dhar, Meghna Madhusudan, Jitesh Poojary, Arvind K.
+     Sharma, Wenbin Xu, Steven M. Burns, Jiang Hu, Ramesh Harjani, and Sachin S.
+     Sapatnekar. 2020. GANA: Graph Convolutional Network Based Automated Netlist
+     Annotation for Analog Circuits. In Proceedings of the 2020 Design, Automation
+     & Test in Europe Conference & Exhibition (DATE). IEEE, 55–60. doi:10.23919/
+     DATE48585.2020.9116329
+[14] Kishor Kunal, Tonmoy Dhar, Meghna Madhusudan, Jitesh Poojary, Arvind K.
+     Sharma, Wenbin Xu, Steven M. Burns, Jiang Hu, Ramesh Harjani, and Sachin S.
+     Sapatnekar. 2023. GNN-Based Hierarchical Annotation for Analog Circuits. IEEE
+     Transactions on Computer-Aided Design of Integrated Circuits and Systems 42, 9
+     (2023), 2801–2814. doi:10.1109/TCAD.2023.3236269
+[15] Yao Lai, Sungyoung Lee, Guojin Chen, Souradip Poddar, Mengkang Hu, David Z.
+     Pan, and Ping Luo. 2025. AnalogCoder: Analog Circuit Design via Training-Free
+     Code Generation. In Proceedings of the AAAI Conference on Artificial Intelligence,
+     Vol. 39. 379–387. doi:10.1609/aaai.v39i1.32016
+[16] Mingjie Liu, Teodor-Dumitru Ene, Robert Kirby, Chris Cheng, Nathaniel Pinckney,
+     Rongjian Liang, Jonah Alben, Himyanshu Anand, Sanmitra Banerjee, Ismet
+     Bayraktaroglu, et al. 2023. ChipNeMo: Domain-Adapted LLMs for Chip Design.
+     arXiv:2311.00176 [cs.CL]
+[17] Ryoga Matsuo, Stefan Uhlich, Arun Venkitaraman, Andrea Bonetti, Chia-Yu
+     Hsieh, Ali Momeni, Lukas Mauch, Augusto Capone, Eisaku Ohbuchi, and
+     Lorenzo Servadei. 2024. Schemato: An LLM for Netlist-to-Schematic Conversion.
+     arXiv:2411.13899 [cs.LG]
+[18] Laurence W. Nagel. 1975. SPICE2: A Computer Program to Simulate Semiconductor
+     Circuits. Technical Report UCB/ERL M520. Electronics Research Laboratory, Uni-
+     versity of California, Berkeley. https://www2.eecs.berkeley.edu/Pubs/TechRpts/
+     1975/9602.html
+[19] Laurence W. Nagel and Donald O. Pederson. 1973. SPICE (Simulation Program
+     with Integrated Circuit Emphasis). Technical Report UCB/ERL M382. Electronics
+     Research Laboratory, University of California, Berkeley. https://www2.eecs.
+     berkeley.edu/Pubs/TechRpts/1973/22871.html
+[20] Simon Nau, Jan Krummenauer, and André Zimmermann. 2025.                      Eval-
+     uating LLM-based Workflows for Switched-Mode Power Supply Design.
+,,                                                                                                                                                                        Ma et al.
+
+
+A         Additional Results
+
+       Table 4: Task-level pass rates for SPICE and PySpice.
+
+Task                                     DS-S               DS-Py               Qwen-S              Qwen-Py
+Connectivity edit                           0.80             1.00                 0.60               0.57
+Device add                                  0.50             0.80                 0.50               0.50
+Device remove                               1.00             1.00                 1.00               0.97
+Device replace                              0.70             0.80                 0.80               0.73
+Parameter edit                              0.93             0.97                 0.97               0.93
+Rename propagation                          0.90             0.93                 0.93               0.77
+Compound 3-step                             0.13             0.50                 0.20               0.23
+Compound 6-step                             0.13             0.23                 0.07               0.20
+Compound 9-step                             0.03             0.23                 0.07               0.03
+Compound 12-step                            0.00             0.10                 0.00               0.03                 (a) DeepSeek                    (b) Qwen
+Compound 15-step                            0.00             0.07                 0.00               0.00
+Subckt inline-expand                        0.37             0.47                 0.13               0.37
+Subckt port-swap                            0.60             0.73                 0.27               0.33
+Subckt compound 3-step                      0.33             0.10                 0.37               0.10
+Subckt compound 6-step                      0.07             0.03                 0.00               0.03
+Subckt compound 9-step                      0.03             0.00                 0.03               0.00
+Edit subtotal                               0.41             0.50                 0.37                0.36
+Equivalence judgment                        0.50             0.53                 0.50               0.60
+Device parameter                            1.00             1.00                 1.00               0.90
+Semantic terminal conn.                     0.80             0.83                 0.23               0.43
+Ordered terminal conn.                      1.00             1.00                 1.00               0.97
+Node incidence                              0.53             0.60                 0.23               0.23            (c) DeepSeek, Compound          (d) Qwen, Compound
+Subckt port list                            1.00             1.00                 1.00               1.00
+Instance port map                           0.90             0.90                 0.80               0.93
+Terminal neighbor inc.                      0.07             0.13                 0.03               0.00
+                                                                                                               Figure 5: Task-level performance under SPICE and PySpice
+Recognition subtotal                        0.76             0.78                 0.61               0.64
+                                                                                                               representations.
+Overall                                     0.52             0.58                 0.45               0.45
+DS-S: DeepSeek-V4 SPICE; DS-Py: DeepSeek-V4 PySpice; Qwen-S: Qwen-3.6 SPICE; Qwen-Py: Qwen-3.6 PySpice.
+
+
+
+
+Table 5: Task-level pass rates under different prompting
+modes.
+
+                                               DeepSeek-V4                               Qwen-3.6
+Task
+                                     Dir.          Think          CoT          Dir.       Think         CoT
+Connectivity edit                   0.80           1.00          1.00          0.60        0.93         0.87
+Device add                          0.50           0.47          0.57          0.50        0.83         0.67
+Device remove                       1.00           1.00          1.00          1.00        1.00         1.00
+Device replace                      0.70           0.90          0.83          0.80        0.93         0.93
+Parameter edit                      0.93           0.97          1.00          0.97        0.97         0.97
+Rename propagation                  0.90           1.00          1.00          0.93        0.97         1.00
+Compound 3-step                     0.13           0.57          0.50          0.20        0.73         0.73
+Compound 6-step                     0.13           0.50          0.53          0.07        0.67         0.63
+Compound 9-step                     0.03           0.47          0.57          0.07        0.73         0.70              (a) DeepSeek                    (b) Qwen
+Compound 12-step                    0.00           0.37          0.27          0.00        0.63         0.33
+Compound 15-step                    0.00           0.18          0.14          0.00        0.54         0.32
+Subckt inline-expand                0.37           0.97          1.00          0.13        0.83         0.77
+Subckt port-swap                    0.60           1.00          1.00          0.27        0.93         0.93
+Subckt compound 3-step              0.33           0.73          0.63          0.37        0.90         0.63
+Subckt compound 6-step              0.07           0.60          0.53          0.00        0.77         0.70
+Subckt compound 9-step              0.03           0.63          0.40          0.03        0.63         0.40
+Edit subtotal                        0.41          0.71           0.69         0.37        0.81         0.73
+Equivalence judgment                0.50           0.97          0.93          0.50        0.73         0.70
+Device parameter                    1.00           1.00          1.00          1.00        1.00         1.00
+Semantic terminal conn.             0.80           1.00          0.93          0.23        0.90         0.87
+Ordered terminal conn.              1.00           1.00          1.00          1.00        1.00         1.00
+Node incidence                      0.53           1.00          0.73          0.23        0.93         0.83
+Subckt port list                    1.00           1.00          1.00          1.00        1.00         0.97         (c) DeepSeek, Compound          (d) Qwen, Compound
+Instance port map                   0.90           1.00          0.97          0.80        1.00         1.00
+Terminal neighbor inc.              0.07           1.00          0.47          0.03        0.83         0.73
+                                                                                                               Figure 6: Task-level performance under non-thinking, think-
+Recognition subtotal                 0.76          1.00           0.87         0.61        0.95         0.91
+                                                                                                               ing, and CoT prompting.
+Overall                              0.52          0.81           0.75         0.45        0.85         0.78
+Dir.: direct prompting; Think: think-mode prompting; CoT: chain-of-thought prompting.
+

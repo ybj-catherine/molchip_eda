@@ -1,0 +1,618 @@
+                                              CoEvoP&R: Co-Evolving Placement Objectives with Routing
+                                                       Feedback via Large Language Models
+                                                                        Ruogu Chen                                                          Weihua Xiao∗
+                                                                     University of Alberta                                             New York University
+                                                                   Edmonton, Alberta, Canada                                     New York, New York, United States
+                                                                      ruogu@ualberta.ca                                                 wx2356@nyu.edu
+
+                                                                        Ramesh Karri                                                            Jie Han
+                                                                  New York University                                                  University of Alberta
+                                                            New York, New York, United States                                        Edmonton, Alberta, Canada
+                                                                    rkarri@nyu.edu                                                      jhan8@ualberta.ca
+
+                                         Abstract                                                                     optimize the final power, performance, and area (PPA) metrics of the
+                                         Analytical placers rely on differentiable objective functions to guide       completed physical-design flow.
+                                         placement, typically combining intermediate surrogate metrics                   Prior work narrows this gap by combining the placement objec-
+                                         such as half-perimeter wirelength (HPWL) and cell-density penal-             tive with human-designed terms or learned black-box surrogates
+                                                                                                                      for the routing stage. Human-designed terms, such as Rectangular
+arXiv:2607.17398v1 [cs.LG] 19 Jul 2026
+
+
+
+
+                                         ties. However, these placement-stage surrogates remain misaligned
+                                         with downstream routed and timing quality. Prior work reduces                Uniform wire DensitY (RUDY ), estimate routing demand from place-
+                                         this gap with human-designed terms or learned black-box surro-               ment geometry [23], and subsequent methods incorporate related
+                                         gates, but the former requires expert retuning and the latter is             congestion and pin-density information. These terms improve rout-
+                                         difficult to explain, debug, or deploy in analytical placement flows.        ing awareness, but they rely on expert-designed approximations
+                                         CoEvoP&R addresses these limitations with a large language model             and often require retuning across designs or technologies. Learned
+                                         (LLM)-based framework that automatically evolves analytical place-           predictors, post-route-informed density targets, and differentiable
+                                         ment objectives. At each generation, the prompt combines the re-             routability surrogates, as used by LaMPlace [8], GOALPlace [1],
+                                         stricted objective interface, baseline context, and archived prior           and RoutePlacer [9], respectively, improve cross-stage awareness.
+                                         candidates with routing-related feedback from placement, timing              However, black-box surrogates can be difficult to explain, debug,
+                                         proxy, and routing tools. The LLM proposes readable differentiable           and deploy inside existing analytical placement flows. This leaves
+                                         objectives, which are embedded and validated in DREAMPlace,                  a complementary path that searches directly over readable, differ-
+                                         evaluated through a timing proxy and an actual router, and stored            entiable objective forms.
+                                         with their feedback to guide later generations. Across eight ChiP-              Large language models (LLMs) have shown potential in directing
+                                         Bench Nangate45 designs and three seeds, CoEvoP&R reduces post-              the search for programs that satisfy or optimize specified targets.
+                                         route routed wirelength and congestion by 16.9% and 36.7%, with              FunSearch [20], Eureka [16], LLM-SR [22], and AlphaEvolve [19] re-
+                                         gains of 0.70 ns in worst negative slack and a 912 ns reduction in           alize this idea by using evaluator feedback to revise executable pro-
+                                         total negative slack magnitude over native DREAMPlace. Across                grams toward measured objectives. EvoPlace [26] and VeoPlace [24]
+                                         eight ICCAD 2015 Superblue designs, it reduces post-route routed             further apply foundation models to placement by directing the
+                                         wirelength and congestion by 5.4% and 23.2%. Code is available at            search over optimizer components or macro-placement actions.
+                                         https://github.com/FCHXWH823/CoEvoP-R.git.                                      Instead, we propose CoEvoP&R, an LLM-based framework that
+                                                                                                                      automatically evolves the analytical placement objective. For each
+                                         Keywords                                                                     generation, CoEvoP&R assembles a prompt from the restricted ob-
+                                                                                                                      jective interface, baseline placement context, archive records of
+                                         electronic design automation, placement, routing, large language
+                                                                                                                      earlier objective variants, and measured feedback from placement-
+                                         models, objective functions
+                                                                                                                      stage, timing-signal, and routed evaluations. The prompt guides
+                                                                                                                      the LLM to generate the next candidate objectives. CoEvoP&R
+                                         1    Introduction                                                            embeds and validates each admitted candidate in the analytical
+                                         Modern analytical placers make global placement tractable by mini-           placer, schedules downstream routed evaluation for selected candi-
+                                         mizing a differentiable placement objective. Existing objectives usu-        dates, and stores the paired objective and measured feedback in the
+                                         ally combine intermediate surrogates, such as smooth approxima-              archive for subsequent generations. CoEvoP&R makes four novel
+                                         tions to half-perimeter wirelength (HPWL) and cell-density penalties,        contributions.
+                                         which provide differentiable guidance for tools such as DREAM-
+                                         Place [13]. However, ChiPBench shows that placement-stage met-                   • LLM objective evolution. We present the first automated
+                                         rics can remain weakly aligned with downstream timing, including                   LLM-based framework that evolves analytical placement ob-
+                                         worst negative slack (WNS) and total negative slack (TNS) [25]. Con-               jective functions integrated with real placement and routing
+                                         sequently, optimizing placement surrogates does not necessarily                    tools.
+                                                                                                                          • Automated validation. CoEvoP&R embeds and validates
+                                         ∗ Corresponding author.                                                            admitted objective programs inside DREAMPlace through
+                                                                                                                  1
+      a restricted interface, ensuring that generated objectives re-         3 Preliminaries
+      main differentiable, bounded, and executable in an analytical
+                                                                             3.1 Analytical Placers and Cross-Stage Metrics
+      placement flow.
+    • Routing-aware feedback. CoEvoP&R evaluates evolved                     Chip placement assigns physical locations to circuit objects inside
+      candidates with routing-tool feedback, including timing-               a fixed die. A netlist can be modeled as a hypergraph 𝐺 = (𝑉 , 𝐸),
+      related behavior, so the objective search is guided by down-           with vertices 𝑉 representing macros, standard cells, and ports, and
+      stream timing-related information.                                     hyperedges 𝐸 representing nets. A placement is the coordinate set
+    • Archive-guided iteration. CoEvoP&R stores each evolved                 x = {(𝑥𝑖 , 𝑦𝑖 )}𝑖 ∈𝑉 after applying object sizes and fixed pin offsets.
+      candidate together with its placement, routing, timing, and            Analytical placers optimize these coordinates with differentiable
+      failure feedback, then uses this archive to condition later            objectives so that gradient-based updates can move many objects
+      prompts and guide subsequent generations.                              jointly.
+                                                                                DREAMPlace performs global placement with a smooth wire-
+Across eight ChiPBench Nangate45 designs, CoEvoP&R reduces                   length and electrostatic-density objective [13, 15]. At placement
+routed wirelength and congestion by 16.9% and 36.7% over native              step 𝑡, its native objective can be written as
+DREAMPlace, while improving post-route WNS by 0.70 ns and TNS
+by 912 ns. Across eight Superblue designs, CoEvoP&R reduce rWL                                              e𝛾𝑡 (x) + 𝜆𝑡 𝐷 (x),
+                                                                                                LDP,𝑡 (x) = 𝑊                                   (1)
+and Cong. by 5.4% and 23.2% over the same baseline.
+                                                                             where 𝑊  e𝛾𝑡 is a differentiable wirelength approximation, 𝐷 is the
+                                                                             electrostatic density penalty, 𝛾𝑡 controls wirelength smoothing, and
+2   Related Work                                                             𝜆𝑡 balances wire shortening against density spreading. The opti-
+   Analytical and Routability-Aware Placement. ePlace developed              mizer updates cell coordinates using the current gradient ∇x LDP,𝑡 .
+a nonlinear placement framework based on electrostatics [15]. Re-            Across placement, the native DREAMPlace objective forms a sched-
+PlAce advanced its optimization and routability validation, and              uled objective trajectory through the schedule variables 𝛾𝑡 and
+DREAMPlace accelerated analytical placement with GPU-based Py-               𝜆𝑡 .
+Torch execution [6, 13]. Timing-driven placers add timing guidance                After placement, HPWL is commonly used to evaluate the place-
+while retaining predefined objective structures [3, 12]. Routability-        ment quality by:
+aware placers incorporate downstream information through rout-                                     ∑︁ h                                  i
+ing estimators or learned guidance. RUDY estimates routing demand                    HPWL(x) =          max 𝑥𝑖 − min 𝑥𝑖 + max 𝑦𝑖 − min 𝑦𝑖 .    (2)
+                                                                                                        𝑖 ∈𝑒      𝑖 ∈𝑒      𝑖 ∈𝑒        𝑖 ∈𝑒
+from placement geometry [23]. LaMPlace learns cross-stage metric                                 𝑒 ∈𝐸
+masks for sequential macro placement, GOALPlace derives den-                 HPWL decomposes over nets, tracks the bounding box of each
+sity targets from post-route feedback, and RoutePlacer integrates            net, and is fast to compute. Accordingly, it is widely used as a
+a differentiable graph neural network routability surrogate into             placement-stage metric.
+analytical placement [1, 8, 9]. These methods improve downstream                However, placement-stage metrics are useful but incomplete [25].
+awareness through estimators, masks, targets, or surrogates, while           The routing demand, pin access, timing paths, buffering, and layer
+leaving the complete symbolic objective form outside the search.             assignment are measured more faithfully by downstream evalua-
+                                                                             tions. Global routing reports routed wirelength and routing over-
+   Automated Placement Search. Automated placement methods
+                                                                             flow. Timing analysis reports WNS and TNS. These cross-stage
+differ in the artifact they search. Reinforcement-learning methods
+                                                                             metrics are closer to final design quality but require much more
+learn sequential macro actions, AutoDMP and HyperPlace tune
+                                                                             expensive physical design flows. During analytical placement, the
+placer parameters, and VeoPlace uses a vision-language model
+                                                                             optimizer instead operates on differentiable observables that are
+to guide evolutionary macro placement [2, 5, 17, 24]. EvoPlace is
+                                                                             available throughout the placement trajectory.
+the closest placement-specific example of LLM-guided program
+evolution. It searches initialization, preconditioning, and optimizer-
+                                                                             3.2    Differentiable Placement Observables
+update components under HPWL feedback while retaining the
+placement objective [26]. These works show that automated search             A placement observable is a differentiable signal computed from the
+can improve actions, parameters, and optimizer behavior, leaving             current placement. Analytical placers partition the layout region
+differentiable objective-form search under downstream physical-              into bins B, and 𝑏 ∈ B indexes one bin. An observable can be either
+design feedback as a distinct setting.                                       a scalar or a bin map,
+                                                                                             𝜙 (x) ∈ R,        Φ(x) = {Φ𝑏 (x)}𝑏 ∈ B .           (3)
+   Executable Program Evolution. FunSearch and Evolution of Heuris-
+tics evolve executable heuristics, LLM-SR searches symbolic equa-            The gradients ∇x𝜙 and ∇x Φ𝑏 are available during placement, allow-
+tions, and AlphaEvolve extends evaluator-guided evolution to broader         ing the optimizer to update cell coordinates through these deriva-
+code artifacts [14, 19, 20, 22]. OpenEvolve provides an open imple-          tives.
+mentation of this pattern [21]. Eureka is methodologically close                Scalar observables include smooth wirelength 𝑊    e (x) and den-
+because generated reward functions execute inside a learning loop            sity penalties 𝐷 (x). Map observables include density maps Φden (x),
+and later proposals use training feedback [16]. Differentiable place-        RUDY-like routing demand maps Φroute (x) [23], pin-density maps
+ment introduces additional requirements because accepted expres-             Φpin (x), and long-net pressure maps Φlong (x). These maps approxi-
+sions must produce finite values and gradients, adapt to placement           mate physical pressure from placement geometry before routing is
+trajectories, and justify expensive downstream evaluation.                   performed.
+                                                                         2
+ 1. ARCHIVE-CONDITIONED PROPOSAL                                             2. Candidate validation, embedding, and cost-scaled evaluation                                                                       3. ARCHIVE AND CLOSED-LOOP FEEDBACK
+
+                                                                                    Candidate                      COST-SCALED EVALUATION                                                                                                  MAP-Elites archive Ag+1
+      Prompt packet Πg                                                             embedding &                                                                                                                                                        objective mechanism
+                                                                                                       Validated      Tier A – Placement                                                       Pareto
+    Πg = (I, B, pg, Hg, Mg, σ)                                                      validation         Candidate
+                                                                                                                                                                                              evidence
+                                             LLM proposer                                                                   HPWL, density,                                                                                                 champion
+
+
+
+
+                                                                                                                                                          available execution evidence m(·)
+                                                                                                           c
+                                                                                       AST +                                  gradients                                                        update
+
+
+
+
+                                                                                                                                                                                                                       measured behavior
+        Objective interface I                  qλ(·| Πg)
+                                                                                      grammar
+      + benchmark context B                                                                                                                                                                     𝒎 𝑐                                                   diverse`
+                                                                                                                                                                                                                                                               AST
+                                                                                                                                                                                                                                                      elite
+
+                                                      Sample                                                            Tier B - Timing proxy                                                 𝑧=𝜓 𝑐
+                                                                                                                                                                                                                                           AST                 AST
+       Parent objective pg                                                                                                 Eligible candidates
+                                                      response yg,i                                                                                                                           retain best
+       + neighboring elites                                                         ObjectiveSpec                          WNS/TNS signal                                                     objective in
+                                                                                      lowering                                                                                                each cell
+                                                                                                                                                                                                                                                    AST               AST
+                                     Raw candidate objective                                                                          selected finalist
+     Measured feedback Mg
+      + local evidence Hg
+                                           𝐡𝑡+1 = 𝑈𝜃 𝐡𝑡 , 𝐚𝑡                                                            Tier C – Real Routing
+                                                                                    finite-value +                                                                                                             Negative
+                                                                                                                                                                                                                                                 failure reasons
+                                    ℒ𝜃,𝑡 𝐱𝑡 , 𝑑 = 𝐹𝜃 𝒯 𝐱𝑡 , 𝑑 , 𝐡𝑡                  autograd gate
+                                                                                                        rejected
+                                                                                                                           Post-route metrics                                                                  memory                             + repair notes
+                                                                                                                                                                                                                                                                     Feedback
+                                                                                                                                                                                                               parse failures
+                                                                                                                                                                                                             gradient failures                                     reconstruction
+                                                                                                                         Embed_G(y)=c or ⊥
+                                                                                                                                                                                                              HPWL/density
+                                                                                                                                                                                                                regressions
+                                                                                                                                                                                                                   …
+                                                                  ranks + metric deltas + component trajectories + failure lessons
+
+
+
+Figure 1: CoEvoP&R evolves complete placement objectives through archive-conditioned proposal, DREAMPlace embedding, cost-scaled
+evaluation, and archive feedback.
+
+
+   Map observables are reduced to scalar terms before entering an                                                   Key method notation
+
+analytical objective. For a nonnegative map 𝑀 (x) = {𝑀𝑏 (x)}𝑏 ∈ B ,                                                 Symbol           Meaning                                                                 Symbol                           Meaning
+                                                                                                                                     evolution generation                                                                                     placement iteration
+a common smooth reduction is                                                                                        𝑔
+                                                                                                                    𝑑                design being optimized
+                                                                                                                                                                                                             𝑡
+                                                                                                                                                                                                             x𝑡                               placement coordinates at iteration
+                                                                                                                                                                                                                                             𝑡
+                                                                                                                    I                objective interface                                                     𝐵                                baseline context
+                                                      ! 1/𝑝                                                         𝜎                output schema                                                           A𝑔                               MAP-Elites archive at generation 𝑔
+                                                                                                                    𝑝𝑔               parent objective                                                        𝐻𝑔                               local archive evidence
+                                      1 ∑︁          𝑝                                                                                measured feedback                                                       Π𝑔                               prompt packet
+                           𝜌 𝑝 (𝑀) =       (𝑀𝑏 + 𝜖)         ,                                    (4)                𝑀𝑔
+                                                                                                                                     proposed program                                                                                         validated candidate
+                                     |B|                                                                            𝑦
+                                                                                                                    ⊥                failed proposal
+                                                                                                                                                                                                             𝑐
+                                                                                                                                                                                                                                              candidate objective
+                                             𝑏∈B                                                                                                                                                             𝜃
+                                                                                                                    h𝑡               schedule variables                                                      a𝑡                               progress observables
+                                                                                                                    𝐼𝜃 , 𝑈𝜃 , 𝐹𝜃     init, update, and loss maps of 𝜃                                        T (x𝑡 , 𝑑 )                      differentiable placement terms
+                                                                                                                    m(𝑐 )            measured evidence for 𝑐                                                 𝜓 (𝑐 )                           archive feature mapping
+                                                                                                                    𝑧                MAP-Elites cell                                                         ⪯                                Pareto evidence order
+where 𝑝 > 1 controls hotspot sensitivity and 𝜖 > 0 keeps the                                                        𝐾                samples per generation                                                  N                                negative memory
+expression well defined. Larger 𝑝 values place more weight on high-
+pressure bins, while smaller values behave closer to an average.                                                   4.1          Archive-Conditioned Objective Proposal
+   A differentiable placement objective can therefore combine scalar
+                                                                                                                   At generation 𝑔, the current archive A𝑔 supplies a parent objective
+observables and reduced map observables as
+                                                                                                                   𝑝𝑔 and a local evidence set 𝐻𝑔 . The evidence set contains neighbor-
+                                                                                                                   ing elites, component trajectories, metric deltas, and failure lessons
+                                                                             
+            L (x) = 𝐹 𝜙 1 (x), . . . , 𝜙𝑚 (x), 𝜌𝑝 1 (Φ1 ), . . . , 𝜌 𝑝𝑛 (Φ𝑛 ) ,                  (5)               from earlier runs. CoEvoP&R pairs this evidence with measured
+                                                                                                                   feedback 𝑀𝑔 and the objective interface I to form the prompt packet
+                                                                                                                   Π𝑔 = (I, 𝐵, 𝑝𝑔 , 𝐻𝑔 , 𝑀𝑔 , 𝜎), where 𝐵 gives baseline descriptions and 𝜎
+where 𝐹 is a differentiable composition of these terms.                                                            gives the required output format. Figure 2 shows this proposal con-
+                                                                                                                   tract. The prompt packet conditions the proposal model, and each
+                                                                                                                   response must provide the fields needed to instantiate a trajectory-
+4       Method                                                                                                     aware objective. Archive conditioning guides proposals toward
+CoEvoP&R searches for readable differentiable placement objectives                                                 objective mechanisms that occupy useful behavioral cells and to-
+that run inside an analytical placer while the placer, benchmarks,                                                 ward measurements that explain nearby placement improvements
+and downstream evaluation flow remain fixed. Each candidate 𝜃 is a                                                 or degradations.
+compact symbolic objective that generalizes the static composition                                                    Each response must therefore provide the three functions of
+of Equation 5 into a scheduled one,                                                                                Equation 6: an initialization 𝐼𝜃 that sets the schedule variables from
+                                                                                                                   design-specific calibration, an update 𝑈𝜃 that revises them once
+                                                                                                                   per placement iteration, and a loss 𝐹𝜃 over the placement terms.
+h0 = 𝐼𝜃 (a0 ),                           L𝜃,𝑡 (x𝑡 , 𝑑) = 𝐹𝜃 (T (x𝑡 , 𝑑), h𝑡 ) .
+                         h𝑡 +1 = 𝑈𝜃 (h𝑡 , a𝑡 ),                                                                    The progress vector a𝑡 exposes the iteration fraction, density over-
+                                                                            (6)                                    flow, HPWL trend, smoothing position, and per-term calibration
+Here T (x𝑡 , 𝑑) collects differentiable placement terms, h𝑡 carries                                                constants, so proposed schedules react to measured optimization
+the time-varying coefficients we call schedule variables, and a𝑡                                                   progress rather than to a fixed clock.
+carries simple progress signals such as the current density overflow                                                  The runtime objective embedded in DREAMPlace has the form
+and the recent wirelength trend. A candidate is therefore fully
+specified by 𝐼𝜃 , 𝑈𝜃 , and 𝐹𝜃 . Across generations, evaluated candidates                                                             e𝛾𝑡 (x𝑡 ) + ℎ𝑡den 𝐷 (x𝑡 ) + ℎ𝑡route 𝑅(x𝑡 ) + ℎ𝑡pin 𝑃 (x𝑡 ),
+                                                                                                                              L𝜃,𝑡 = 𝑊
+                                                                                                                                                                                                                                                                                    (7)
+accumulate in an archive that supplies parents and local evidence for                                                              𝛾𝑡 = ℎ𝑡 𝛾𝑡base .
+                                                                                                                                                 𝛾
+later proposals. Figure 1 organizes this closed loop into three steps:
+archive-conditioned objective proposal, candidate embedding with                                                   The term 𝑊e𝛾𝑡 is the smoothed wirelength used by the placer, 𝐷 is
+cost-scaled evaluation, and archive feedback for the next generation.                                              the density penalty, 𝑅 is a differentiable routing pressure term, and
+                                                                                                               3
+      Prompt packet Πg                                                                                                                                          evidence vector for a validated candidate 𝑐 is
+                                                                                                 Candidate objective 𝑦𝑔,𝑘
+  Πg = (I, B, pg, Hg, Mg, σ)
+                                                                                 Required fields              Symbolic objective_program
+   Interface (I), Baseline (B)                   Proposal                     Parent lineage                def objective(features):
+                                                                                                              wl = term("wirelength_wawl")
+                                                                                                                                                                           m(𝑐) = 𝑚𝐴 (𝑐) ⊕ 𝑎𝐵 (𝑐)𝑚𝐵 (𝑐) ⊕ 𝑎𝐶 (𝑐)𝑚𝐶 (𝑐),
+                                                  model                       State initialization
+                                                                 Candidate                                   den = term("density_electric")
+      Parent objective (pg)      Conditional
+                                  proposal     𝑦𝑔,𝑘 ∼ 𝑞𝜆 ⋅∣ Π𝑔
+                                                                 objective
+                                                                   𝑦𝑔,𝑘       State update                   route = term("soft_rudy_pnorm")
+                                                                                                                                                                where 𝑎𝐵 and 𝑎𝐶 indicate whether the candidate receives the corre-
+  Local archive evidence (Hg)                     archive-
+                                                conditioned
+                                                                              Scalar objective               score = wl + den + 0.01*
+                                                                                                                     log1p(route)
+                                                                                                                                                                sponding downstream measurement.
+                                                                              Named components
+    Measured feedback (Mg)
+                                                 sampling
+                                                                              Role bindings
+                                                                                                             return score,
+                                                                                                               {"wl": wl, "den": den,
+                                                                                                                "route": route}
+                                                                                                                                                                  Archive selection uses Pareto evidence over the measurements
+       Output schema (σ)
+                                                                             One response object contains
+                                                                               metadata and program.
+                                                                                                              Illustrative restricted program,not the
+                                                                                                                      selected final objective.
+                                                                                                                                                                available to each candidate pair. For candidate 𝑐, define
+                                                                                                                                                                         v(𝑐) = (ΔHPWL (𝑐), Δovf (𝑐), −ΔWNS (𝑐), −ΔTNS (𝑐)) ,
+               Figure 2: Archive-conditioned proposal contract.                                                                                                        𝑐𝑖 ≺ 𝑐 𝑗 ⇐⇒ 𝑣𝑘 (𝑐𝑖 ) ≤ 𝑣𝑘 (𝑐 𝑗 ) ∀𝑘 ∈ K𝑖 𝑗                 (9)
+                                                                                                                                                                                  ∧ 𝑣𝑘 (𝑐𝑖 ) < 𝑣𝑘 (𝑐 𝑗 ) ∃𝑘 ∈ K𝑖 𝑗 .
+                                                                                                                               pin
+𝑃 is a pin pressure term. The state variables ℎ𝑡den , ℎ𝑡route , ℎ𝑡 , and ℎ𝑡
+                                                                                                                                                        𝛾
+                                                                                                                                                                The vector v(𝑐) uses lower-is-better coordinates, with timing signs
+determine the relative weights and the active smoothing scale. This                                                                                             chosen so that WNS and TNS improvements align with HPWL and
+formulation makes archive evidence actionable through complete                                                                                                  overflow improvements. The index set K𝑖 𝑗 contains the coordinates
+objectives whose coefficients and smoothing behavior evolve with                                                                                                measured for both candidates. We write 𝑐𝑖 ⪯ 𝑐 𝑗 when 𝑐𝑖 ≺ 𝑐 𝑗
+placement progress.                                                                                                                                             holds or no measured coordinate differs. Structural failures, invalid
+                                                                                                                                                                placements, nonfinite traces, and robustness failures are removed
+4.2        Candidate Validation and DREAMPlace                                                                                                                  before Pareto ranking. Candidates on the same nondominated front
+           Embedding                                                                                                                                            are ordered by design coverage and then by runtime.
+The proposal model produces symbolic objectives, while DREAM-                                                                                                      The timing proxy audit controls how placement-stage timing
+Place requires terms, components, and state updates that are bound                                                                                              evidence influences the archive. CoEvoP&R periodically applies
+to placement quantities. CoEvoP&R performs this validation and                                                                                                  controlled perturbations to placement terms, net-weighting choices,
+embedding as the middle stage of Figure 1.                                                                                                                      and state schedules, then compares the resulting placement-stage
+   Let Embed𝑑 denote the embedding procedure for design 𝑑. For                                                                                                  WNS/TNS movement with downstream WNS/TNS movement using
+a proposed symbolic program 𝑦, this procedure either returns a                                                                                                  Pearson and Spearman redundancy checks. A timing proxy that
+candidate 𝑐 that can be executed in DREAMPlace or marks the                                                                                                     adds stable information beyond HPWL and overflow receives more
+proposal as failed. Formally,                                                                                                                                   influence in archive updates. An unstable or redundant timing
+                                 (                                                                                                                              proxy remains available to objective construction but receives little
+                                  𝑐, 𝑦 ∈ Y𝑑 ,                                                                                                                   authority in evidence ranking.
+                    Embed𝑑 (𝑦) =                                (8)
+                                   ⊥, 𝑦 ∈ Y𝑑 .
+                                                                                                                                                                4.4    Archive Update and Closed-Loop Feedback
+Here Y𝑑 is the set of proposed programs accepted by the grammar,
+physical-role, differentiability, and runtime checks for design 𝑑.                                                                                              The archive is organized as a MAP-Elites grid over objective behav-
+                                                                                                                                                                ior [18]. Each admitted objective is mapped to a feature cell
+The complement Y𝑑 contains rejected programs, and ⊥ denotes an
+invalid candidate that is not executed by DREAMPlace. A candidate                                                                                                                               𝑧 = 𝜓 (𝑐),
+𝑐 contains the initialization map, update map, scalar loss, named                                                                                               where 𝜓 summarizes complexity, mechanism family, HPWL behav-
+components, and schedule variables required by Equations 6 and 7.                                                                                               ior, overflow behavior, and timing behavior. To preserve diversity,
+   After embedding, candidate 𝑐 enters DREAMPlace through the                                                                                                   CoEvoP&R uses an island model in which archive subpopulations
+physical roles in Equation 7. It provides the density, routing, pin,                                                                                            exchange elites periodically. Within island 𝑟 , the archive update is
+and smoothing schedules, while native wirelength and density                                                                                                                                                             
+                                                                                                                                                                                (𝑟 )
+operators form the differentiable placement backbone. The density                                                                                                             A𝑔+1   [𝑧] = elite ⪯ A𝑔(𝑟 ) [𝑧] ∪ C𝑔(𝑟 ) [𝑧] ,
+state also updates the placer preconditioner, so objective changes
+affect both the scalar loss and the optimization trajectory. Timing-                                                                                            where C𝑔(𝑟 ) [𝑧] collects the admitted generation-𝑔 candidates of
+aware candidates may adjust net weights using placement-time                                                                                                    island 𝑟 mapped to cell 𝑧, and ⪯ is the Pareto evidence order from
+criticality, span, and fanout features.                                                                                                                         Equation 9. Negative memory stores failed candidates and their
+                                                                                                                                                                failure reasons, so later prompt packets avoid recurring invalid
+4.3        Cost-Scaled Evaluation and Evidence                                                                                                                  mechanisms. Island migration periodically exchanges elites across
+           Ranking                                                                                                                                              subpopulations and exposes the proposal model to objectives that
+                                                                                                                                                                succeed under different behavioral niches.
+Downstream routing and timing tools provide faithful feedback at                                                                                                   Algorithm 1 summarizes the loop that returns a readable objec-
+substantially higher cost than placement. CoEvoP&R therefore eval-                                                                                              tive with state variables, named components, lineage, and measured
+uates candidates through a cost-scaled evidence hierarchy. Tier A                                                                                               placement evidence.
+runs the analytical placer for every validated candidate and records
+HPWL, overflow, runtime, convergence behavior, and objective                                                                                                    5 Experiments and Results
+traces. Tier B applies a placement-stage timing proxy to selected
+candidates and records proxy WNS/TNS movement. Tier C sched-                                                                                                    5.1 Experimental Setup
+ules the downstream router for real routing and records routed                                                                                                    Benchmarks and exposure. We evaluate CoEvoP&R on eight ChiP-
+wirelength, routing overflow, and post-route WNS and TNS. The                                                                                                   Bench Nangate45 designs [25], including bp_fe, bp_be, swerv_wrapper,
+                                                                                                                                                            4
+Table 1: Main ChiPBench Nangate45 results and intra-family transfer. Entries report three-seed mean improvements over DREAMPlace, which
+is normalized to zero. rWL and Cong. are reductions in routed wirelength and post-route congestion. WNS and TNS are post-route timing gains
+in ns. Bold marks best means and underline marks second best.
+
+
+                                                           BlackParrot family                  Processor cores                             Peripheral and control               Mean
+                      Method                 Metric           bp_fe       bp_be    swerv_wrapper            or1200       mor1kx       ethernet          dft68       vga_lcd        Mean
+                 Analytical, expert, and search baselines
+                                            rWL (%)       -5.3±0.3      -1.7±0.2         -3.9±0.3          -4.6±0.4     -2.1±0.2       -0.4±0.1     -1.8±0.2       0.3±0.1      -2.4±0.2
+                  DREAMPlace 4.0 [12] Cong. (%)           -2.4±0.3       0.7±0.1         -1.8±0.2          -1.1±0.2     -1.2±0.2       -2.3±0.3     -0.4±0.1       0.4±0.1      -1.0±0.2
+                                            WNS (ns) +0.38±0.03       +0.48±0.04       +0.18±0.02       +1.32±0.09    +0.16±0.02    +0.36±0.03    +0.12±0.02    +0.28±0.03    +0.41±0.03
+                                            TNS (ns)      +720±48       +480±32          +140±12          +940±62       +220±18       +340±24         +70±6       +640±42       +444±28
+                                             rWL (%)       -2.4±0.4      3.7±0.3         -0.8±0.2           2.6±0.4     -2.3±0.3       1.9±0.2      -1.2±0.2       4.1±0.4       0.7±0.3
+                      Best expert            Cong. (%)      4.7±0.4      6.8±0.5          0.9±0.2           4.2±0.4      3.7±0.3       3.4±0.3       1.6±0.2       2.7±0.3       3.5±0.3
+                                             WNS (ns)    -0.14±0.03   -0.21±0.03       -0.08±0.02        -0.28±0.04   -0.09±0.02    -0.18±0.03    -0.04±0.01    -0.03±0.01    -0.13±0.02
+                                             TNS (ns)     -22.4±2.6    -34.6±3.4        -12.7±1.8       -178.6±14.2    -27.2±3.2     -68.4±6.4      -8.7±1.4     -13.4±1.8       -46±4.2
+                                             rWL (%)       -0.7±0.8      3.8±0.7          1.2±0.6           2.9±0.7     -0.4±0.4       4.6±0.8      -0.3±0.4       5.7±0.9       2.1±0.6
+                      BO-DSL                 Cong. (%)      6.3±0.9      5.4±0.7          2.8±0.6           6.1±0.8      5.4±0.7       4.9±0.6       2.7±0.5       4.2±0.6       4.7±0.7
+                                             WNS (ns)    -0.06±0.04   +0.04±0.02       -0.09±0.03        -0.13±0.05   -0.01±0.02    -0.03±0.02    +0.01±0.01    +0.03±0.02    -0.03±0.03
+                                             TNS (ns)     -12.4±3.6     +6.8±2.4        -18.7±4.2         -52.7±7.8     -6.4±2.8     -14.6±3.4      +4.2±1.4      +8.9±2.2     -10.6±3.6
+                                             rWL (%)        7.8±0.5      8.6±0.4         11.3±0.7          6.9±0.4       9.7±0.6      12.7±0.8       5.4±0.3      14.8±0.9       9.7±0.6
+                      AutoDMP [2]            Cong. (%)      9.4±0.6     11.7±0.7          7.8±0.5         10.7±0.6      12.9±0.8      13.6±0.8       8.4±0.5      14.2±0.9      11.1±0.7
+                                             WNS (ns)    +0.27±0.03   +0.28±0.03       +0.08±0.02       +0.59±0.04    +0.14±0.02    +0.34±0.03    +0.05±0.01    +0.07±0.02    +0.23±0.02
+                                             TNS (ns)      +112±10      +114±12            +30±4          +840±62         +80±8       +324±28         +14±3         +49±6       +195±16
+                                             rWL (%)        2.4±0.7      6.8±0.6          5.1±0.5          4.3±0.5       9.5±0.7       9.7±0.9       0.9±0.3      14.6±1.2       6.7±0.7
+                      EvoPlace [26]          Cong. (%)      1.8±0.6      2.9±0.4         -0.6±0.4          2.4±0.5       0.7±0.3       2.7±0.5       0.3±0.2       3.6±0.6       1.7±0.4
+                                             WNS (ns)    +0.04±0.02   +0.06±0.02       -0.03±0.02       +0.07±0.02    +0.02±0.01    +0.03±0.02    +0.01±0.01    -0.04±0.02    +0.02±0.02
+                                             TNS (ns)      +8.4±2.2    +14.7±3.2         -4.2±2.4        +38.4±5.6      +6.3±2.2     +22.6±3.8      +2.8±1.6      -9.7±2.8      +9.9±2.8
+                                             rWL (%)       33.6±2.1     18.9±1.4          8.9±0.7          6.4±0.5      -2.4±0.3      -4.6±0.5       5.6±0.4       -8.4±0.7      7.3±0.8
+                      LaMPlace [8]           Cong. (%)     33.1±2.1     20.6±1.3          4.4±0.3         24.6±1.6      18.4±1.2      22.8±1.4      14.6±0.9      26.4±1.7      20.6±1.3
+                                             WNS (ns)    +0.05±0.01   +0.19±0.02       +0.04±0.01       +0.22±0.02    +0.13±0.02    +0.28±0.03    +0.06±0.01    +0.24±0.02    +0.15±0.02
+                                             TNS (ns)       -407±28   +1323±88             +40±4          +680±46      +620±42        +380±26         +48±5       +540±36       +403±28
+                 CoEvoP&R evolved objectives
+                                         rWL (%)           32.4±2.2     17.4±1.3        18.4±1.3          13.6±1.0        9.4±0.7     17.4±1.2        5.2±0.4     21.4±1.5      16.9±1.0
+                  CoEvoP&R-E             Cong. (%)         31.4±2.0     33.6±2.2        68.4±3.8          43.6±2.6      28.4±1.8      36.4±2.3      27.2±1.7      24.6±1.6      36.7±2.0
+                                         WNS (ns)        +0.62±0.05   +0.88±0.07      +0.42±0.04        +1.18±0.09    +0.38±0.03    +0.32±0.03    +0.72±0.06    +1.07±0.09    +0.70±0.06
+                                         TNS (ns)          +940±68     +1180±88         +380±30         +1560±118       +540±42      +680±48        +190±16     +1830±136       +912±68
+                                             rWL (%)       25.4±1.9     13.4±1.2         14.4±1.1         10.4±0.8       8.4±0.7      13.4±1.0       4.4±0.3      15.8±1.2      13.2±0.9
+                      CoEvoP&R-L             Cong. (%)     28.4±2.1     32.4±2.1         56.4±3.6         35.4±2.3      25.4±1.8      30.4±2.0      20.4±1.4      22.4±1.6      31.4±1.9
+                                             WNS (ns)    +0.46±0.05   +0.64±0.06       +0.32±0.04       +1.02±0.09    +0.21±0.03    +0.24±0.03    +0.48±0.04    +0.68±0.06    +0.51±0.04
+                                             TNS (ns)      +530±42     +1100±86          +260±22         +1000±76       +380±32       +480±36       +128±12      +1220±92       +637±48
+
+
+
+Algorithm 1 CoEvo objective evolution                                                                         Baselines and evaluation flow. Baselines include analytical place-
+ 1: A0 , N ← Init(seeds, baselines), ∅                                                                     ment through DREAMPlace and DREAMPlace 4.0 [12, 13], ex-
+ 2: for 𝑔 = 0, . . . , 𝐺 − 1 do                                                                            pert HPWL, density, RUDY [23], and pin-density objective mixes,
+ 3:    (𝑟, 𝑝𝑔 , 𝐻𝑔 , 𝑀𝑔 ) ← SelectParent( A𝑔 , N )                                                         same-grammar BO-DSL implemented with tree-structured Parzen
+ 4:   Π𝑔 ← ( I, 𝐵, 𝑝𝑔 , 𝐻𝑔 , 𝑀𝑔 , 𝜎 )                                                                      estimator (TPE) [4], and shared-pipeline reruns of AutoDMP [2],
+ 5:   for 𝑘 = 1, . . . , 𝐾 do                                                                              RoutePlacer [9], EvoPlace [26], and LaMPlace [8]. Comparable rows
+ 6:       𝑦𝑔,𝑘 ∼ 𝑞 (· | Π𝑔 )                                                                               share coordinate conversion, legalization, OpenROAD routing [3],
+ 7:       𝑐𝑔,𝑘 ← Embed𝑑 (𝑦𝑔,𝑘 )                                                                            OpenTimer timing analysis [10], and metric extraction.
+ 8:       if 𝑐𝑔,𝑘 = ⊥ ∨ Admit(𝑐𝑔,𝑘 ) = 0 then
+ 9:          N ← N ∪ { (𝑦𝑔,𝑘 , 𝑐𝑔,𝑘 ) }                                                                       Evaluation and statistics. All results in Tables 1 and 2 report im-
+10:       else                                                                                             provements over DREAMPlace, which is normalized to zero. These
+11:          m𝑔,𝑘 ← Evaluate(𝑐𝑔,𝑘 )
+               (𝑟 )                   (𝑟 )
+                                                                                                           results are averaged under reruns using three different seeds. The
+12:         A𝑔 ← Insert( A𝑔 , 𝑐𝑔,𝑘 , m𝑔,𝑘 ,𝜓 )                                                             default LLM proposer is gpt-5.4. All evolution and experiments
+13:      end if
+                                                                                                           run on one NVIDIA RTX A6000 GPU with 48 GB memory and
+14:    end for
+                                                                                                           one Intel Xeon Gold 5218R central processing unit (CPU) using 16
+15:    A𝑔+1 ← ParetoRefresh(Migrate( A𝑔 ) )
+16: end for
+                                                                                                           OpenROAD/OpenTimer worker processes. Section 5.5 tests LLM
+17: return Best( A𝐺 )                                                                                      model-family sensitivity.
+
+                                                                                                           5.2        Main Results on ChiPBench Nangate45
+ethernet, dft68, or1200, vga_lcd, and mor1kx. To test cross-technology                                     Table 1 is the primary same-technology result, covering CoEvoP&R-
+generalization, we further use ICCAD 2015 Superblue designs 1, 3,                                          E and CoEvoP&R-L. CoEvoP&R-E improves mean routed wire-
+4, 5, 7, 10, 16, and 18 [11], together with gcd, ibex, and ariane imple-                                   length and congestion by 16.9% and 36.7%, and improves WNS
+mented using the ASAP7 predictive 7 nm standard-cell library [7].                                          and TNS by 0.70 ns and 912 ns over DREAMPlace. The strongest
+CoEvoP&R-E uses feedback from the same design on which it is                                               non-CoEvo means reach 9.7% rWL, 20.6% congestion, 0.41 ns WNS,
+evaluated. CoEvoP&R-L follows leave-one-design-out (LODO) evalu-                                           and 444 ns TNS, with the leading method varying by metric. At
+ation, where the target design is excluded from objective evolution                                        the design level, LaMPlace remains strong on bp_fe and bp_be
+and prompt evidence. CoEvoP&R-T zero-shot transfers the best                                               wirelength, DREAMPlace 4.0 leads or1200 WNS, and CoEvoP&R-E
+candidate from the ChiPBench evolution for cross-family test.                                              supplies most of the best or second-best congestion and timing
+                                                                                                    5
+entries. CoEvoP&R-L keeps 13.2% rWL, 31.4% congestion, 0.51 ns                                                   uses the proxy in candidate selection, Tie uses it only to break close
+WNS, and 637 ns TNS under the LODO protocol. The best candi-                                                     cases, and Reject excludes it for that metric. WNS has lower HPWL
+date in this experiment is zero-shot transferred to the cross-family                                             redundancy and is admitted on three of four designs, making it the
+evaluation in Section 5.3.                                                                                       primary timing proxy. TNS tracks HPWL more strongly and acts
+                                                                                                                 mainly as a tie-breaker. The ungated timing-proxy row in Table 3
+Table 2: Post-route transfer on Superblue and ASAP7. Entries report                                              tests this admission rule.
+three-seed mean improvements over DREAMPlace, which is normal-
+ized to zero. rWL and Cong. are reductions in routed wirelength and
+post-route congestion. WNS and TNS are post-route timing gains in                                                                         Pearson      Spearman                          Admit      Tie        Reject
+ns. Bold marks best means and underline marks second best.                                                                     1.0                                             4
+                                                                                                                                                         .82 .78                           1               1
+
+
+
+
+                                                                                                                 Correlation
+                                                                                                                                       .58 .54
+
+
+
+
+                                                                                                                                                                       Count
+                                                                                                                                .5                                             2                           2
+                                                     Superblue                                 ASAP7                                                                                       3
+Method            Metric       sb1    sb3     sb4     sb5     sb7   sb10   sb16   sb18   gcd   ibex ariane
+                                                                                                                                                                                                           1
+                    rWL (%)    -0.4   -0.6    +0.2  -0.8   -0.3  +0.1   -0.5  +0.3 +0.4 -0.3 -0.8                               0                                              0
+DREAMPlace 4.0 [12] Cong. (%)  +0.2   -0.3    -0.4  +0.1   -0.2  -0.7   -0.1  +0.4 +0.6 +0.2 -0.4
+                    WNS (Δns) +4.4 +16.8      +8.7 +21.7 +5.2 +1.9 +4.7 +8.3 +0.06 +0.18 +0.34                                         ΔWNS              ΔTNS                            ΔWNS             ΔTNS
+                    TNS (Δns) +16700 +3370   +5210 +11300 +9810 +7040 +31400 +4320 +32 +187 +940
+                  rWL (%)    +0.1    -0.3    +0.1     +0.3    -0.1  +0.9   -0.1    +0.2 +0.4 -0.6 +1.8                                 (a) Redundancy correlation                        (b) Admission outcome
+RoutePlacer [9]   Cong. (%)  +3.1    +1.7    +4.6     +3.9    +3.9 +43.2   +1.4    +3.7 +6.4 +24.6 +28.4
+                  WNS (Δns) -0.6     -0.4    +0.2     -0.4    -0.8  -1.2   -0.3    -0.7 -0.02 -0.14 -0.34
+                  TNS (Δns) -1400    -800    +200    -1200   -1600 -3400   -800   -1400 -12 -87 -294
+                  rWL (%)     -2.4    -3.6   +0.4     -2.8   +1.4    -3.2  -1.8   +0.6 +1.2 -8.4 -13.4
+                                                                                                                 Figure 4: Timing-proxy admission audit. Grouped bars show median
+EvoPlace [26]     Cong. (%)
+                  WNS (Δns)
+                              -3.4
+                              +0.2
+                                      -8.6
+                                      +0.4
+                                             -2.4
+                                             +0.4
+                                                      -4.2
+                                                      -0.4
+                                                             +0.4
+                                                             +0.6
+                                                                    -12.4 -6.8
+                                                                     -0.8  -0.4
+                                                                                  -1.2 +0.4 -14.2 -18.4
+                                                                                  +0.4 +0.02 -0.24 -0.48
+                                                                                                                 Pearson and Spearman correlation with HPWL movement.
+                  TNS (Δns)   -600   -1400   +400    -1200   +300   -2200 -1400   +200 +4 -124 -487
+                  rWL (%)    -4.6     -6.8   +14.2    -8.4    +0.4  -2.4 +11.8 +22.4 -6.8 -18.4 -22.4
+LaMPlace [8]      Cong. (%) +25.2    +19.9    +4.9   +19.8   +23.0 +24.8 +7.7 +28.2 +2.4 -8.7 -14.2
+                  WNS (Δns) +2.4      +6.8    +3.4   +13.4    +3.6 +1.2 +2.8 +0.4 +0.04 -0.16 -0.32
+                  TNS (Δns) +2400    +6800   +2400   +8400   +3800 +1400 +1800 +1200 -18 -94 -246
+
+
+CoEvoP&R-E
+                  rWL (%)    +5.4   +6.2   +4.8   +7.2   +5.4 +3.6 +6.4 +4.2 +5.4 +8.2 +10.6
+                  Cong. (%) +26.4 +21.4 +15.8 +22.4 +24.4 +34.7 +9.8 +30.4 +14.6 +22.4 +26.8                     5.5                 Ablation Studies and LLM Sensitivity
+                  WNS (Δns) +5.8 +14.8 +9.4 +12.8 +7.6 +2.6 +6.2 +6.4 +0.24 +0.42 +0.68
+                  TNS (Δns) +18800 +38400 +18700 +67200 +36400 +8400 +14600 +6800 +148 +468 +824
+                                                                                                                 Table 3 isolates the main sources of performance in CoEvoP&R.
+                  rWL (%)    +1.4  +3.8   +2.6  +4.2   +3.2 +1.8 +3.6 +2.4 +2.4 +3.8 +5.2
+CoEvoP&R-T        Cong. (%) +20.4 +20.4 +10.4 +20.4 +18.4 +25.4 +8.4 +24.6 +8.4 +19.4 +25.4                      Random DSL evolution and one-shot LLM sampling lose most of
+                  WNS (Δns) +4.6   +8.2   +8.8  +7.4   +5.4 +2.2 +5.4 +4.2 +0.08 +0.22 +0.34
+                  TNS (Δns) +2400 +18400 +9600 +32400 +14200 +7400 +7600 +4600 +58 +204 +620                     the routing and timing gains, showing that archive-conditioned
+                                                                                                                 iteration is essential. Tier-A-only selection and direct Tier C eval-
+                                                                                                                 uation both underperform Full CoEvoP&R, indicating that cost-
+5.3        Generalization                                                                                        scaled evidence allocation is more useful than either cheap-only
+                                                                                                                 or route-all evaluation. Scalar-history and metrics-only archives
+Table 2 reports Superblue and ASAP7 transfer results for CoEvoP&R-
+                                                                                                                 also degrade, showing that component traces and failure memory
+E and CoEvoP&R-T.
+                                                                                                                 provide actionable search context. The model variants preserve the
+   On Superblue, E averages 5.4% rWL, 23.2% congestion reduction,
+                                                                                                                 main advantage, with stronger LLMs improving validity and score
+8.2 ns WNS, and 26,163 ns TNS gain. T retains 2.9%, 18.6%, 5.8 ns, and
+                                                                                                                 under the same prompts, mutation schedules, and budgets.
+12,075 ns, or 46% to 80% of E. On ASAP7, LaMPlace regresses while
+both CoEvoP&R variants remain positive, supporting symbolic
+cross-node transfer. Superblue1 is the clearest transfer-limit case.                                             Table 3: Ablation and LLM sensitivity on the ChiPBench stress
+   Figure 3 visualizes Superblue16 under matched placement ren-                                                  panel bp_fe, swerv_wrapper, ethernet, and or1200. R/C and W/T de-
+dering. CoEvoP&R-L improves rWL/Cong. by 3.6%/8.4% and gains                                                     note routed wirelength/congestion reductions and WNS/TNS gains.
+5.4 ns WNS and 12,800 ns TNS over DREAMPlace, while DREAM-                                                       Valid/Acc. denote valid and admitted candidates. Evals and GPU-h
+Place 4.0’s timing-driven flow leads on TNS (+31,400 ns) at the cost                                             denote evaluations and GPU-hours. Darker blue indicates larger
+of slightly worse rWL and congestion.                                                                            degradation from Full CoEvoP&R.
+
+                                                                                                                   Configuration                         Valid/Acc. Score          R/C       W/T    Tier-C Cost
+                                                                                                                                                                                   (%)      (Δns)    evals (GPU-h)
+                                                                                                                   Full CoEvoP&R                           68/12    4.87 20.5/45.0 +0.64/+890         24        32
+                                                                                                                   Proposal and objective search
+                                                                                                                   Random DSL evolution                    42/4     1.24 2.6/4.8 +0.08/+60            24        26
+         (a) DREAMPlace                (b) DREAMPlace 4.0                     (c) CoEvoP&R-L                       One-shot LLM sampling                   58/8     2.14 7.2/13.4 +0.22/+264          24        16
+                                                                                                                   Score-only LLM evolution                62/10    3.42 14.2/26.4 +0.40/+454         24        29
+       rWL=0.0, Cong.=0.0            rWL= −0.5, Cong.= −0.1                 rWL=+3.6, Cong.=+8.4
+        WNS=0.0, TNS=0               WNS=+4.7, TNS=+31,400                 WNS=+5.4, TNS=+12,800                   Evaluation and evidence policy
+                                                                                                                   Prompt-only free-form interface         24/4     1.86 5.8/12.4 +0.15/+164          24        27
+                                                                                                                   Tier-A-only selection                   68/18    2.68 9.4/15.4 +0.22/+268           0        5
+Figure 3: Superblue16 qualitative placement comparison. Metrics                                                    Direct Tier C (all valid)               68/8     3.14 12.0/23.6 +0.32/+498         68        64
+                                                                                                                   Ungated timing proxy                    68/14    3.86 16.4/34.6 +0.46/+588         24        33
+below each panel are improvements over the DREAMPlace reference.
+                                                                                                                   Archive state
+                                                                                                                   Champion-only scalar history            62/10    2.42 9.6/17.6 +0.26/+312          24        31
+                                                                                                                   Top-𝑘 scalar archive                    64/11    3.14 13.6/26.4 +0.36/+448         24        32
+                                                                                                                   MAP-Elites, metrics only                66/12    3.68 17.0/34.4 +0.46/+588         24        32
+5.4        Timing proxy Audit                                                                                      Model family sensitivity
+Figure 4 audits bp_fe, swerv, ethernet, and or1200 under 100 to 2000                                               gpt-5.4 (default)                       68/12    4.87    20.5/45.0 +0.64/+890      24        32
+                                                                                                                   gpt-4.1-mini                            62/10    3.87    16.4/36.0 +0.49/+668      24        26
+database unit (DBU) perturbations. The left panel measures HPWL                                                    claude-opus-4-8                         66/12    4.62    19.4/43.2 +0.60/+836      24        35
+                                                                                                                   qwen3.7-max                             58/9     3.24    13.8/28.4 +0.42/+528      24        28
+redundancy, and the right panel counts admission outcomes. Admit
+                                                                                                             6
+6    Conclusion                                                                                   Conference. ACM, New York, NY, USA, 1–6. doi:10.1145/3316781.3317803
+                                                                                             [14] Fei Liu, Xialiang Tong, Mingxuan Yuan, Xi Lin, Fu Luo, Zhenkun Wang, Zhichao
+CoEvoP&R evolves executable placement objectives with bounded                                     Lu, and Qingfu Zhang. 2024. Evolution of Heuristics: Towards Efficient Auto-
+analytical placement and routed feedback, turning routing and                                     matic Algorithm Design Using Large Language Model. In Proceedings of the 41st
+                                                                                                  International Conference on Machine Learning (Proceedings of Machine Learning
+timing evidence into readable differentiable objectives for DREAM-                                Research, Vol. 235). PMLR, Vienna, Austria, 32201–32223.
+Place. Across ChiPBench, Superblue, and ASAP7, the evolved ob-                               [15] Jingwei Lu, Pengwen Chen, Chin-Chih Chang, Lu Sha, Dennis J.-H. Huang, Chin-
+jectives improve routed wirelength, congestion, and timing. On                                    Chi Teng, and Chung-Kuan Cheng. 2014. ePlace: Electrostatics Based Placement
+                                                                                                  Using Nesterov’s Method. In Proceedings of the 51st Annual Design Automation
+ChiPBench, target evolution reaches 16.9% rWL reduction, 36.7%                                    Conference. ACM, New York, NY, USA, 1–6. doi:10.1145/2593069.2593133
+congestion reduction, 0.70 ns WNS gain, and 912 ns TNS gain over                             [16] Yecheng Jason Ma, William Liang, Guanzhi Wang, De-An Huang, Osbert Bastani,
+DREAMPlace. The results support LLM-guided objective evolution                                    Dinesh Jayaraman, Yuke Zhu, Jim Fan, and Anima Anandkumar. 2024. Eureka:
+                                                                                                  Human-Level Reward Design via Coding Large Language Models. In International
+as an inspectable interface between differentiable placement and                                  Conference on Learning Representations. OpenReview.net, Vienna, Austria.
+downstream evaluation. A natural next step is to extend the archive                          [17] Azalia Mirhoseini, Anna Goldie, Mustafa Yazgan, Joe Wenjie Jiang, Ebrahim
+                                                                                                  Songhori, Shen Wang, Young-Joon Lee, Eric Johnson, Omkar Pathak, Azade
+and validation interface toward multi-corner timing, power, and                                   Nova, Jiwoo Pak, Andy Tong, Kavya Srinivasa, William Hang, Emre Tuncer,
+signoff-accurate routing feedback.                                                                Quoc V. Le, James Laudon, Richard Ho, Roger Carpenter, and Jeff Dean. 2021. A
+                                                                                                  Graph Placement Methodology for Fast Chip Design. Nature 594 (2021), 207–212.
+                                                                                                  doi:10.1038/s41586-021-03544-w
+References                                                                                   [18] Jean-Baptiste Mouret and Jeff Clune. 2015. Illuminating Search Spaces by Mapping
+ [1] Anthony Agnesina, Rongjian Liang, Geraldo Pradipta, Anand Rajaram, and Haox-                 Elites. CoRR abs/1504.04909 (2015). doi:10.48550/arXiv.1504.04909
+     ing Ren. 2025. GOALPlace: Begin with the End in Mind. In Proceedings of the             [19] Alexander Novikov, Ngân Vũ, Marvin Eisenberger, Emilien Dupont, Po-Sen
+     International Symposium on Physical Design. ACM, New York, NY, USA, 2–10.                    Huang, Adam Zsolt Wagner, Sergey Shirobokov, Borislav Kozlovskii, Francisco
+     doi:10.1145/3698364.3705342                                                                  J. R. Ruiz, Abbas Mehrabian, M. Pawan Kumar, Abigail See, Swarat Chaudhuri,
+ [2] Anthony Agnesina, Puranjay Rajvanshi, Tian Yang, Geraldo Pradipta, Austin                    George Holland, Alex Davies, Sebastian Nowozin, Pushmeet Kohli, and Matej Ba-
+     Jiao, Ben Keller, Brucek Khailany, and Haoxing Ren. 2023. AutoDMP: Au-                       log. 2025. AlphaEvolve: A Coding Agent for Scientific and Algorithmic Discovery.
+     tomated DREAMPlace-based Macro Placement. In Proceedings of the Interna-                     arXiv preprint arXiv:2506.13131.
+     tional Symposium on Physical Design. ACM, New York, NY, USA, 149–157.                   [20] Bernardino Romera-Paredes, Mohammadamin Barekatain, Alexander Novikov,
+     doi:10.1145/3569052.3578923                                                                  Matej Balog, M. Pawan Kumar, Emilien Dupont, Francisco J. R. Ruiz, Jordan S.
+ [3] Tutu Ajayi, Vidya A. Chhabria, Mateus Fogaça, Soheil Hashemi, Abdelrahman                    Ellenberg, Pengming Wang, Omar Fawzi, Pushmeet Kohli, and Alhussein Fawzi.
+     Hosny, Andrew B. Kahng, Minsoo Kim, Jeongsup Lee, Uday Mallappa, Marina                      2024. Mathematical Discoveries from Program Search with Large Language
+     Neseem, Geraldo Pradipta, Sherief Reda, Mehdi Saligane, Sachin S. Sapatnekar,                Models. Nature 625 (2024), 468–475. doi:10.1038/s41586-023-06924-6
+     Carl Sechen, Mohamed Shalan, William Swartz, Lutong Wang, Zhehong Wang,                 [21] Asankhaya Sharma. 2025. OpenEvolve: An Open-Source Evolutionary Coding
+     Mingyu Woo, and Bangqi Xu. 2019. Toward an Open-Source Digital Flow: First                   Agent. https://github.com/algorithmicsuperintelligence/openevolve.
+     Learnings from the OpenROAD Project. In Proceedings of the 56th Annual Design           [22] Parshin Shojaee, Kazem Meidani, Shashank Gupta, Amir Barati Farimani, and
+     Automation Conference. ACM, New York, NY, USA, 76:1–76:4. doi:10.1145/3316781.               Chandan K. Reddy. 2025. LLM-SR: Scientific Equation Discovery via Programming
+     3326334                                                                                      with Large Language Models. In International Conference on Learning Representa-
+ [4] James S. Bergstra, Rémi Bardenet, Yoshua Bengio, and Balázs Kégl. 2011. Algo-                tions. OpenReview.net, Singapore.
+     rithms for Hyper-Parameter Optimization. In Advances in Neural Information              [23] Peter Spindler and Frank M. Johannes. 2007. Fast and Accurate Routing Demand
+     Processing Systems, Vol. 24. Curran Associates, Inc., Granada, Spain, 2546–2554.             Estimation for Efficient Routability-Driven Placement. In Proceedings of the Con-
+ [5] Magi Chen and Ting-Chi Wang. 2025. HyperPlace: Harnessing a Large Language                   ference on Design, Automation and Test in Europe. IEEE, Nice, France, 1226–1231.
+     Model for Efficient Hyperparameter Optimization in GPU-Accelerated VLSI                      doi:10.1109/DATE.2007.364463
+     Placement. ACM Transactions on Design Automation of Electronic Systems 30, 6,           [24] Ikechukwu Uchendu, Swati Goel, Karly Hou, Ebrahim Songhori, Kuang-Huei Lee,
+     Article 98 (2025), 27 pages. doi:10.1145/3733601                                             Joe Wenjie Jiang, Vijay Janapa Reddi, and Vincent Zhuang. 2026. See It to Place
+ [6] Chung-Kuan Cheng, Andrew B. Kahng, Ilgweon Kang, and Lutong Wang. 2019.                      It: Evolving Macro Placements with Vision-Language Models. arXiv preprint
+     RePlAce: Advancing Solution Quality and Routability Validation in Global Place-              arXiv:2603.28733.
+     ment. IEEE Transactions on Computer-Aided Design of Integrated Circuits and             [25] Zhihai Wang, Zijie Geng, Zhaojie Tu, Jie Wang, Yuxi Qian, Zhexuan Xu, Ziyan
+     Systems 38, 9 (2019), 1717–1730. doi:10.1109/TCAD.2018.2859220                               Liu, Siyuan Xu, Zhentao Tang, Shixiong Kai, Mingxuan Yuan, Jianye Hao, Bin Li,
+ [7] Lawrence T. Clark, Vinay Vashishtha, Lucian Shifren, Aditya Gujja, Saurabh                   and Feng Wu. 2025. Benchmarking End-To-End Performance of AI-Based Chip
+     Sinha, Brian Cline, Chandarasekaran Ramamurthy, and Greg Yeric. 2016. ASAP7:                 Placement Algorithms. In Advances in Neural Information Processing Systems,
+     A 7-nm FinFET Predictive Process Design Kit. Microelectronics Journal 53 (2016),             Vol. 38. Neural Information Processing Systems Foundation. Datasets and
+     105–115. doi:10.1016/j.mejo.2016.04.006                                                      Benchmarks Track.
+ [8] Zijie Geng, Jie Wang, Ziyan Liu, Siyuan Xu, Zhentao Tang, Shixiong Kai, Mingx-          [26] Xufeng Yao, Jiaxi Jiang, Yuxuan Zhao, Peiyu Liao, Yibo Lin, and Bei Yu. 2026.
+     uan Yuan, Jianye Hao, and Feng Wu. 2025. LaMPlace: Learning to Optimize                      EvoPlace: Evolution of Optimization Algorithms for Global Placement via Large
+     Cross-Stage Metrics in Macro Placement. In International Conference on Learning              Language Models. IEEE Transactions on Computer-Aided Design of Integrated
+     Representations. OpenReview.net, Singapore.                                                  Circuits and Systems (2026). doi:10.1109/TCAD.2026.3652945 Early access;
+ [9] Yunbo Hou, Haoran Ye, Yingxue Zhang, Siyuan Xu, and Guojie Song. 2024.                       arXiv:2504.17801.
+     RoutePlacer: An End-to-End Routability-Aware Placer with Graph Neural Net-
+     work. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery
+     and Data Mining. ACM, New York, NY, USA, 1085–1095. doi:10.1145/3637528.
+     3671895
+[10] Tsung-Wei Huang and Martin D. F. Wong. 2015. OpenTimer: A High-Performance
+     Timing Analysis Tool. In Proceedings of the 2015 IEEE/ACM International Confer-
+     ence on Computer-Aided Design. IEEE, Austin, TX, USA, 895–902. doi:10.1109/
+     ICCAD.2015.7372666
+[11] Myung-Chul Kim, Jin Hu, Jiajia Li, and Natarajan Viswanathan. 2015. ICCAD-
+     2015 CAD Contest in Incremental Timing-Driven Placement and Benchmark
+     Suite. In Proceedings of the IEEE/ACM International Conference on Computer-Aided
+     Design. IEEE, Austin, TX, USA, 921–926. doi:10.1109/ICCAD.2015.7372671
+[12] Peiyu Liao, Siting Liu, Zhitang Chen, Wenlong Lv, Yibo Lin, and Bei Yu. 2022.
+     DREAMPlace 4.0: Timing-Driven Global Placement with Momentum-Based Net
+     Weighting. In Proceedings of the Design, Automation and Test in Europe Conference
+     and Exhibition. IEEE, Antwerp, Belgium, 939–944. doi:10.23919/DATE54114.2022.
+     9774725
+[13] Yibo Lin, Shounak Dhar, Wuxi Li, Haoxing Ren, Brucek Khailany, and David Z.
+     Pan. 2019. DREAMPlace: Deep Learning Toolkit-Enabled GPU Acceleration for
+     Modern VLSI Placement. In Proceedings of the 56th Annual Design Automation
+                                                                                         7
+

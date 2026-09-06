@@ -1,0 +1,549 @@
+                                             MappingEvolve: LLM-Driven Code Evolution for Technology
+                                                                   Mapping
+                                                   Rongliang Fu                              Yi Liu                           Qiang Xu                           Tsung-Yi Ho
+                                             Chinese University of Hong Kong     Chinese University of Hong Kong     Chinese University of Hong Kong     Chinese University of Hong Kong
+                                                    Hong Kong, China                    Hong Kong, China                    Hong Kong, China                    Hong Kong, China
+
+                                         Abstract                                                                    conventional automated parameter tuning over predefined search
+                                         Technology mapping is a critical yet challenging stage in logic syn-        spaces, LLMs can synthesize semantically meaningful algorithmic
+                                         thesis. While Large Language Models (LLMs) have been applied                modifications within bounded code regions [21]. Recent work like
+                                         to generate optimization scripts, their potential for core algorithm        OpenEvolve [22] demonstrates population-based code evolution
+                                         enhancement remains untapped. We introduce MappingEvolve, an                through iterative LLM-driven mutation and selection, but lacks
+arXiv:2604.26591v1 [cs.CE] 29 Apr 2026
+
+
+
+
+                                         open-source framework that pioneers the use of LLMs to directly             strategic guidance for complex algorithmic optimization. These ob-
+                                         evolve technology mapping code. Our method abstracts the map-               servations motivate us to explore LLM-driven code evolution tailored
+                                         ping process into distinct optimization operators and employs a             for technology mapping algorithms.
+                                         hierarchical agent-based architecture, comprising a Planner, Evolver,          To this end, we propose MappingEvolve, an open-source frame-
+                                         and Evaluator, to guide the evolutionary search. This structured            work that leverages LLMs to directly evolve the core algorithms
+                                         approach enables strategic and effective code modifications. Experi-        of technology mapping. Through systematic analysis of existing
+                                         ments show our method significantly outperforms direct evolution            mapping implementations, we identify three fundamental operators:
+                                         and strong baselines, achieving 10.04% area reduction versus ABC            MatchPhase (delay and area-flow optimization), MatchPhaseExact
+                                         and 7.93% versus mockturtle, with 46.6%–96.0% 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 improvement          (exact-area optimization), and MatchDropPhase (phase unification).
+                                         on EPFL benchmarks, while explicitly navigating the area–delay              They encapsulate critical algorithmic trade-offs while providing well-
+                                         trade-off. Our code and data are available at https://github.com/           defined boundaries amenable to controlled evolution. Our framework
+                                         Flians/MappingEvolve.                                                       employs a hierarchical Planner → Evolver → Evaluator architecture
+                                                                                                                     that decouples strategic operator selection from concrete heuristic
+                                         1    Introduction                                                           mutation. To ensure functional correctness, we enforce syntactic and
+                                                                                                                     semantic constraints through bounded edit regions and multi-stage
+                                         Logic synthesis plays a pivotal role in the circuit design process,
+                                                                                                                     validation comprising compilation, logical equivalence checking, and
+                                         primarily comprising two sub-processes: logic optimization [1–5]
+                                                                                                                     quality-of-result evaluation. A unified performance metric 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙
+                                         and technology mapping [6, 7]. Among these stages, technology
+                                                                                                                     quantifies the area-delay trade-off to guide the evolution process.
+                                         mapping is particularly crucial as it bridges the gap between logical
+                                                                                                                        Overall, the main contributions of this work are as follows:
+                                         design and physical design.
+                                            Existing optimization methods for technology mapping primar-              • To our knowledge, we present the first LLM-driven framework
+                                         ily focus on three approaches: i) cut selection to filter for logic-           that directly evolves the core algorithmic operators of technology
+                                         level or physical-level superior cuts, thereby obtaining better gate-          mapping, in contrast to prior approaches limited to external script
+                                         level netlists, such as Priority Cuts [8], SLAP [9], LEAP [10], and            generation.
+                                         PigMAP [11]; ii) multi-output or application-specific cell exploita-         • We design a hierarchical Planner-Evolver-Evaluator architecture
+                                         tion, such as emap [12] and dual-output LUT [13]; iii) standard cell           that enforces safety through syntactic boundaries and multi-stage
+                                         library filtering and extension to shrink the search range or im-              validation (compilation, logical equivalence checking, and quality-
+                                         prove cell quality, such as MapTune [14] and TeMACLE [15]. While               of-result assessment), enabling safe exploration of the algorithmic
+                                         these advances improve mapping quality, they predominantly re-                 design space.
+                                         fine heuristic parameters and search strategies rather than the core         • Experimental results demonstrate 11.5× performance improve-
+                                         algorithmic logic within the mapper itself.                                    ment over direct operator evolution on ISCAS85 benchmarks
+                                            Recent advances in Large Language Models (LLMs), including                  [23], achieving 10.04% area reduction versus ABC [6] and 7.93%
+                                         GPT-5 [16], DeepSeek-V3 [17], and Qwen [18], have demonstrated                 versus mockturtle [24], with 46.6%–96.0% 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 improvement
+                                         remarkable capabilities in code comprehension and algorithmic rea-             on EPFL benchmarks [25].
+                                         soning. These capabilities have led to initial studies applying LLMs         • We release our complete implementation, including source code,
+                                         to logic synthesis, such as ChatLS [19] and LLSM [20]. However,                evolution prompts, and per-iteration artifacts, to facilitate repro-
+                                         these studies mainly focus on generating optimization scripts rather           ducibility and future research in this field.
+                                         than evolving the logic synthesis algorithms themselves. Unlike
+                                                                                                                     2 Technology Mapping Analysis
+                                         This work is licensed under a Creative Commons Attribution-NonCommercial-
+                                                                                                                     2.1 Technology Mapping Algorithm
+                                         NoDerivatives 4.0 International License.                                    Technology mapping translates a technology-independent Boolean
+                                         DAC ’26, Long Beach, CA, USA                                                network 𝐺 with node set 𝑉 , typically an And-Inverter Graph (AIG) [6,
+                                         © 2026 Copyright held by the owner/author(s).
+                                         ACM ISBN 979-8-4007-2254-7/2026/07                                          26], into a gate-level netlist built from a given standard cell library 𝐿.
+                                         https://doi.org/10.1145/3770743.3803988                                     Given 𝐺 and 𝐿, the goal is to find a mapping 𝑀 : 𝑉 → 𝐿 that
+DAC ’26, July 26–29, 2026, Long Beach, CA, USA                                                                                             Rongliang Fu et al.
+
+
+minimizes optimization objectives such as circuit area 𝐴(𝑀) =                 Algorithm 1: Technology mapping with three key operators.
+Í
+       area(𝑀 (𝑣)), worst-case delay 𝐷 (𝑀) = max𝑝 ∈Paths(𝐺 )                    Input: Logic network 𝐺, standard cell library 𝐿
+Í𝑣 ∈𝑉
+  𝑣 ∈𝑝 delay(𝑀 (𝑣)), or a weighted combination thereof.                         Output: Mapped netlist 𝑁
+                                                                                Data: 𝑅𝑑𝑒𝑙𝑎𝑦 : delay rounds, 𝑅 𝑓 𝑙𝑜𝑤 : area flow rounds, 𝑅𝑒𝑥𝑎𝑐𝑡 : exact area
+   Definition 1 (Logic Phase). Each node 𝑣 can be realized in two
+                                                                                      rounds, 𝑅 = 𝑅𝑑𝑒𝑙𝑎𝑦 + 𝑅 𝑓 𝑙𝑜𝑤 + 𝑅𝑒𝑥𝑎𝑐𝑡
+output phases: positive (𝜙 = 0, non-inverted) or negative (𝜙 = 1,               // Iterative optimization with varying objectives
+inverted). When matching a cut 𝑐 to a gate 𝑔, the gate’s input phases         1 for round 𝑟 = 1 to 𝑅 do
+determine the required phase 𝜙𝑙 ∈ {0, 1} for each leaf 𝑙 ∈ 𝑐. If a gate       2     for each node 𝑣 ∈ 𝐺 in topological order do
+requires a phase not currently implemented by its fanin, an inverter          3         if 𝑟 ≤ 𝑅𝑑𝑒𝑙𝑎𝑦 + 𝑅 𝑓 𝑙𝑜𝑤 then
+must be inserted.                                                                            // Delay and area flow optimization rounds
+                                                                              4              MatchPhase(𝑣, phase = 0, 𝐿);
+   A key challenge in technology mapping is balancing multiple
+                                                                              5              MatchPhase(𝑣, phase = 1, 𝐿);
+conflicting optimization objectives. Optimizing solely for delay of-
+                                                                              6         else
+ten results in excessive area overhead (due to gate duplication and
+                                                                                             // Exact area optimization rounds
+increased logic depth buffering), while aggressive area minimization
+                                                                              7              MatchPhaseExact(𝑣, phase = 0, 𝐿);
+can degrade timing performance (by sharing gates across multiple
+                                                                              8              MatchPhaseExact(𝑣, phase = 1, 𝐿);
+paths, increasing fanout and delay). To address this trade-off, mod-
+                                                                              9           MatchDropPhase(𝑣);
+ern technology mappers adopt an iterative refinement strategy that
+progressively optimizes different objectives across multiple rounds.         10       Update mapping coverage and compute metrics;
+   To enable LLM-driven evolution, we analyze the mockturtle [24]            11       Backward propagate required times;
+library’s implementation and formalize its multi-round mapping               12   Finalize netlist 𝑁 from selected cuts;
+process. We identify that the algorithm relies on three optimization         13   return 𝑁
+metrics applied across different rounds:
+ • DelayFlow records the arrival time at node 𝑣 for cut 𝑐 matched            where 𝑅 = 𝑅𝑑𝑒𝑙𝑎𝑦 + 𝑅 𝑓 𝑙𝑜𝑤 + 𝑅𝑒𝑥𝑎𝑐𝑡 combines delay rounds (𝑅𝑑𝑒𝑙𝑎𝑦 ,
+    to gate 𝑔:                                                               typically 1), area flow rounds (𝑅 𝑓 𝑙𝑜𝑤 , typically 1-2), and exact area
+                   𝑇 (𝑣, 𝑐, 𝑔) = delay(𝑔) + max 𝑇 (𝑙, 𝜙𝑙 ),           (1)    rounds (𝑅𝑒𝑥𝑎𝑐𝑡 , typically 2-3). Each round processes all nodes in
+                                                  𝑙 ∈𝑐                       topological order. Critically, we identify that the mapping quality
+   where 𝑙 denotes each leaf in cut 𝑐, 𝜙𝑙 ∈ {0, 1} is the required           is determined by three core operators repeatedly invoked across all
+   phase at leaf 𝑙 (determined by gate 𝑔’s input phases as defined in        rounds:
+   Definition 1), and delay(𝑔) denotes the maximum pin-to-output
+                                                                              • MatchPhase (Lines 4-5): For a given node 𝑣 and output phase
+   delay across all inputs of gate 𝑔.
+                                                                                𝜙 ∈ {0, 1}, this operator evaluates all feasible cuts C(𝑣) and
+ • AreaFlow estimates the amortized area contribution:
+                                          ∑︁ 𝐹 (𝑙, 𝜙 )                          their compatible library gates. For each cut 𝑐 ∈ C(𝑣) and gate
+                                                    𝑙
+                  𝐹 (𝑣, 𝑐, 𝑔) = area(𝑔) +              ,          (2)           𝑔 ∈ 𝐿, it computes the arrival time 𝑇 (𝑣, 𝑐, 𝑔) (via Equation (1))
+                                              fo(𝑙)                             and area flow 𝐹 (𝑣, 𝑐, 𝑔) (via Equation (2)), then selects the best
+                                                 𝑙 ∈𝑐
+   where fo(𝑙) is the estimated fanout count of leaf node 𝑙. This met-          match by minimizing a cost function 𝐶 (𝑐, 𝑔) = 𝛼𝑟 · 𝑇 (𝑣, 𝑐, 𝑔) +
+   ric recursively accounts for area flow from fanin nodes, assuming            (1 − 𝛼𝑟 ) · 𝐹 (𝑣, 𝑐, 𝑔), where 𝛼𝑟 ∈ [0, 1] determines the delay-area
+   each node’s cost is shared among its fanouts proportionally.                 trade-off priority in round 𝑟 . In practice, 𝛼𝑟 starts close to 1 in
+ • ExactArea records the true incremental area through reference                delay-oriented rounds (emphasizing 𝑇 ) and decreases toward
+   counting:                                                                    0 in area-flow rounds (increasing weight on 𝐹 ). This operator
+                                         ∑︁                                     is invoked in delay and area flow optimization rounds (when
+                𝐸 (𝑣, 𝑐, 𝑔) = area(𝑔) +       𝐸 (𝑙, 𝜙𝑙 ),          (3)          𝑟 ≤ 𝑅𝑑𝑒𝑙𝑎𝑦 + 𝑅 𝑓 𝑙𝑜𝑤 ).
+                                                𝑙 ∈𝑐                          • MatchPhaseExact (Lines 7-8): This operator serves the same
+                                            𝜌 (𝑙,𝜙𝑙 )=0
+                                                                                purpose as MatchPhase but performs exact area computation by
+   where 𝜌 (𝑙, 𝜙𝑙 ) is the current reference count of leaf 𝑙 at phase 𝜙𝑙 .
+                                                                                recursively dereferencing the previous best cut from the current
+   Only leaves with zero reference count (i.e., 𝜌 (𝑙, 𝜙𝑙 ) = 0) contribute
+                                                                                mapping cover and then evaluating each candidate cut through
+   their local area 𝐸 (𝑙, 𝜙𝑙 ) to the total.
+                                                                                recursive reference counting (via Equation (3)). Unlike the flow-
+   This staged optimization, beginning with delay-oriented optimiza-            based heuristics in MatchPhase, this yields the true incremental
+tion using DelayFlow(𝑇 ), transitioning to area flow optimization               area 𝐸 (𝑣, 𝑐, 𝑔) but at a higher computational cost. In exact-area
+using AreaFlow(𝐹 ), and culminating in exact area optimization using            rounds, candidate selection minimizes 𝐸 (𝑣, 𝑐, 𝑔) directly under
+ExactArea(𝐸), allows the algorithm to efficiently explore quality-              timing feasibility constraints. It replaces MatchPhase in the exact
+runtime trade-offs.                                                             area optimization rounds (when 𝑟 > 𝑅𝑑𝑒𝑙𝑎𝑦 + 𝑅 𝑓 𝑙𝑜𝑤 ).
+                                                                              • MatchDropPhase (Line 9): After both output phases have been
+2.2     Operator Abstraction                                                    matched, this operator attempts to unify them by checking whether
+To enable LLM-driven evolution of technology mapping algorithms,                a single gate match combined with an output inverter can cover
+we systematically analyze the implementation and abstract the it-               both phases at a lower total cost. If unification reduces cost with-
+erative optimization process into a unified algorithmic framework               out violating timing constraints, it eliminates the redundant phase
+shown in Algorithm 1. The algorithm executes 𝑅 optimization rounds,             match. This operator is applied in every optimization round.
+MappingEvolve: LLM-Driven Code Evolution for Technology Mapping                                                             DAC ’26, July 26–29, 2026, Long Beach, CA, USA
+
+
+
+                 : Evolution History                                 Planner
+                                                                                                                            Decision-Making Prompt
+
+           : 1 Evolution                                                  : Adaptive Signals                                            : Last Evolution
+                 : 2 Evolution
+                             : (i-1) Evolution
+                                                                           : Objective Hint
+                                                                                                                                   : Current Code
+                                                                          : Diversity Pressure
+                                                    Compute                                           Generate
+                                                                           : Delay Stagnation                                       : Adaptive Signals
+                                                    adaptive                                          planning
+                                                     signals              : Operator Usage             prompt                Planner System Prompt
+
+          Accept Modification?                                                                                              LLM-driven Plan Generation
+         Evaluator                                                                           Evolver
+                                                                                                                              Code-Modifying Prompt
+        Code Validation                           Program Database
+                                                                                                   LLM modifies
+                                                 {(program,metrics),
+                                                                     Updates Code                  operator code                 : Evolution Plan
+                                                         ...}
+               Quality of
+                Result                                         Programs                 Request
+                                                                                                                                   : Selected Operator
+                                                                          Controller
+              Equivalence                                                                                                          : Selected Strategy
+               Checking                                        Prompt                   Programs
+                                                                                                   Evaluator Pool                 : Modification Details
+                                                  Prompt Sampler     Request Metrics
+              Compilation      Evolved                                                             Map ISCAS85
+                                                                        OpenEvolve                   to ASAP7                  Evolver System Prompt
+
+                                                     Figure 1. The overall flow of MappingEvolve.
+
+
+   After each round, the algorithm updates the mapping coverage                    3      MappingEvolve
+and computes required arrival times to guide subsequent rounds       This section presents MappingEvolve, a framework that leverages
+(Lines 10-11).                                                       LLMs to evolve technology mapping algorithms, as shown in Fig. 1.
+                                                                     Based on the operator abstraction established in Section 2.2, Map-
+2.3 LLM-driven Evolution Target Selection                            pingEvolve employs a hierarchical Planner→Evolver→Evaluator ar-
+The three operators identified above, O ={MatchPhase, MatchPhaseExact,chitecture to iteratively evolve the three core operators. Unlike direct
+MatchDropPhase}, encapsulate the core optimization logic of tech-    code generation approaches that lack strategic guidance, this archi-
+nology mapping algorithms. We select these operators as ideal tar-   tecture decouples strategic planning from implementation, enabling
+gets for LLM-driven code evolution because they exhibit three key    targeted exploration of algorithmic improvements while maintaining
+properties that balance evolvability with safety:                    code safety through bounded modification regions and multi-stage
+   First, each operator implements self-contained optimization       validation.
+heuristics with tunable parameters and trade-off decisions (e.g.,
+cost function weights in MatchPhase, timing slack thresholds in
+                                                                     3.1 Optimization Objectives
+MatchPhaseExact, phase unification criteria in MatchDropPhase),
+precisely the type of algorithmic choices where LLMs explore strate- As formalized in Section 2.1, technology mapping seeks to minimize
+gies beyond human-designed rules.                                    circuit area 𝐴(𝑀) and delay 𝐷 (𝑀) for a given mapping 𝑀. These
+   Second, the mockturtle library [24] provides well-defined mod-    objectives often conflict: aggressive area minimization may increase
+ular interfaces, allowing us to isolate each operator in a sepa-     delay, while delay-optimal mappings frequently require extra gates.
+rate C++ source file. We designate safe modification regions using       To guide the evolution process and quantify the area-delay trade-
+EVOLVE-BLOCK markers, ensuring LLM edits are confined to opti-       off, we define four metrics for evaluating evolved mapping 𝑀 ′ rela-
+mization logic (e.g., cost function computation) while preserving    tive to the original 𝑀:
+API integrity (e.g., class member access).                                                                 ) −𝐴(𝑀 ) ′
+   Third, operator modifications directly impact measurable per-                       • 𝑆𝑎𝑟𝑒𝑎 (𝑀 ′ ) = 𝐴(𝑀𝐴(𝑀 )    : Normalized area reduction.
+                                                                                                                        ′
+formance metrics (area 𝐴(𝑀) and delay 𝐷 (𝑀)), enabling quanti-                         • 𝑆𝑑𝑒𝑙𝑎𝑦 (𝑀 ′ ) = 𝐷 (𝑀𝐷) −𝐷 (𝑀 )
+                                                                                                                (𝑀 )    : Normalized delay reduction.
+tative feedback for iterative evolution. Combined with compilation                                   ′
+                                                                                       • 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 (𝑀 ) = 𝛼 · 𝑆𝑎𝑟𝑒𝑎 (𝑀 ′ ) + (1 − 𝛼) · 𝑆𝑑𝑒𝑙𝑎𝑦 (𝑀 ′ ): Weighted
+and equivalence checks, this establishes a robust validation process.                    combination where 𝛼 ∈ [0, 1] controls area-delay priority.
+   By abstracting the mapping algorithm into these three evolvable                     • 𝑒 (𝑀 ′ ) ∈ [0, 1]: Logical equivalence failure rate (must be zero for
+operators with bounded modification regions, we create a struc-                          valid implementations).
+tured search space that balances exploration freedom with safety
+guarantees, a key enabler for systematic LLM-driven algorithm im-                     To navigate the area-delay trade-off, we define three optimization
+provement.                                                                         strategies S:
+DAC ’26, July 26–29, 2026, Long Beach, CA, USA                                                                                                             Rongliang Fu et al.
+
+
+ • Area-opt prioritizes area reduction while maintaining timing                                   • Operator usage U𝑖 = {(𝑜, 𝑛𝑜 )}𝑜 ∈ O , where 𝑛𝑜 = |{ 𝑗 ∈ H𝑖 : 𝑜 ( 𝑗 ) =
+   feasibility.                                                                                     𝑜}|, tracks selection frequency to identify under-explored opera-
+ • Delay-opt prioritizes delay reduction, tolerating modest area                                    tors.
+   increases.
+ • Balanced seeks simultaneous improvements via 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 .                                          The Planner constructs a decision-making prompt (H𝑖(𝑖 −1) , C𝑖 ,
+                                                                                                 A𝑖 ) and sends it to an LLM, where H𝑖(𝑖 −1) contains performance data
+Strategy selection adapts to performance signals from recent itera-
+                                                                                                 from iteration 𝑖 − 1. The Planner specifies the required output format:
+tions: when area improves but delay consistently degrades, delay-
+                                                                                                 evolution plan 𝜋𝑖 = (𝑜𝑖 , 𝑠𝑖 , 𝑚𝑖 ), where 𝑜𝑖 ∈ O is the selected operator,
+opt restores timing quality; when area shows severe degradation,
+                                                                                                 𝑠𝑖 ∈ S is the optimization strategy, and 𝑚𝑖 describes the modifica-
+area-opt focuses on area optimization; when both objectives show
+                                                                                                 tion (target code region, implementation approach, expected impact
+no clear trend, balanced explores the Pareto frontier.
+                                                                                                 Δ𝑒𝑥𝑝 ∈ R2 , and constraints). The LLM generates 𝜋𝑖 by reasoning
+                                                                                                 over the previous iteration’s results, code structure, and adaptive
+3.2      Hierarchical Agent Architecture                                                         signals. The Planner validates the output format and forwards 𝜋𝑖 to
+The framework comprises three components: a Planner selecting                                    the Evolver for implementation.
+optimization targets based on evolution history, an Evolver gen-
+erating plan-conditioned mutations, and an Evaluator validating                                  3.2.2 Evolver. The Evolver translates the Planner’s evolution plan
+implementations. This decouples strategic planning from code gen-                                𝜋𝑖 = (𝑜𝑖 , 𝑠𝑖 , 𝑚𝑖 ) into concrete code modifications through plan-
+eration and quality assessment.                                                                  conditioned population evolution. Unlike general-purpose code gen-
+                                                                                                 eration that explores the full modification space X𝑎𝑙𝑙 , the Evolver
+3.2.1 Planner. The Planner prepares structured inputs for an LLM-                                constrains search to a strategically reduced subspace X𝑜𝑖 ,𝑠𝑖 ⊂ X𝑎𝑙𝑙
+based decision maker and specifies the required output format for                                aligned with 𝜋𝑖 .
+downstream Evolver. It decouples what to optimize (strategic plan-
+                                                                                                 Plan-Guided Search Space Reduction. We implement the Evolver
+ning) from how to implement (code generation), enabling systematic
+                                                                                                 using OpenEvolve [22], a population-based LLM code evolution
+exploration while avoiding local optima.
+                                                                                                 framework that maintains multiple candidate solutions and employs
+   At iteration 𝑖, the Planner processes evolution history H𝑖 =
+    (𝑗)    (𝑗)      (𝑗)                                                                          island-based parallel evolution with iterative mutation and selection.
+{(𝑆𝑎𝑟𝑒𝑎 , 𝑆𝑑𝑒𝑙𝑎𝑦 , 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙                                   −1
+                            , 𝑒 ( 𝑗 ) , 𝑜 ( 𝑗 ) , 𝑠 ( 𝑗 ) )}𝑖𝑗=max(1,𝑖 −𝑤 )
+                                                                            of the most recent
+                                                                                                 Crucially, we extend OpenEvolve from general-purpose code gener-
+𝑤 iterations, where 𝑜 ( 𝑗 ) ∈ O is the modified operator at iteration                            ation to plan-conditioned evolution by injecting 𝜋𝑖 into its system
+𝑗 and 𝑠 ( 𝑗 ) ∈ S is the employed strategy. It extracts current code                             prompt as structured constraints:
+context C𝑖 = {𝑐𝑜 }𝑜 ∈ O (where 𝑐𝑜 is operator 𝑜’s implementation) and
+computes adaptive signals A𝑖 = {ℎ𝑜𝑏 𝑗 , 𝑝𝑑𝑖𝑣 , 𝑓𝑠𝑡𝑎𝑔 , U𝑖 } from H𝑖 to                            • Target Region: 𝑚𝑖 specifies the code region in current implemen-
+guide decision-making:                                                                              tation 𝑐𝑜𝑖 ∈ C𝑖 of the selected operator 𝑜𝑖 to confine mutations.
+                                                                                                  • Implementation Guidance: 𝑚𝑖 provides algorithmic hints aligned
+ • Objective hint ℎ𝑜𝑏 𝑗 ∈ {delay, area, balanced} guides strategy pri-
+                                                                                                    with 𝑠𝑖 (e.g., for delay-opt, “prioritize cuts with minimal depth
+   oritization, computed as:
+                                                                                                    increase”).
+                                                                                                  • Expected Impact: Δ𝑒𝑥𝑝 = (Δ𝑎𝑟𝑒𝑎 , Δ𝑑𝑒𝑙𝑎𝑦 ) filters candidate solu-
+                  
+                  
+                   area               if (𝑛𝑎𝑟𝑒𝑎 > 0 ∧ Δ̄𝑑𝑒𝑙𝑎𝑦 ≥ 0)                                 tions during evaluation.
+                  
+                  
+           ℎ𝑜𝑏 𝑗 = delay               else if (𝑛𝑑𝑒𝑙𝑎𝑦 > 0 ∧ Δ̄𝑎𝑟𝑒𝑎 ≥ 0) ,               (4)      • Semantic Constraints: 𝑚𝑖 encodes operator invariants (e.g.,
+                  
+                  
+                   balanced
+                                      otherwise                                                    “ensure matching respects library gate fanin limits”) to prevent
+                              (𝑗)     ( 𝑗 −1)                                                       invalid mutations.
+         𝑛𝑎𝑟𝑒𝑎 = |{ 𝑗 ∈ H𝑖 : 𝑆𝑎𝑟𝑒𝑎 > 𝑆𝑎𝑟𝑒𝑎    }|, 𝑛𝑑𝑒𝑙𝑎𝑦 (similarly),                    (5)
+                   1 ∑︁ ( 𝑗 )         ( 𝑗 −1)                                                    This transforms OpenEvolve from undirected search into a strategic
+         Δ̄𝑎𝑟𝑒𝑎 =           (𝑆𝑎𝑟𝑒𝑎 − 𝑆𝑎𝑟𝑒𝑎    ), Δ̄𝑑𝑒𝑙𝑎𝑦 (similarly).                    (6)     exploration engine: the population evolves within X𝑜𝑖 ,𝑠𝑖 defined by
+                  |H𝑖 |
+                            𝑗 ∈ H𝑖
+                                                                                                 both where (operator 𝑜𝑖 , code region) and how (strategy 𝑠𝑖 , implemen-
+                                                                                                 tation hints), improving convergence while maintaining diversity
+   If one metric improves while the other does not worsen, the hint
+                                                                                                 through island-based parallelism.
+   guides continued optimization of the improving metric (e.g., if
+                                                                                                 Multi-Layered Safety Enforcement. The Evolver enforces safety
+   area reduces but delay remains( stable, ℎ𝑜𝑏 𝑗 = area).
+                                    HIGH if 𝑛𝑐𝑠 ≥ ⌈𝑤/2⌉                                          through hierarchical constraints:
+ • Diversity pressure 𝑝𝑑𝑖𝑣 =                              detects op-
+                                    LOW otherwise                                                (1) Syntactic Boundaries: Edits confined to EVOLVE-BLOCK regions
+   erator over-exploitation, where 𝑛𝑐𝑠 counts consecutive selec-                                     containing only optimization heuristics, excluding function sig-
+   tions of the same operator. If 𝑝𝑑𝑖𝑣 = HIGH, least-used operator                                   natures, API interfaces, and data structures.
+   𝑜𝑖 ∈ {𝑜 ∈ O : 𝑛𝑜 = min𝑜 ′ ∈ O 𝑛𝑜 ′ } is selected to escape local                              (2) Semantic Constraints: 𝑚𝑖 specifies algorithmic invariants (e.g.,
+   optima by exploring complementary operators rather than over-                                     “𝑘-LUT input limit”) validated before compilation, filtering invalid
+   exploiting a single search space.                                                                 mutations early.
+                                                          (𝑗)
+ • Delay stagnation 𝑓𝑠𝑡𝑎𝑔 = I[𝑛𝑎𝑟𝑒𝑎 > 0 ∧ ∀𝑗 ∈ H𝑖 , 𝑆𝑑𝑒𝑙𝑎𝑦      < 0]                             (3) Incremental Validation: OpenEvolve’s island evolution creates
+   flags dangerous trade-off patterns when area gains consistently                                   a feedback loop (compilation → equivalence → QoR) through
+   sacrifice timing. If 𝑓𝑠𝑡𝑎𝑔 = 1, 𝑠𝑖 = delay-opt.                                                   the Evaluator, enabling convergence to valid solutions.
+MappingEvolve: LLM-Driven Code Evolution for Technology Mapping                                                                        DAC ’26, July 26–29, 2026, Long Beach, CA, USA
+
+
+This combination of plan-guided search reduction and multi-layered                             Table 1. Comparison of 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 and 𝑒 scores across different models
+constraints enables complex modifications while maintaining cor-                               and methods on ISCAS85 benchmarks [23].
+rectness. It is critical for technology mapping, as subtle logic errors                                            Model                          Base Model          𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙         𝑒
+produce functionally incorrect circuits undetected by compilation.
+                                                                                                                       MatchPhase                                        0.00        0.00
+3.2.3 Evaluator. The Evaluator receives evolved operator code from                                OpenEvolve         MatchPhaseExact             DeepSeek-V3             0.00        0.00
+the Evolver, merges it with the unchanged operators from C𝑖 to form                                                  MatchDropPhase                                      0.02        0.09
+a complete mapper implementation, then validates the integrated                                                                                  DeepSeek-V3             0.23        0.00
+code through a three-stage pipeline and generates a reward signal                                            MappingEvolve                       Qwen3-Max               0.18        0.00
+𝑅 that quantifies modification quality. Each candidate undergoes                                                                                    GPT-5                0.30        0.00
+hierarchical validation with corresponding penalties:
+                                                                                                  if it achieves sufficient reward (𝑅𝑖 ≥ 𝜏) or demonstrates signif-
+              𝑟𝑐𝑜𝑚𝑝𝑖𝑙𝑒                       if compilation fails                                                                         (𝑖 )
+                                                                                                                                                     ≥ 𝛾 · 𝑆𝑑𝑒𝑙𝑎𝑦  𝑏𝑒𝑠𝑡 , where 𝛾 ∈ (0, 1]).
+              
+              
+                                                                                                 icant delay improvement (𝑆𝑑𝑒𝑙𝑎𝑦
+              
+              𝑟
+                    −𝛽 ·𝑒
+                 𝑒𝑞𝑢𝑖𝑣                        if equivalence fails, 𝑒 > 0
+        𝑅=                                                                ,             (7)       The latter criterion preserves delay optimizations even when the
+              
+              
+               max(𝑟𝑒𝑞𝑢𝑖𝑣 , 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 )       if 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 < 0                                     overall reward is suboptimal, recognizing that delay reduction is
+               𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙
+              
+                                              if 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 ≥ 0
+               1+𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙                                                                        harder to achieve than area optimization. State updates include:
+where 𝑟𝑒𝑞𝑢𝑖𝑣 < 0, 𝛽 > 0, and 𝑟𝑐𝑜𝑚𝑝𝑖𝑙𝑒 = 𝑟𝑒𝑞𝑢𝑖𝑣 − 𝛽. This hierarchical                              • Code state C𝑖+1 : If accepted, 𝑐𝑜(𝑖+1)              𝑖
+                                                                                                                                                                  ← evolved code; other-
+design maps validation stages to differentiated feedback:                                             wise 𝑐𝑜(𝑖+1)
+                                                                                                              𝑖
+                                                                                                                     ←   𝑐 (𝑖 )
+                                                                                                                           𝑜𝑖   . The   code     for    unselected            operators remains
+ • Compilation (𝑟𝑐𝑜𝑚𝑝𝑖𝑙𝑒 ): Merges the evolved operator 𝑐𝑜𝑖 with                                       unchanged.
+   unchanged operators from C𝑖 into a complete mapper, then builds                                 • Evolution history H𝑖+1 : Appends the current evaluation
+                                                                                                                (𝑖 )      (𝑖 )        (𝑖 )
+   the integrated code and returns diagnostics. Failures receive                                       record (𝑆𝑎𝑟𝑒𝑎  , 𝑆𝑑𝑒𝑙𝑎𝑦    , 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙    , 𝑒 (𝑖 ) , 𝑜 (𝑖 ) , 𝑠 (𝑖 ) ), retaining only the
+   the harshest penalty, immediately rejecting syntactically invalid                                   most recent 𝑤 iterations.
+                                                                                                   • Best performance 𝑆𝑑𝑒𝑙𝑎𝑦         𝑏𝑒𝑠𝑡 : Updates to max(𝑆 𝑏𝑒𝑠𝑡 , 𝑆 (𝑖 ) ) for
+   code.                                                                                                                                                                        𝑑𝑒𝑙𝑎𝑦 𝑑𝑒𝑙𝑎𝑦
+ • Equivalence Checking (𝑟𝑒𝑞𝑢𝑖𝑣 − 𝛽 · 𝑒): Verifies output netlist                                      acceptance criteria.
+   functional equivalence using ABC [6]’s combinational equiva-
+   lence checker cec. This is critical for technology mapping, where                             The evolution continues for a maximum of 𝑁 iterations or no
+   performance optimizations are meaningless if circuit functional-                            improvement over consecutive iterations.
+   ity is corrupted. Violations incur strong penalties proportional
+   to the failure rate 𝑒, discouraging semantic errors while allowing                          4 Experimental Results
+   partial progress.
+                                                            𝑆                                  4.1 Experimental Setup
+ • Quality of Result (max(𝑟𝑒𝑞𝑢𝑖𝑣 , 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 ) or 1+𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 ): Evaluates
+                                ′
+                                                                𝑜𝑣𝑒𝑟𝑎𝑙𝑙                        4.1.1 Implementation Details. MappingEvolve is implemented in
+   the validated mapper 𝑀 on benchmark suite B and computes
+                                                                                               Python and evaluated on Ubuntu 22.04 with an Intel Xeon Gold 6226R
+   𝑆𝑎𝑟𝑒𝑎 , 𝑆𝑑𝑒𝑙𝑎𝑦 , 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 as defined in Section 3.1. For regressions
+                                                                                               CPU @ 2.90GHz and 256GB memory. We use OpenEvolve [22] as
+   (𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 < 0), capping at 𝑟𝑒𝑞𝑢𝑖𝑣 prevents catastrophic penalties
+                                                                                               the Evolver component, executing 𝑁 = 30 outer iterations with 3
+   for valid but suboptimal code, enabling exploration of temporary
+                                                                                               OpenEvolve iterations per step. During evolution, candidates are val-
+   regressions. For improvements (𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 ≥ 0), sigmoid transforma-
+                                                                                               idated on ISCAS85 benchmarks [23] (11 circuits), where failure rate
+   tion bounds rewards to (0, 1) to prevent unbounded optimization
+                                                                                               𝑒 measures the ratio of non-equivalent circuits. For QoR evaluation,
+   bias.
+                                (𝑖 )    (𝑖 )     (𝑖 )                                          circuits are optimized via ABC’s compress2 and then mapped to
+   The evaluation record (𝑆𝑎𝑟𝑒𝑎      , 𝑆𝑑𝑒𝑙𝑎𝑦 , 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 , 𝑒 (𝑖 ) , 𝑜 (𝑖 ) , 𝑠 (𝑖 ) ) enters   ASAP7 [27] using the evolved mapper. We evaluate using DeepSeek-
+the evolution history H𝑖+1 . The Planner analyzes this accumulated                             V3 [17], Qwen3-Max [18], and GPT-5 [16] as base LLMs.
+history through adaptive signals A𝑖+1 , establishing a strategic feed-
+back loop where Evaluator results at iteration 𝑖 shape the Planner’s                           Hyperparameters. 𝛼 = 0.5 (balanced area-delay weighting), 𝜏 =
+inputs for iteration 𝑖 + 1.                                                                    −0.1 (reward threshold allowing slight degradation), 𝛾 = 0.8 (delay
+                                                                                               preservation factor), 𝑤 = 5 (history window). Reward function:
+3.3      Iterative Evolution Loop                                                              𝑟𝑒𝑞𝑢𝑖𝑣 = −0.4, 𝛽 = 0.1, 𝑟𝑐𝑜𝑚𝑝𝑖𝑙𝑒 = −0.5, thus 𝑅 ∈ [−0.5, 0.5].
+The evolution process operates in iterations. Each iteration executes                          Computational Cost. The entire evolution process of MappingEvolve
+ the following steps:                                                                          takes ∼ 1 million tokens ($10) and ∼ 1.5 hours.
+(1) The Planner analyzes performance history and proposes an evo-
+    lution plan.                                                                               4.1.2 Benchmarks and Baselines. We use ISCAS85 benchmarks [23]
+(2) The Evolver implements the proposed modifications to the se-                               for ablation studies (TABLE 1) and EPFL benchmarks [25] for per-
+    lected operator.                                                                           formance comparison (TABLE 2).
+(3) The Evaluator merges modified code without any changes, then                               Experiment 1: Framework Effectiveness. We compare Map-
+    compiles, tests, and measures the evolved mapper.                                          pingEvolve against OpenEvolve using DeepSeek-V3 [17]. OpenEvolve
+(4) MappingEvolve applies a multi-criteria acceptance policy to de-                            evolves each operator (MatchPhase, MatchPhaseExact, MatchDrop-
+    cide whether to accept the modification, then updates the state                            Phase) separately for 90 iterations (matching 30 × 3 = 90 total
+    and feeds results back to the Planner. A modification is accepted                          OpenEvolve calls in MappingEvolve for a fair comparison).
+DAC ’26, July 26–29, 2026, Long Beach, CA, USA                                                                                                           Rongliang Fu et al.
+
+
+                      Table 2. Technology mapping results on EPFL benchmarks [25] with ASAP7 standard cell library [27].
+
+                                                                                                                             MappingEvolve (Ours)
+                       AIG                        ABC                            mockturtle
+      Circuit                                                                                                    DeepSeek-V3                        GPT-5
+                    size       depth       area        delay   t(s)       area        delay      t(s)       area       delay      t(s)      area       delay       t(s)
+      adder        1019          255     100.53     2574.36    0.05      92.42      2574.36      0.06      76.94     2583.24     0.02       90.6      2768.87      0.06
+        bar        3141           12     263.63       169.9    0.08     298.82       171.90      0.07     297.54       171.9     0.08     225.74       180.16      0.07
+        div       40633         4394    4021.98    43768.73    0.76    3510.25     43295.70      1.11    2930.53     45227.7     1.26    3012.57     43543.04      1.14
+        hyp      211329        24893   16756.18   198844.69     5.4   15895.39    197081.23      7.05   13996.27   238083.28     7.27   15296.85    198729.45      6.51
+       log2       29371          387    2019.22     3990.67       1    2047.72      3968.44      2.11    1641.84     4642.54     2.59    1853.82      4126.81       2.4
+       max         2832          206     256.14     2101.85     0.1     225.89      2101.13      0.12     183.96     2151.64     0.19     202.65      2220.27      0.18
+    multiplier    24556          262    1816.61     2730.91    0.54    1913.22      2662.96      0.82    1632.12     2956.62        1     1743.2      2673.95      0.88
+        sin        5041          179     433.57     1843.39    0.18     405.80      1832.67      0.37     324.23     2032.53     0.47     367.25      1910.26       0.4
+        sqrt      18368         6048    1525.72    49967.46    0.67    1484.04     47964.09      0.56    1206.42    57824.42      0.7    1586.17     55116.87      0.59
+     square       16623          248      1243       2509.4    0.43    1208.58      2509.22      0.39    1161.13     2856.92     0.45    1149.15      2519.15      0.41
+     arbiter      11839           87     783.69      898.75    0.16     766.44       898.75      1.65     766.44      898.75     1.78     591.09       969.11      1.67
+       cavlc        662           16      41.19      188.71    0.05      40.69       185.77      0.03      40.86      185.77     0.03      38.34       191.66      0.03
+        ctrl        108            8       7.51      104.36    0.06       6.92       103.17      0.00        6.9      103.17     0.01        6.9       106.33      0.01
+        dec         304            3      28.73       66.15    0.06      30.83        65.72      0.06      29.75       65.72     0.08      27.59        66.15      0.07
+         i2c       1161           15      70.43      165.99    0.07      70.23       164.10      0.06      70.23       164.1     0.07      69.13       174.18      0.07
+    int2float       214           15      13.39      181.17    0.05      12.80       181.00      0.01       12.8        181      0.02       12.3        193.8      0.01
+    mem_ctrl      45547          106    2798.58     1015.48    0.89    2716.20      1006.24      1.84    2623.27     1072.94     2.15    2631.09      1040.39      1.85
+     priority       683          214      52.63     2155.94    0.07      52.20      2155.87      0.03      57.73     2288.23     0.03      50.81      2264.96      0.04
+      router        182           18       12.7       187.2    0.06      12.85       187.20      0.02      12.93       187.2     0.03      12.25       192.22      0.03
+       voter       9654           59    1004.29      729.37    0.22     954.64       723.58      0.37     705.63      843.44     0.37     761.58       773.44      0.38
+    Ave. ratio                               1            1      1      0.9771        0.9926   1.5474     0.8996      1.0571   1.7550     0.8996       1.0369   1.6557
+    𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙               —                       0                               0.0174                          0.0255                           0.0341
+
+
+
+Experiment 2: Model Generalization. We evaluate MappingEvolve         area-delay weighting (𝛼 = 0.5), enabling MappingEvolve to effec-
+with different base LLMs, including DeepSeek-V3 [17], Qwen3-Max [18], tively navigate the area-delay Pareto frontier.
+and GPT-5 [16].
+                                                                      Analysis of Evolved Code Improvements. To understand how Map-
+Experiment 3: Performance Comparison. We assess the evolved           pingEvolve discovers effective optimizations, we analyze the GPT-5
+mappers against ABC (&nf) [6] and mockturtle (map) [24] on EPFL       evolved mapper at iteration 29 (𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 = 0.298), which demonstrates
+benchmarks [25]. All netlists pass ABC’s cec equivalence checking,    coordinated improvements across three operators:
+ensuring functional correctness.                                      • MatchPhase (Delay round): Introduces area tolerance 𝑡 =                                      𝑡𝑜𝑙
+                                                                          0.25 · area(inv), accepting delay-improving cuts only if: (1) area
+4.2 Results and Analysis                                                  increase ≤ 𝑡𝑡𝑜𝑙 , OR (2) delay gain ≥ 0.5 · delay(inv).
+Effectiveness of Hierarchical Architecture. TABLE 1 compares OpenEvolve • MatchPhase (Area round): Adds area slack 𝑡𝑠𝑙𝑎𝑐𝑘 = 0.5·area(inv)
+and MappingEvolve on ISCAS85 using DeepSeek-V3. OpenEvolve                for delay-improving cuts, enabling opportunistic timing recovery.
+achieves minimal improvements: MatchPhase and MatchPhaseExact           • MatchPhaseExact: Applies area gain threshold 𝑡𝑔𝑎𝑖𝑛 = 0.5 ·
+yield 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 = 0.00, while MatchDropPhase reaches only 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 =       area(inv), accepting area-improving cuts that worsen delay only
+0.02 but introduces equivalence failures (𝑒 = 0.09). In contrast, Map-    if area gain ≥ 𝑡𝑔𝑎𝑖𝑛 .
+pingEvolve achieves 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 = 0.23 with 𝑒 = 0.00, an 11.5× improve-
+                                                                        • MatchDropPhase (Delay round): Enforces zero area tolerance
+ment while maintaining perfect correctness. This validates that our
+                                                                          for phase consolidation, strictly preserving area during delay opti-
+architecture effectively coordinates cross-operator evolution through
+                                                                          mization.
+strategic planning and adaptive selection.
+
+Model Generalization Across Different LLMs. TABLE 1 evaluates Map-
+                                                                                          5     Conclusion
+pingEvolve with three LLMs on ISCAS85. GPT-5 achieves 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 =                          We presented MappingEvolve, a framework that leverages LLMs to
+0.30, followed by DeepSeek-V3 (0.23) and Qwen3-Max (0.18), all with                       evolve technology mapping algorithms through hierarchical plan-
+𝑒 = 0.00. Even Qwen3-Max outperforms the OpenEvolve baseline                              ning, controlled mutation, and rigorous validation. By abstracting
+(0.02) by 9×, confirming framework generalization across model                            the mapping process into three evolvable operators, we enable sys-
+families.                                                                                 tematic algorithmic exploration while maintaining functional cor-
+                                                                                          rectness. Experimental results demonstrate the framework’s effec-
+Comparison with State-of-the-Art Tools on EPFL Benchmarks. TA-                            tiveness: MappingEvolve achieves 11.5× improvement over direct
+BLE 2 compares evolved mappers against ABC (&nf) [6] and mock-                            operator evolution on ISCAS85 benchmarks with perfect logical
+turtle (map) [24] on EPFL benchmarks [25]. MappingEvolve achieves                         equivalence. On EPFL benchmarks, the evolved mapper achieves
+10.04% area reduction versus ABC and 7.93% area reduction                                 10.04% area reduction versus ABC, and 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 improvements of
+versus mockturtle, with a trade-off of 4.46%-6.50% delay increase.                        46.6%–96.0% over mockturtle, effectively navigating the area-delay
+The 𝑆𝑜𝑣𝑒𝑟𝑎𝑙𝑙 metric shows 46.6%-96.0% improvement over mockturtle,                        trade-off. We release all code, prompts, and evolution artifacts to fa-
+demonstrating that despite the delay trade-off, the evolved mappers                       cilitate future research. Promising directions include delay-oriented
+discover beneficial area-delay trade-offs. This reflects our balanced                     optimization and extending to other EDA tools.
+MappingEvolve: LLM-Driven Code Evolution for Technology Mapping                                                                      DAC ’26, July 26–29, 2026, Long Beach, CA, USA
+
+
+Acknowledgments                                                                               [22] A. Sharma, “OpenEvolve: an open-source evolutionary coding agent,” 2025.
+                                                                                                   [Online]. Available: https://github.com/algorithmicsuperintelligence/openevolve
+The research work described in this paper was conducted in the JC  [23] M. C. Hansen, H. Yalcin, and J. P. Hayes, “Unveiling the ISCAS-85 benchmarks: A
+STEM Lab of Intelligent Design Automation funded by The Hong            case study in reverse engineering,” IEEE Design & Test, vol. 16, no. 3, pp. 72–80,
+                                                                        1999.
+Kong Jockey Club Charities Trust and was supported in part by the  [24] EPFL Integrated Systems Laboratory, “mockturtle: A C++ logic network library,”
+Research Grants Council of Hong Kong SAR (Grant No. CUHK14207523).      https://github.com/lsils/mockturtle, Accessed on November 2025.
+                                                                                              [25] L. Amarù, P.-E. Gaillardon, and G. De Micheli, “The EPFL combinational benchmark
+                                                                                                   suite,” in IEEE/ACM International Workshop on Logic Synthesis, 2015.
+References                                                                                    [26] L. Hellerman, “A catalog of three-variable or-invert and and-invert logical circuits,”
+ [1] S.-Y. Lee and G. D. Micheli, “Heuristic logic resynthesis algorithms at the core of           IEEE Transactions on Electronic Computers, vol. EC-12, no. 3, pp. 198–223, 1963.
+     peephole optimization,” IEEE Transactions on Computer-Aided Design of Integrated         [27] V. Vashishtha, M. Vangala, and L. T. Clark, “ASAP7 predictive design kit devel-
+     Circuits and Systems (TCAD), vol. 42, no. 11, pp. 3958–3971, 2023.                            opment and cell design technology co-optimization: Invited paper,” in IEEE/ACM
+ [2] A. T. Calvino and G. De Micheli, “Scalable logic rewriting using don’t cares,” in             International Conference on Computer-Aided Design (ICCAD), 2017, pp. 992–998.
+     IEEE/ACM Proceedings Design, Automation and Test in Eurpoe (DATE), 2024, pp.
+     1–6.
+ [3] R. Fu, R. Zhang, Z. Zheng, Z. Shi, Y. Pu, J. Huang, B. Yu, Q. Xu, and T.-Y. Ho, “CHOP:
+     Clustered hybrid optimization for logic synthesis with self-supervised prediction,”
+     IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems
+     (TCAD), 2026.
+ [4] R. Fu, L. Shen, Z. Wang, Z. Lei, Z. Wang, J. Huang, B. Yu, and T.-Y. Ho, “DCLOG:
+     Don’t cares-based logic optimization using pre-training graph neural networks,”
+     in IEEE/ACM Asia and South Pacific Design Automation Conference (ASPDAC), 2026,
+     pp. 793–799.
+ [5] R. Fu, W. Xuan, S. Yin, G. Hu, C. Chen, H. Zhang, B. Yu, and T.-Y. Ho, “eLogic: A e-
+     graph-based logic rewriting framework for majority-inverter graphs,” in IEEE/ACM
+     Proceedings Design, Automation and Test in Eurpoe (DATE), 2026, pp. 1–6.
+ [6] Berkeley Logic Synthesis and Verification Group, “ABC: A system for sequen-
+     tial logic synthesis and verification,” http://www.eecs.berkeley.edu/ alanmi/abc/,
+     Version 1.01.
+ [7] A. T. Calvino, H. Riener, S. Rai, A. Kumar, and G. De Micheli, “A versatile mapping
+     approach for technology mapping and graph optimization,” in IEEE/ACM Asia and
+     South Pacific Design Automation Conference (ASPDAC), 2022, pp. 410–416.
+ [8] A. Mishchenko, Sungmin Cho, Satrajit Chatterjee, and R. Brayton, “Combinational
+     and sequential mapping with priority cuts,” in IEEE/ACM International Conference
+     on Computer-Aided Design (ICCAD). IEEE, 2007, pp. 354–361.
+ [9] W. L. Neto, M. T. Moreira, Y. Li, L. Amaru, C. Yu, and P. E. Gaillardon, “SLAP: A
+     supervised learning approach for priority cuts technology mapping,” in ACM/IEEE
+     Design Automation Conference (DAC), vol. 2021-December, 2021, pp. 859–864.
+[10] C. R. Chigarapally, H. N. Bhakkad, A. B. Chowdhury, C. Karfa, and S. Bhattacharjee,
+     “LEAP: Learning guided quality cut selection for faster technology mapping,” in
+     IEEE/ACM International Conference on Computer-Aided Design (ICCAD), 2025.
+[11] H. Pan, C. Lan, Y. Liu, Z. Wang, L. Shang, X. Zeng, F. Yang, and K. Zhu, “Physi-
+     cally aware synthesis revisited: Guiding technology mapping with primitive logic
+     gate placement,” in IEEE/ACM International Conference on Computer-Aided Design
+     (ICCAD), 2025.
+[12] A. T. Calvino and G. De Micheli, “Technology mapping using multi-output library
+     cells,” in IEEE/ACM International Conference on Computer-Aided Design (ICCAD),
+     2023, pp. 1–9.
+[13] L. Shang, S. Lu, S. Jung, Q. Liang, and C. Pan, “Novel fpga technology mapping for
+     dual-output luts: Methodology and application,” IEEE Transactions on Computer-
+     Aided Design of Integrated Circuits and Systems (TCAD), pp. 1–1, 2025.
+[14] M. Liu, D. Robinson, Y. Li, J. Maximilian Kuehn, R. Liang, H. Ren, and C. Yu,
+     “MapTune: Versatile ASIC technology mapping via reinforcement learning guided
+     library tuning,” ACM Transactions on Design Automation of Electronic Systems
+     (TODAES), 2025.
+[15] R. Fu, C. Wang, B. Yu, and T.-Y. Ho, “TeMACLE: A technology mapping-aware
+     area-efficient standard cell library extension framework,” IEEE Transactions on
+     Computer-Aided Design of Integrated Circuits and Systems (TCAD), vol. 44, no. 8,
+     pp. 3034–3045, 2025.
+[16] OpenAI, “Introducing gpt-5,” 2025. [Online]. Available: https://openai.com/index/
+     introducing-gpt-5
+[17] DeepSeek-AI, “DeepSeek-V3 technical report,” 2024. [Online]. Available: https:
+     //arxiv.org/abs/2412.19437
+[18] Q. Team, “Qwen3 technical report,” 2025. [Online]. Available: https://arxiv.org/
+     abs/2505.09388
+[19] H. Zheng, H. Wu, and Z. He, “ChatLS: Multimodal retrieval-augmented generation
+     and chain-of-thought for logic synthesis script customization,” in ACM/IEEE Design
+     Automation Conference (DAC), 2025, pp. 1–7.
+[20] S. Huang, J. Li, Z. Yu, J. Ye, J. Xu, N. Xu, and G. Dai, “LLSM: LLM-enhanced
+     logic synthesis model with EDA-guided CoT prompting, hybrid embedding and
+     AIG-tailored acceleration,” in IEEE/ACM Asia and South Pacific Design Automation
+     Conference (ASPDAC), 2025, p. 974–980.
+[21] A. Novikov, N. Vũ, M. Eisenberger, E. Dupont, P.-S. Huang, A. Z. Wagner,
+     S. Shirobokov, B. Kozlovskii, F. J. R. Ruiz, A. Mehrabian, M. P. Kumar, A. See,
+     S. Chaudhuri, G. Holland, A. Davies, S. Nowozin, P. Kohli, and M. Balog,
+     “AlphaEvolve: A coding agent for scientific and algorithmic discovery,” 2025.
+     [Online]. Available: https://arxiv.org/abs/2506.13131
+

@@ -1,0 +1,735 @@
+                                                                                                                                                                                    s Avai                  ts Evalu
+                                                                                                                                                                                 act      l               ac
+
+
+
+
+                                                                                                                                                                                 f
+
+
+                                                                                                                                                                                             ab
+
+
+
+
+                                                                                                                                                                                                     Artif
+
+
+
+                                                                                                                                                                                                                      ate
+                                                                                                                                                                             Arti
+
+
+
+                                                                                                                                                                                                le
+
+
+
+
+                                                                                                                                                                                                                        1 d
+                                                                                                                                                                                                     Fu
+                                                                                                                                                                                                        nc
+
+
+
+
+                                                                                                                                                                                                                      1.
+                                                                                                                                                                                     V1 .1                   t io n a l V
+
+
+
+
+                                                    From Tool Invocation to Source-Mechanism Exploration:
+                                                       Protected White-Box DSE for Open-Source EDA
+                                                     Zhiyu Zheng                                  Yiming Du                              Ziyi Wang                         Zhiang Wang
+                                                 Fudan University                           Fudan University                     The Chinese University of                Fudan University
+                                                  Shanghai, China                           Shanghai, China                            Hong Kong                          Shanghai, China
+                                             zyzheng24@m.fudan.edu.cn                    ymdu26@m.fudan.edu.cn                      Hong Kong, China                 zhiangwang@fudan.edu.cn
+                                                                                                                                   zeayw1@gmail.com
+
+                                         Abstract
+                                         Open-source EDA tools allow design-space exploration (DSE) to move
+arXiv:2607.11294v4 [cs.AR] 18 Aug 2026
+
+
+
+
+                                         beyond public knobs and into bounded source-level mechanisms in-
+                                         side staged optimizers. We present ReviewDSE, a protected white-box
+                                         DSE framework that explores such mechanisms for a target design. Re-
+                                         viewDSE evaluates complete source candidates under a protected eval-
+                                         uator and records reusable search knowledge as reviewed mechanism-
+                                         level evidence. It first constructs method evidence and source-start
+                                         branches from calibration designs, then uses these fixed warm-start
+                                         products to initialize target-case exploration under Teacher review                        (a) Conventional Black-box DSE            (b) White-box DSE
+                                         and full-flow validation. We instantiate ReviewDSE on OpenROAD                          Figure 1: Search boundary for one target: black-box DSE tunes
+                                         detailed placement as a representative staged open-source EDA opti-                     public knobs; white-box DSE explores bounded internal mech-
+                                         mizer. Across nine target tasks, ReviewDSE reduces final post-DPL                       anisms under the protected evaluator.
+                                         half-perimeter wirelength (HPWL) by 1.78% on average under a 2×
+                                         runtime gate, compared with 0.38% for public-knob black-box DSE. A                         Open-source EDA changes where the DSE boundary can be drawn.
+                                         runtime-aware ReviewDSE selection retains a 1.68% reduction at 1.11×                    In an open codebase such as OpenROAD [21], an optimizer is not only
+                                         runtime, and full-flow review exposes stage-composability failures                      invocable but also inspectable and modifiable. This enables white-box
+                                         while source-mechanism exploration repairs hard cut-row legality                        DSE for open-source EDA: instead of searching only over public knobs
+                                         failures.                                                                               of a fixed executable, the search can enter selected parts of the opti-
+                                                                                                                                 mizer implementation and explore bounded source-level mechanisms.
+                                         CCS Concepts                                                                            In EDA flows, this mechanism space is naturally organized by stages
+                                         • Hardware → Physical design (EDA); Placement.                                          and stage interfaces. A placement flow, for example, may include
+                                                                                                                                 legalization policies, local improvement kernels, objective scoring, dis-
+                                         Keywords                                                                                placement control, rollback logic, and state passed from legalization
+                                                                                                                                 to detailed-placement optimization. White-box DSE therefore asks
+                                         open-source EDA, white-box DSE, detailed placement, OpenROAD
+                                                                                                                                 which internal mechanisms should be changed, where they should be
+                                         ACM Reference Format:                                                                   inserted, and how they should be configured for a target design.
+                                         Zhiyu Zheng, Yiming Du, Ziyi Wang, and Zhiang Wang. 2026. From Tool                        The expanded mechanism space is difficult to explore manually.
+                                         Invocation to Source-Mechanism Exploration: Protected White-Box DSE for                 Source-level choices are numerous, implementation-dependent, and
+                                         Open-Source EDA. In 2026 ACM/IEEE International Symposium on Machine                    strongly coupled across stages. A local improvement in one stage may
+                                         Learning for CAD (MLCAD ’26), September 07–09, 2026, Jeju Island, Republic              not survive the downstream flow; for example, a legalizer that reduces
+                                         of Korea. ACM, New York, NY, USA, 9 pages. https://doi.org/10.1145/3831599.             post-legalization HPWL can still produce a placement that is harder
+                                         3840341                                                                                 for detailed-placement optimization (DPO) to improve. Recent coding-
+                                         1    Introduction                                                                       evolution systems suggest a possible path forward: language-model
+                                                                                                                                 agents can modify programs using evaluator feedback [3, 14, 23], and
+                                         Design-space exploration (DSE) is a standard methodology for im-
+                                                                                                                                 related ideas have begun to appear in EDA source-level evolution [5,
+                                         proving electronic-design-automation (EDA) flows [4]. Conventional
+                                                                                                                                 8, 22, 24]. These systems show that agents can generate useful code
+                                         DSE treats each tool as a fixed executable and searches its public con-
+                                                                                                                                 changes for complex tools.
+                                         trol surface, such as command options, flow scripts, or other exposed
+                                                                                                                                    Source modification alone does not make a reliable DSE procedure.
+                                         knobs, to find configurations with better quality of results [13]. This
+                                                                                                                                 Existing loops often treat each generated diff as a complete variant
+                                         black-box formulation is practical and broadly applicable, especially
+                                                                                                                                 to be selected or rejected as a whole. This whole-variant view gives
+                                         for closed-source tools, but it leaves quality-critical implementation
+                                                                                                                                 limited reusable evidence about which mechanism caused a gain,
+                                         choices inside large EDA codebases outside the search space.
+                                                                                                                                 which stage activated it, whether it was live, whether it was runtime-
+                                                                                                                                 expensive, or why it failed to compose with downstream optimization.
+                                                                                                                                 Unconstrained source editing can also corrupt the evaluator path,
+                                         This work is licensed under a Creative Commons Attribution 4.0 International License.   change scripts or parsers, bypass legality checks, or produce stale
+                                         MLCAD ’26, Jeju Island, Republic of Korea
+                                                                                                                                 source/binary/metric mismatches. Reliable white-box DSE therefore
+                                         © 2026 Copyright held by the owner/author(s).
+                                         ACM ISBN 979-8-4007-2878-5/2026/09                                                      needs both a protected evaluator and a review unit finer than the
+                                         https://doi.org/10.1145/3831599.3840341                                                 complete diff.
+MLCAD ’26, September 07–09, 2026, Jeju Island, Republic of Korea                                               Zhiyu Zheng, Yiming Du, Ziyi Wang, and Zhiang Wang
+
+
+    We present ReviewDSE, an agentic white-box DSE framework                                     Table 1: Positioning of ReviewDSE.
+for open-source EDA. ReviewDSE evaluates complete source can-
+                                                                             Category           Search point           Review signal              Search memory
+didates under the protected evaluator, while recording reusable search
+                                                                             EDA parameter DSE knobs/scripts         QoR logs                     best settings
+knowledge as reviewed stage/interface mechanism evidence. This               LLM tool use      artifacts/scripts     tool logs                    revised artifact
+evidence captures source references, liveness signals, compatibility         Source evolution  source patch          build/QoR logs               winning patch
+                                                                             ReviewDSE         source mechanism edit protected full-flow evidence reusable mechanism evidence
+observations, and promotion or rejection decisions. ReviewDSE uses
+a Teacher–Student agent structure: the Teacher reviews full-flow be-         2.2        LLM Agents for EDA
+havior and mechanism evidence, while Student agents adapt source             Large language models have recently been explored in EDA as natural-
+starts, borrow peer mechanisms, or repair failed edits.                      language interfaces, code generators, and tool-assistance agents. One
+    ReviewDSE follows a two-level workflow. Level 1 builds method            major line of work studies RTL or Verilog generation from natural-
+evidence and source-start branches from calibration designs. Level 2         language specifications, with benchmarks such as RTLLM [12] and
+conducts target-design exploration through initialization based on           VerilogEval [10] evaluating syntax, functional correctness, and de-
+the frozen evidence from Level 1, followed by iterative search driven        sign quality, and domain-specific models such as VeriGen [19] and
+by target-specific metrics, logs, diffs, peer candidates, and Teacher        RTLCoder [11] improving HDL generation through EDA-specific train-
+review. We instantiate ReviewDSE on OpenROAD detailed placement,             ing. Beyond direct code generation, feedback-driven frameworks use
+where legalization, DPO, and their handoff expose strict legality and        compiler or simulation outputs to repair generated HDL, as in Au-
+stage-composability trade-offs.                                              toChip [20]. LLMs have also been used for hardware verification and
+This paper makes the following major contributions:                          testbench generation [16, 25]. Another line of work uses LLMs as EDA
+• We formulate protected white-box DSE for open-source EDA, mov-             tool assistants: ChatEDA [7] supports task decomposition, script gen-
+   ing beyond public tool controls to bounded source-level mechanisms        eration, and tool execution, ChipNeMo [9] studies domain-adapted
+   inside staged optimizers.                                                 assistants for chip-design tasks, and documentation-grounded sys-
+• We introduce ReviewDSE, a two-level source-mechanism explo-                tems answer questions over EDA manuals and OpenROAD documen-
+   ration framework that builds calibration-time method evidence and         tation [15, 17]. These works improve how designers generate artifacts,
+   source-start branches, then uses them to initialize target-specific ex-   query documentation, and invoke EDA tools, but they mostly operate
+   ploration with Teacher review, liveness checks, full-flow validation,     around a fixed executable.
+   and target-local evidence.                                                   Recent coding-evolution systems show that LLM agents can mod-
+• We instantiate ReviewDSE on OpenROAD detailed placement and                ify programs using evaluator feedback [3, 14, 23]. Similar ideas have
+   show that reviewed source-mechanism exploration improves the              begun to appear in EDA source-level evolution [5, 8, 22, 24]. In this
+   post-DPL HPWL/runtime frontier beyond public-knob BO-DSE, ex-             setting, the LLM action moves from scripts or artifacts around the
+   poses why stage-local winners require full-flow review, and recovers      tool to the implementation of the tool itself. Self-Evolved ABC [24]
+   legality on hard cut-row stress tests.                                    evolves a logic-synthesis codebase under correctness and synthesis-
+The rest of the paper is organized as follows. Section 2 reviews related     QoR feedback. AuDoPEDA [5] produces repository-grounded Open-
+work. Section 3 presents ReviewDSE. Section 4 reports the results.           ROAD diffs using code-graph documentation and QoR-driven execu-
+Sections 5 and 6 discuss limitations and conclude the paper.                 tion. GR-Evolve [8] specializes global-router source code to individual
+                                                                             designs, and EvoPlace [22] evolves global-placement optimization
+2 Background and Related Work                                                components.
+                                                                                These works establish that LLM agents can improve EDA tools
+2.1 DSE in EDA                                                               through source modification. ReviewDSE addresses a complementary
+Design space exploration (DSE) is widely used in EDA because QoR is          question: how to make source modification a reliable white-box DSE
+highly sensitive to algorithm choices, tool parameters, and flow-stage       procedure. Rather than treating each generated diff only as a whole-
+interactions [4]. Prior work has explored DSE at multiple abstraction        program winner or loser, ReviewDSE evaluates complete candidates
+levels. In high-level synthesis, AutoDSE [18] searches HLS pragmas           under a protected flow while recording reusable positive and nega-
+and transformations through bottleneck-guided exploration. In logic          tive evidence at the mechanism level. This allows useful calibration
+synthesis, BOiLS [6] formulates synthesis-flow selection as a sequen-        evidence, stage donors, and rejection decisions to guide later search
+tial optimization problem and searches logic-optimization recipes with       rounds. Table 1 summarizes the position of ReviewDSE relative to
+Bayesian optimization. In physical design, placement-tuning methods          prior directions. ReviewDSE still evaluates complete source candi-
+optimize placement parameters and objectives using learning-based            dates, but its reusable memory is mechanism-level evidence that later
+or multi-objective search [1, 2]. These works show that automated            agents can refine or combine during white-box optimization.
+search can improve QoR and reduce manual effort across EDA flows.
+   However, most existing EDA DSE methods remain black-box with              3 Methodology
+respect to the optimizer implementation. Their search spaces are de-
+fined by exposed pragmas, parameters, command sequences, scripts,            3.1 Formulation and Overview
+seeds, or flow-level configurations, while the tool source remains fixed.    Conventional black-box DSE treats the EDA optimizer as a fixed exe-
+Such methods can improve how tools are invoked, but cannot di-               cutable evaluated by an external flow-level evaluator. Let 𝑂 denote the
+rectly explore internal mechanisms such as hidden cost models, repair        implementation of a staged optimizer for a target design 𝑑, let 𝐸 denote
+policies, rollback decisions, or stage interfaces. Open-source infras-       the protected evaluator used to run the flow and collect canonical
+tructures such as OpenROAD [21] make these implementation-level              metrics, and let 𝑥 ∈ X denote the public configuration vector exposed
+decisions searchable under the same external flow metrics, motivat-          through command options, flow scripts, pass sequences, or other tool
+ing white-box DSE where bounded source-level mechanisms become               parameters. Black-box DSE searches over 𝑥 ∈ X. Each search point is
+design choices.                                                              evaluated as 𝐸 (𝑂, 𝑥, 𝑑), while the optimizer implementation 𝑂 and the
+From Tool Invocation to Source-Mechanism Exploration: Protected White-Box DSE for Open-Source EDA                              MLCAD ’26, September 07–09, 2026, Jeju Island, Republic of Korea
+
+
+                                                                         Level 1: Global Warm-Start Construction
+
+              1. Inputs                     2. Methodology exploration (parallel)                                                                            4a. Method warm-start evidence
+                                                                                                            3. Evaluate on calibration designs
+                Calibration              Explore diverse mechanism ideas and design patterns.                                                                      · Effective ideas / patterns
+                 designs                                                                                              External evaluator                           · Fragile/Expensive directions
+                                                                                                                      (fixed & protected)
+                 Domain                      2b. Source-start construction (parallel)
+                knowledge                                                                                        Evaluate safety, QoR, validity,
+                                                                                                                                                                   4b. Source-start branches
+                                       Tool         Literature       SOTA               Multi-branch                         and logs.
+                 Source               default        inspired        style               evolution
+        </>                                                                                                                                                  </>   Complete source candidate
+                 content
+                                                                             Validation loop on calibration designs
+
+
+                                                                           Level 2: Design-Specific Exploration
+              1. Inputs           2. Teacher Planning            3. Students' Exploration               4. Evaluate on                      5. Teacher Review           6. Update & Feedback
+                                                                                                        Target Design
+              Target design                                                                                                                                                   Parent promotion
+                                                                                •••
+                                                                  (in private workspaces)                                                                                   Mechanism evidence
+                                                                                                       External evaluator
+                Baseline             Assign source starts                                              (fixed & protected)               Compare results across
+                trajectory           and routes                    Explore one route and                                                 students                               Repair lead
+                                     First iter: use fixed         propose full candidate
+                                                                                                       Record the whole                  Review complete-flow
+                                     warm-start material            Source-level reuse:                stage trajectory:                                                      Negative evidence
+            Fixed Level1                                                                                                                 outcomes and evidence
+             warm-start              Later iter: use                inspect, adapt,                     metrics, logs...
+                                                                    switch, reimplement                                                  Assign review decisions
+        </>   material               target-local record                                                                                                                         Rejection
+
+
+                                                                                             Feedback informs next round of proposals.
+
+Figure 2: ReviewDSE workflow. Level 1 builds fixed warm-start evidence and source-start branches. Level 2 initializes target
+search from them, then explores candidates under the protected evaluator.
+
+measurement path 𝐸 remain fixed. This formulation is practical, but it                                            Table 2: Reviewed mechanism evidence record.
+limits the search to behaviors already exposed by the tool developer.                                    Field                              Recorded information
+   ReviewDSE keeps the same evaluator 𝐸 but expands the search                                           Scope                              Target stage or stage interface, used to relate evidence
+variable from a public configuration to a bounded source edit. Let S                                                                        to stage-wise behavior.
+denote the editable optimizer source surface and let D(S) denote the                                     Source reference                   Branch or patch reference, modified files, code anchors,
+                                                                                                                                            and mechanism intent.
+admissible edits on that surface. ReviewDSE searches over Δ ∈ D(S).                                      Controls/liveness                  Activation parameters, counters, traces, and artifacts
+Each search point produces a complete source candidate 𝑂 + Δ, which                                                                         showing execution.
+is built and evaluated on 𝑑 as 𝐸 (𝑂 + Δ, 𝑑).                                                             Review outcome                     Full-flow metrics, compatibility observations, and
+                                                                                                                                            Teacher decisions such as parent promotion, mechanism
+   EDA optimizers are naturally organized as staged flows, with inter-                                                                      evidence, repair lead, negative evidence, or rejection.
+mediate states passed across neighboring stages. ReviewDSE uses this
+native structure to define review scopes for source edits. Let C denote                                than reusable code objects. As summarized in Table 2, this evidence
+the set of stage and interface scopes, where each 𝑐 ∈ C corresponds                                    records source anchors, liveness signals, full-flow behavior, and re-
+to either an existing optimization stage or a handoff between two                                      view outcomes, allowing later search to inspect, adapt, or reimplement
+neighboring stages. Each scope has a pool of candidate mechanisms,                                     the reviewed mechanism logic in another candidate. A record may
+                              M𝑐 = {𝑝𝑐,1, . . . , 𝑝𝑐,𝑛𝑐 }.                                    (1)      indicate that the mechanism improves the target, is active but harm-
+                                                                                                       ful, never executes, depends on a compatible handoff, or should be
+A mechanism is not the stage itself. It is a source-level logic chain                                  avoided.
+that changes how the stage initializes state, generates candidates,
+scores moves, accepts or rolls back transactions, exports handoff state,                               3.2       Protected Evaluation Contract
+or performs local repair. A mechanism may also be controlled by
+activation parameters 𝜃𝑐,𝑗 , such as weights, thresholds, budgets, seeds,                              The protected evaluator is the trust boundary for source-level DSE. It
+fallback rules, or early-stop conditions.                                                              fixes the benchmark inputs, incoming design state, top-level command
+   A candidate edit Δ may touch one or more native scopes. For each                                    sequence, baseline harness, legality or validity checker, metric parser,
+scope 𝑐, let M𝑐 (Δ) ⊆ M𝑐 be the mechanisms implemented by the                                          reference comparison, runtime gate, evaluator scripts, and unrelated
+source candidate produced by Δ. The mechanism content of the can-                                      tool components. Evaluator-produced objective and stage metrics
+didate can be written as                                                                               remain outside the editable source surface. A candidate is rejected if it
+                          Ø                                                                            changes or bypasses this path, fails to build, violates validity checks,
+            mech(Δ) =         {(𝑐, 𝑝𝑐,𝑗 , 𝜃𝑐,𝑗 ) | 𝑝𝑐,𝑗 ∈ M𝑐 (Δ)}.    (2)                              misses canonical metrics, exceeds the runtime gate, or lacks liveness
+                              𝑐 ∈C                                                                     evidence for its claimed mechanism.
+This notation describes the mechanisms realized by an implemented                                         Figure 2 summarizes how ReviewDSE works. Level 1 constructs
+source candidate. It does not imply that ReviewDSE materializes stan-                                  frozen warm-start evidence before target optimization: method ev-
+dalone mechanism units and assembles them into a tool variant. The                                     idence records calibration-observed mechanism routes, and source-
+actual search point is a source workspace built and evaluated as 𝑂 + Δ.                                start construction produces complete source basins. Level 2 uses this
+After evaluation, ReviewDSE retains mechanism-level evidence rather                                    evidence as prior guidance, but every promoted candidate is rebuilt,
+MLCAD ’26, September 07–09, 2026, Jeju Island, Republic of Korea                                                            Zhiyu Zheng, Yiming Du, Ziyi Wang, and Zhiang Wang
+
+
+    Table 3: Teacher review decisions used in exploration.
+ Decision              Condition                                          Use
+ Parent promotion      Valid, complete metrics, live, within gate, im- Next parent
+                       proves target score
+ Mechanism evidence    Active mechanism helps a stage or interface but Evidence record
+                       loses final score
+ Repair lead           Explains validity/runtime failure or fragile hand- Targeted route
+                       off
+ Negative evidence     Inactive, too expensive, or non-composable           Search constraint
+ Candidate rejection   Build, validity, metric, stale-binary, or evaluator- Discard
+                       path failure
+
+
+executed, and reviewed on the current target case. Level 2 may accumu-
+late target-local evidence, but it does not update the global warm-start
+evidence.
+
+                                                                                                Figure 3: OpenROAD DPL instantiation. ReviewDSE edits
+3.3     Calibration Warm-Start Construction                                                     bounded legalization, DPO, and handoff mechanisms while
+Level 1 prepares the search by building two fixed warm-start prod-                              keeping the evaluation path protected.
+ucts before any target case is optimized: method warm-start and
+source-start branches. It does so by using calibration designs as di-                           branches, or new mechanisms when target-local evidence suggests a
+agnostic probes. These designs are not target designs. Instead, they                            better route.
+are constructed to expose different optimizer behaviors, including                                 In later iterations, the Teacher first reviews the previous round and
+stage-local damage, downstream recoverability, constraint pressure,                             then decides how to balance continuation and exploration. A clean
+runtime pressure, and stage-interface incompatibility. Level 1 con-                             candidate with the best final objective inside the runtime gate may
+verts these observations into mechanism hypotheses and executable                               seed an elite continuation branch, typically for one Student. The other
+starting points, so that Level 2 does not begin from a blank prompt.                            Students can explore diversity routes or reuse evidence from peer
+    Method warm-start construction focuses on the hypothesis side.                              candidates. This reuse remains source-level: a Student may inspect
+Agents inspect papers, source code, and domain knowledge, then im-                              another candidate’s diff, summarize its logic chain, adapt a patch,
+plement candidate mechanisms on existing branches and evaluate                                  switch to a branch, or reimplement the idea in its own workspace.
+them with the protected flow. Level 1 review summarizes the calibra-                            The reviewed mechanism guides the edit, but it is not copied as an
+tion behavior of each idea, including whether it is promising, fragile,                         independent plug-in.
+too expensive, inactive, or non-composable. The resulting records                                  Each Student edits a private optimizer source workspace and sub-
+provide route and diagnosis evidence for the Level 2 Teacher when a                             mits a complete 𝑂 + Δ candidate. The Student must build or relink a
+target case shows similar stage movement or design characteristics.                             private binary, run the fixed evaluator with that binary, and provide
+    Source-start construction focuses on the implementation side. Some                          complete artifacts. Because earlier-stage choices affect later stages,
+literature-inspired or SOTA-style ideas are too large to recreate in                            the Student is encouraged to reason about the whole stage trajectory
+each target iteration, so Level 1 materializes them as complete source                          rather than optimizing a stage metric in isolation.
+branches during calibration. In Level 2, these branches serve as editable                          After evaluation, the Teacher reviews the complete-flow outcome
+starts rather than certified target solutions. Students may extend one,                         together with the mechanism evidence behind it, and assigns a review
+switch to another, or reimplement a useful logic chain after inspecting                         decision following Table 3. A valid improved candidate may become
+peer diffs. This gives the target search concrete code for implementing                         the promoted parent for later target search. Other evaluated candidates
+or repairing a route suggested by the method evidence.                                          may still be retained as target-local evidence when their source diffs
+                                                                                                and logs explain an active mechanism, even if they are not promoted.
+                                                                                                Invalid candidates are recorded but cannot be promoted. These review
+3.4     Target-Case Source Exploration Loop                                                     outcomes update only the target-local record, while the Level 1 warm-
+Level 2 runs an independent white-box optimization loop for each                                start evidence remains unchanged.
+target design. For a new target, ReviewDSE first measures the target
+baseline trajectory and creates private Student workspaces. The loop                            3.5     Instantiation on OpenROAD Detailed
+maintains a local record that includes baseline metrics, evaluated                                      Placement
+candidates, stable source references, implementation diffs, Student
+                                                                                                We instantiate ReviewDSE on OpenROAD detailed placement.1 We
+knowledge cards, Teacher reviews, peer-learning packets, and any
+                                                                                                call the source-specialized commands DPL-evolve, DPO-evolve, and
+clean promoted parent. The Level 1 warm-start material is only used
+                                                                                                mirror-evolve. Figure 3 summarizes the editable and protected parts
+as prior knowledge, and subsequent decisions are driven by the local
+                                                                                                of this instantiation. The evaluated command sequence is fixed and
+record accumulated on the current design.
+                                                                                                keeps the canonical three stages: legalization, DPO, and mirroring.
+   In the first iteration, the Teacher compares the target baseline
+                                                                                                ReviewDSE edits only the bounded source implementations invoked
+trajectory and design characteristics with the fixed Level 1 method
+                                                                                                by these stages in private workspaces. The strict comparison anchor
+evidence and available source branches. Based on this comparison, the
+                                                                                                is the fixed OpenROAD detailed-placement flow.
+Teacher assigns each Student an initial source start and mechanism
+                                                                                                    Following the formulation above, we use legalization and DPO as
+route, with generated packets and route tables as supporting evidence.
+                                                                                                the two main stage scopes, and we use the legalization-DPO handoff as
+This assignment only defines the starting direction for the target
+search. The selected branch is not fixed across iterations. Later rounds                        1We use constructed Nangate45 detailed-placement calibration cases for Level 1: JPEG
+may extend it if it remains effective, or switch to repairs, alternative                        at UTIL=90, AES at UTIL=70, and a SWERV wrapper at UTIL=60.
+From Tool Invocation to Source-Mechanism Exploration: Protected White-Box DSE for Open-Source EDA                    MLCAD ’26, September 07–09, 2026, Jeju Island, Republic of Korea
+
+
+the main interface scope. In legalization, source-start branches include                                               Table 4: Nine-case DSE results.
+Diamond-style, Negotiation-based, and LEGALM-inspired methods.
+                                                                                    Design                          Default       BO       ReviewDSE-HPWL ReviewDSE-𝐺𝐻 𝑅 Tokens
+Within this scope, ReviewDSE may explore row-assignment policies,
+row-segment reservation, overflow-aware relocation, connectivity-                   AES ASAP7      42.2k/5.3s -0.98%/1.47 ×                -1.91%/1.91 × i10   -1.40%/1.38 × i10   1.62/0.08
+                                                                                    AES N45       176.8k/6.0s -1.20%/1.38 ×                -3.67%/1.86 × i10   -3.67%/1.86 × i10   1.81/0.09
+aware escape, bounded compaction, and post-legality repair.                         Ariane133 N45 5.78M/151s -0.06%/0.92 ×                 -5.50%/0.56 × i10   -5.50%/0.56 × i10   3.66/0.11
+   DPO exploration starts from the same native improve-placement                    Ibex ASAP7     63.3k/6.9s -0.10%/1.10 ×                -0.60%/1.17 × i10   -0.60%/1.17 × i10   1.68/0.10
+                                                                                    Ibex N45      200.1k/5.1s -0.09%/1.00 ×                -0.99%/2.00 × i10    -0.56%/1.08 × i6   1.52/0.12
+source inside the selected legalizer branch. The Teacher assigns the                JPEG ASAP7    134.6k/23s -0.63%/1.39 ×                  -0.94%/1.00 × i5    -0.94%/1.02 × i3   1.87/0.10
+mechanism implementation path, and the Student edits the relevant                   JPEG N45      467.2k/33s -0.23%/1.13 ×                  -1.63%/0.56 × i9   -1.63%/0.77 × i10   1.93/0.09
+DPO source path. The native improve-placement behavior contains                     SWERV ASAP7 913.9k/57s -0.04%/1.08 ×                    -0.33%/1.90 × i8    -0.30%/1.09 × i4   3.06/0.09
+                                                                                    SWERV N45     3.27M/34s -0.09%/1.08 ×                   -0.49%/1.07 × i9    -0.49%/1.07 × i9   2.14/0.14
+local kernels such as independent-set matching, global swaps, vertical
+                                                                                    Mean               –    -0.38%/1.17 ×    -1.78%/1.34 ×      -1.68%/1.11 ×   2.15/0.10
+swaps, row-local reordering, randomized local improvement, and legal-
+ity or orientation checks. ReviewDSE may revise or extend this source                Entries are post-DPL HPWL delta/runtime vs. default; 𝑖# is the selected iteration.
+                                                                                                       Tokens are logged/active budgets in billions.
+with local-move generation, partner selection, region kicks, dirty-
+window dynamic programming, exact affected-net HPWL scoring,                                                0
+transaction accept/rollback, fallback descent, per-net extrema caches,
+and thread-local scratch storage. Handoff mechanisms include dirty                                          1                                                     AES ASAP7
+
+
+
+
+                                                                                       Best-so-far Hf (%)
+rows, pressure regions, touched-net frontiers, boundary-active cells,                                                                                             AES N45
+                                                                                                            2                                                     Ariane133 N45
+local repair windows, and source-produced state that downstream                                                                                                   Ibex ASAP7
+DPO can consume.
+                                                                                                            3                                                     Ibex N45
+   For an evaluated candidate 𝑂 + Δ on design 𝑑, the evaluator records                                                                                            JPEG ASAP7
+the full stage trajectory                                                                                                                                         JPEG N45
+                                                                                                            4                                                     SWERV ASAP7
+             𝐸 (𝑂 + Δ, 𝑑) = {𝐻𝑔 , 𝐻𝑙𝑔 , 𝐻𝑖𝑝 , 𝐻 𝑓 , 𝐿, 𝐴, 𝑀,𝑇 , 𝜏 },       (3)                                                                                    SWERV N45
+                                                                                                            5
+where 𝐻𝑔 , 𝐻𝑙𝑔 , 𝐻𝑖𝑝 , and 𝐻 𝑓 are half-perimeter wirelength (HPWL)
+after incoming global placement, legalization, DPO, and final post-
+DPL evaluation. 𝐿 denotes strict legality, 𝐴 and 𝑀 are average and                                              0        2       4     6         8      10
+maximum displacement, 𝑇 is runtime, and 𝜏 contains traces, liveness                                                           Evolve iteration
+counters, and diagnostics. Full-trajectory review is necessary because                                          Figure 4: 10-iteration best-so-far Δ𝐻 𝑓 .
+a stage-local improvement is not always a valid target improvement.
+                                                                                   families, but no target placement, target metric, target route, or target-
+A lower legalization HPWL 𝐻𝑙𝑔 may still worsen the final post-DPL
+                                                                                   specific candidate is used in Level 1. All target designs are evaluated
+HPWL 𝐻 𝑓 after DPO and mirroring. Conversely, a non-winning can-
+                                                                                   independently by the protected flow.
+didate can also provide active mechanism evidence under specific
+                                                                                      To evaluate quality of results (QoR), we use the final post-DPL
+target patterns. This is why ReviewDSE retains mechanism evidence
+                                                                                   HPWL, denoted as 𝐻 𝑓 , as the primary metric. We report the relative
+for later target search.
+                                                                                   HPWL change Δ𝐻 𝑓 and runtime compared with the default Diamond
+                                                                                   detailed-placement flow. For ReviewDSE, each test case reports both
+4     Experiments                                                                  the best-𝐻 𝑓 candidate that satisfies the 2× runtime gate and a lower-
+Our experiments compare white-box source optimization with black-                  overhead candidate selected by a runtime-aware score 𝐺 𝐻𝑅 2 .
+box DSE, test runtime-aware selection, examine full-flow composabil-
+ity, and evaluate whether source-mechanism exploration can recover                 4.2                White-Box Source Optimization
+legality on hard cut-row layouts.
+                                                                                   Table 4 compares the OpenROAD default, public-knob BO-DSE, and
+                                                                                   ReviewDSE on the nine target tasks. After 400 trials per case, BO-DSE
+4.1    Experiment Setup and Metrics
+                                                                                   improves mean post-DPL HPWL by 0.38%, while ReviewDSE improves
+We use a fixed OpenROAD/OpenROAD-flow-scripts checkout in the                      all nine targets by 1.78% on average within the same 2× runtime
+protected evaluator and run all methods through the same measure-                  gate. Runtime-aware ReviewDSE-𝐺 𝐻𝑅 preserves a 1.68% mean HPWL
+ment path. The exact checkout, evaluator scripts, and selected-candidate           reduction while reducing average runtime from 1.34× to 1.11×. This
+artifacts are recorded with the experiment data. The main target search            comparison uses the same protected evaluator and target tasks, but
+uses one Teacher agent with the GPT-5.5 xhigh profile and four parallel            the two methods search different spaces: BO-DSE searches exposed
+Student agents with the GPT-5.4 xhigh profile for 10 review iterations.            controls of a fixed source tree, while ReviewDSE explores reviewed
+We report only candidates that compile, pass strict legality, produce              source mechanisms. Calibration evidence only initializes promising
+complete protected metrics, satisfy source/binary/metric consistency,              source directions. Every reported candidate is rebuilt, evaluated, and
+show liveness, and stay within a 2× runtime gate.                                  re-validated on its own target by the protected evaluator. The token
+   We compare against BO-DSE, a representative black-box baseline                  column reports mean per-target search cost.
+with fixed OpenROAD source. BO-DSE uses Bayesian optimization                         Figure 4 shows best-so-far Δ𝐻 𝑓 over 10 target iterations. Early
+(BO) with Optuna’s Tree-structured Parzen Estimator (TPE) sampler. It              drops indicate that Level 1 evidence can choose useful initial source
+searches exposed legalization, DPO, extra-invocation, and global-swap
+controls for 400 trials per case with four-way parallelism.                        2 The higher-is-better selection score is defined as 𝐺
+                                                                                                                                               𝐻 𝑅 = 100 · (𝐻 𝑓
+                                                                                                                                                                  𝐷𝑒 𝑓 𝑎𝑢𝑙𝑡
+                                                                                                                                                                            −
+   Our experimental dataset comprises nine target tasks derived from                       𝐷𝑒 𝑓 𝑎𝑢𝑙𝑡
+                                                                                   𝐻 𝑓 )/𝐻 𝑓         − 𝑃 (𝑇 /𝑇 𝐷𝑒 𝑓 𝑎𝑢𝑙𝑡 ) , where 𝑇 is the runtime, 𝑃 (𝑟 ) = 0 for 𝑟 ≤ 1.10,
+the AES, Ariane133, Ibex, JPEG, and SWERV designs, implemented in                                √    √         √     √
+                                                                                   and 𝑃 (𝑟 ) = ( 𝑟 − 1.10)/( 2 − 1.10) for 𝑟 > 1.10. A 2× runtime penalty requires
+ASAP7 and Nangate45 technology nodes. The calibration and target                   a one percentage point reduction in post-DPL HPWL to break even; small runtime noise
+sets are disjoint evaluation instances. They may share benchmark                   is ignored.
+MLCAD ’26, September 07–09, 2026, Jeju Island, Republic of Korea                                                                                               Zhiyu Zheng, Yiming Du, Ziyi Wang, and Zhiang Wang
+
+
+
+                            AES N45                                         Ariane133 N45                                             Table 6: Pattern-level hard cut-row repair evidence.
+                                                                                                                               Case             Cut-Row Pattern Fixed ref (D/N) ReviewDSE Evidence
+    Hf reduction (%)
+
+
+
+
+                       4                                                                                                                        center-8um         fail/pass     pass, 42.2s   beats legal N by 1.03%, 18.9 ×
+                                                                                                                               Ariane133 N45    center-9um          fail/fail    pass, 51.6s   strict repair; no fixed legal ref.
+                                                                                                                                                center-10um         fail/TO      pass, 59.6s   strict repair; N reaches timeout
+                       2                                                                                                                       center-5.25um       pass/fail     pass, 48.6s   beats legal fixed ref. by 3.69%, 3.4 ×
+                                                                                                                               SWERV dense N45 center-5.5um        fail/fail     pass, 50.8s   strict repair; no fixed legal ref.
+                                                                                                                                               center-6um          fail/fail     pass, 51.7s   strict repair; no fixed legal ref.
+                       0
+                                                                                                                                                center-5um         fail/TO      pass, 563.6s D fails; N reaches 7200s cap
+                                                                                                                               BPQUAD           center-6um         fail/TO      pass, 799.4s D fails; N reaches 7200s cap
+                                                                                                                                                center-8um         fail/TO      pass, 1085.0s D fails; N reaches 7200s cap
+                           0.75   1.00     1.25     1.50     1.75            0.4            0.6      0.8          1.0          D/N = Diamond/Negotiation; TO = 7200s timeout. center-𝑥 um is a vertical center-band
+                                    Runtime / default                               Runtime / default                            cut-row with 𝑥 𝜇 m halo. pass means OpenROAD and check_placement pass.
+
+                                   BO trials                Evolve candidates                     Default                      reference routes to fail legality, time out, or miss a strict legal solu-
+                                                                                                                               tion. Unlike the nine-case QoR comparison, the objective here is to
+Figure 5: Runtime–quality frontier on two Nangate45 cases;                                                                     recover legal placements under the same protected legality checker
+𝑦-axis is post-DPL HPWL reduction vs. default.                                                                                 and runtime cap.
+     Table 5: Stage-local legalization counterexamples.                                                                           Table 6 reports pattern-level replay evidence rather than only
+                                                                                                                               family-level counts. ReviewDSE produces strict legal placements on
+Case                              Selected legalizer Full-flow reference       𝐻𝑙𝑔 / ref.     Δ𝐻𝑙𝑔         𝐻 𝑓 / ref.   Δ𝐻 𝑓   all nine hard cut-row patterns. For Ariane133 and SWERV, at least
+AES dense N45
+JPEG dense N45
+                LEGALM
+                Negotiation
+                                                     Diamond
+                                                     Negotiation
+                                                                           137.8k / 138.8k -0.76% 130.8k / 128.9k +1.48%
+                                                                            1.26M / 1.48M -14.96% 711.7k / 588.3k +20.96%
+                                                                                                                               one pattern also has a legal fixed-source reference, and ReviewDSE
+SWERV dense N45 Diamond                              Negotiation            2.81M / 2.81M -0.12% 2.71M / 2.71M +0.02%          improves both HPWL and runtime. For BPQUAD, the fixed routes fail
+                                                                                                                               or time out, so the evidence is legality recovery within 563.6–1085.0s
+directions.3 Later drops, such as AES N45, reflect target-specific source                                                      rather than QoR dominance. These results complement Table 4 by
+exploration after Teacher review, runtime feedback, and peer-candidate                                                         showing that reviewed source-mechanism exploration can recover
+evidence. Flat segments correspond to iterations without a promoted                                                            strict legality on failure-oriented stress tests, not only improve QoR
+parent, often because review rejects non-composable or runtime-                                                                on already feasible targets.
+expensive candidates.
+   Figure 5 plots HPWL reduction against normalized runtime for two                                                            5      Discussion
+Nangate45 cases. On AES N45, ReviewDSE reaches a 3.67% HPWL
+                                                                                                                               ReviewDSE intentionally performs target-case source specialization,
+reduction and outperforms the best BO-DSE point at comparable
+                                                                                                                               not universal optimizer replacement. Calibration provides method
+runtime. On Ariane133 N45, ReviewDSE reaches a 5.50% HPWL re-
+                                                                                                                               evidence and source starts, but each reported candidate is rebuilt,
+duction while reducing runtime relative to the default. These tradeoffs
+                                                                                                                               executed, and promoted only on its own target under the protected
+were not observed in the 400-trial BO-DSE search over the specified
+                                                                                                                               evaluator. The fixed measurement path prevents metric gaming, and
+public-knob space.
+                                                                                                                               promotion also requires canonical metrics, source/binary/metric con-
+                                                                                                                               sistency, runtime gating, and liveness evidence.
+4.3                        Full-Flow Review and Downstream                                                                        The main limitations are evaluator scope and search cost. Current
+                           Composability                                                                                       results cover HPWL, runtime, displacement, and strict legality; timing,
+We next examine why ReviewDSE reviews complete trajectories in-                                                                congestion, power, and signoff require additional protected metrics.
+stead of accepting stage-local winners. The test applies a deliber-                                                            The target searches average 2.15B logged tokens and 0.10B active
+ately stage-local selection rule: it selects candidate legalizers by post-                                                     uncached-input-plus-output tokens over 10 iterations, so ReviewDSE
+legalization HPWL 𝐻𝑙𝑔 , then passes the selected placements through                                                            is most appropriate for high-value designs, hard failures, or cases
+the same downstream DPO and final mirroring flow. The dense N45                                                                where public knobs have limited remaining headroom.
+cases are constructed validation variants with increased legalization
+pressure and are not included in the nine-case QoR average. Table 5                                                            6      Conclusion
+reports cases where the selected legalizer improves 𝐻𝑙𝑔 but degrades                                                           ReviewDSE reframes open-source EDA tuning as protected white-
+the final post-DPL HPWL 𝐻 𝑓 .                                                                                                  box DSE: for a target design, bounded optimizer mechanisms can be
+   These counterexamples show that a lower-HPWL legalized place-                                                               specialized under a fixed evaluator rather than only invoked through
+ment can be less compatible with downstream DPO. JPEG dense N45 is                                                             public knobs. In OpenROAD detailed placement, this source-level
+the clearest case: the selected legalizer reduces 𝐻𝑙𝑔 by 14.96%, but the fi-                                                   search boundary improves the post-DPL HPWL/runtime frontier be-
+nal 𝐻 𝑓 worsens by 20.96% after DPO and mirroring. Thus, legalization                                                          yond public-knob BO-DSE, reveals why stage-local winners require
+quality alone is not a sufficient promotion criterion.                                                                         full-flow review, and recovers legality on hard cut-row stress tests. The
+                                                                                                                               main lesson is that source-mechanism exploration for EDA should not
+4.4                        Hard Cut-Row Repair                                                                                 be treated as unrestricted tool rewriting: complete candidates must
+Finally, we test legality recovery on hard cut-row stress tests. These                                                         be judged by canonical metrics and legality checks, while reusable
+layouts contain fragmented row topologies that cause fixed-source                                                              knowledge is accumulated as reviewed mechanism evidence.
+
+3 In tested Ariane133 N45 diagnostic runs, omitting Diamond-sourceTopK aver-
+                                                                                                                               Acknowledgments
+aged +1.52%/1.07× ; matching Level 1 guidance selected it in iteration 1 and aver-                                             The work is supported by the AI for Science Program, Shanghai Munic-
+aged −3.26%/0.71× , yielding a local parent. Diamond-sourceTopK scores top-K DPO                                               ipal Commission of Economy and Informatization (2025-GZL-RGZN-
+moves/swaps from a Diamond basin and passes hot nodes/segments to reorder. This is
+not a separate evaluation target.                                                                                              BTBX02038), and Fudan Kunpeng&Ascend Center of Cultivation.
+From Tool Invocation to Source-Mechanism Exploration: Protected White-Box DSE for Open-Source EDA            MLCAD ’26, September 07–09, 2026, Jeju Island, Republic of Korea
+
+
+References                                                                                 [20] Shailja Thakur, Jason Blocklove, Hammond Pearce, Benjamin Tan, Siddharth Garg,
+ [1] Anthony Agnesina, Kyungwook Chang, and Sung Kyu Lim. 2020. VLSI Placement                  and Ramesh Karri. 2023. AutoChip: Automating HDL Generation Using LLM
+     Parameter Optimization using Deep Reinforcement Learning. In Proceedings of                Feedback. arXiv:2311.04887 [cs.PL]
+     the 39th International Conference on Computer-Aided Design. Article 144, 9 pages.     [21] The OpenROAD Project. 2026. https://theopenroadproject.org/.
+     doi:10.1145/3400302.3415690                                                           [22] Xufeng Yao, Jiaxi Jiang, Yuxuan Zhao, Peiyu Liao, Yibo Lin, and Bei Yu. 2026.
+ [2] Anthony Agnesina, Puranjay Rajvanshi, Tian Yang, Geraldo Pradipta, Austin Jiao,            EvoPlace: Evolution of Optimization Algorithms for Global Placement via Large
+     Ben Keller, Brucek Khailany, and Haoxing Ren. 2023. AutoDMP: Automated                     Language Models. IEEE Transactions on Computer-Aided Design of Integrated
+     DREAMPlace-based Macro Placement. In Proceedings of the 2023 International                 Circuits and Systems (2026).
+     Symposium on Physical Design. 149–157. doi:10.1145/3569052.3578923                    [23] Cunxi Yu, Rongjian Liang, Chia-Tung Ho, and Haoxing Ren. 2025. Autonomous
+ [3] Henrique Assumpção, Diego Ferreira, Leandro Campos, and Fabricio Murai. 2025.              code evolution meets np-completeness. arXiv preprint arXiv:2509.07367 (2025).
+     Codeevolve: An open source evolutionary coding agent for algorithm discovery          [24] Cunxi Yu and Haoxing Ren. 2026. Autonomous Evolution of EDA Tools: Multi-
+     and optimization. arXiv preprint arXiv:2510.14150 (2025).                                  Agent Self-Evolved ABC. In ACM/IEEE Design Automation Conference (DAC). 1–6.
+ [4] Hao Geng, Tinghuan Chen, Qi Sun, and Bei Yu. 2022. Techniques for CAD tool            [25] Zixi Zhang, Greg Chadwick, Hugo McNally, Yiren Zhao, and Robert Mullins. 2023.
+     parameter auto-tuning in physical synthesis: a survey. In 2022 27th Asia and South         LLM4DV: Using Large Language Models for Hardware Test Stimuli Generation.
+     Pacific Design Automation Conference (ASP-DAC). IEEE, 635–640.                             arXiv:2310.04535 [cs.LG]
+ [5] Amur Ghose, Junyeong Jang, Andrew B Kahng, and Jakang Lee. 2026. Auto-
+     mated QoR improvement in OpenROAD with coding agents. arXiv preprint
+     arXiv:2601.06268 (2026).
+ [6] Antoine Grosnit, Cédric Malherbe, Rasul Tutunov, Xingchen Wan, Jun Wang, and
+     Haitham Bou Ammar. 2022. BOiLS: Bayesian Optimisation for Logic Synthesis. In
+     2022 Design, Automation & Test in Europe Conference & Exhibition (DATE). 1193–
+     1196. doi:10.23919/DATE54114.2022.9774632
+ [7] Zhuolun He, Haoyuan Wu, Xinyun Zhang, Xufeng Yao, Su Zheng, Haisheng Zheng,
+     and Bei Yu. 2023. ChatEDA: A Large Language Model Powered Autonomous Agent
+     for EDA. In 2023 ACM/IEEE 5th Workshop on Machine Learning for CAD (MLCAD).
+     1–6. doi:10.1109/MLCAD58807.2023.10299852
+ [8] Taizun Jafri. 2026. GR-Evolve: Design-Adaptive Global Routing via LLM-Driven
+     Algorithm Evolution. Master’s thesis. Arizona State University.
+ [9] Mingjie Liu, Teodor-Dumitru Ene, Robert Kirby, Chris Cheng, Nathaniel Pinck-
+     ney, Rongjian Liang, Jonah Alben, Himyanshu Anand, Sanmitra Banerjee, Ismet
+     Bayraktaroglu, Bonita Bhaskaran, Bryan Catanzaro, Arjun Chaudhuri, Sharon
+     Clay, Bill Dally, Laura Dang, Parikshit Deshpande, Siddhanth Dhodhi, Sameer
+     Halepete, Eric Hill, Jiashang Hu, Sumit Jain, Ankit Jindal, Brucek Khailany, George
+     Kokai, Kishor Kunal, Xiaowei Li, Charley Lind, Hao Liu, Stuart Oberman, Su-
+     jeet Omar, Ghasem Pasandi, Sreedhar Pratty, Jonathan Raiman, Ambar Sarkar,
+     Zhengjiang Shao, Hanfei Sun, Pratik P. Suthar, Varun Tej, Walker Turner, Kaizhe
+     Xu, and Haoxing Ren. 2023. ChipNeMo: Domain-Adapted LLMs for Chip Design.
+     arXiv:2311.00176 [cs.CL]
+[10] Mingjie Liu, Nathaniel Pinckney, Brucek Khailany, and Haoxing Ren. 2023. Ver-
+     ilogEval: Evaluating Large Language Models for Verilog Code Generation. In
+     2023 IEEE/ACM International Conference on Computer-Aided Design (ICCAD). 1–8.
+     doi:10.1109/ICCAD57390.2023.10323812
+[11] Shang Liu, Wenji Fang, Yao Lu, Jing Wang, Qijun Zhang, Hongce Zhang, and
+     Zhiyao Xie. 2023. RTLCoder: Fully Open-Source and Efficient LLM-Assisted RTL
+     Code Generation Technique. arXiv:2312.08617 [cs.PL]
+[12] Yao Lu, Shang Liu, Qijun Zhang, and Zhiyao Xie. 2024. RTLLM: An Open-Source
+     Benchmark for Design RTL Generation with Large Language Model. In 2024
+     29th Asia and South Pacific Design Automation Conference (ASP-DAC). 722–727.
+     doi:10.1109/ASP-DAC58780.2024.10473904
+[13] Yuzhe Ma, Ziyang Yu, and Bei Yu. 2019. CAD Tool Design Space Exploration via
+     Bayesian Optimization. In 2019 ACM/IEEE 1st Workshop on Machine Learning for
+     CAD (MLCAD). 1–6. doi:10.1109/MLCAD48534.2019.9142051
+[14] Alexander Novikov, Ngân Vũ, Marvin Eisenberger, Emilien Dupont, Po-Sen Huang,
+     Adam Zsolt Wagner, Sergey Shirobokov, Borislav Kozlovskii, Francisco JR Ruiz,
+     Abbas Mehrabian, et al. 2025. Alphaevolve: A coding agent for scientific and
+     algorithmic discovery. arXiv preprint arXiv:2506.13131 (2025).
+[15] Yuan Pu, Zhuolun He, Tairu Qiu, Haoyuan Wu, and Bei Yu. 2024. Customized
+     Retrieval Augmented Generation and Benchmarking for EDA Tool Documentation
+     QA. In 2024 IEEE/ACM International Conference on Computer-Aided Design (ICCAD).
+     doi:10.1145/3676536.3676730
+[16] Ruidi Qiu, Grace Li Zhang, Rolf Drechsler, Ulf Schlichtmann, and Bing Li. 2024.
+     AutoBench: Automatic Testbench Generation and Evaluation Using LLMs for HDL
+     Design. In 2024 ACM/IEEE International Symposium on Machine Learning for CAD
+     (MLCAD). 1–10. doi:10.1145/3670474.3685956
+[17] Luyao Shi, Michael Kazda, Bradley Sears, Nick Shropshire, and Ruchir Puri. 2024.
+     Ask-EDA: A Design Assistant Empowered by LLM, Hybrid RAG and Abbreviation
+     De-hallucination. In 2024 IEEE LLM Aided Design Workshop (LAD). doi:10.1109/
+     LAD62341.2024.10691824
+[18] Atefeh Sohrabizadeh, Cody Hao Yu, Min Gao, and Jason Cong. 2022. AutoDSE:
+     Enabling Software Programmers to Design Efficient FPGA Accelerators. ACM
+     Transactions on Design Automation of Electronic Systems 27, 4, Article 32 (2022),
+     27 pages. doi:10.1145/3494534
+[19] Shailja Thakur, Baleegh Ahmad, Hammond Pearce, Benjamin Tan, Brendan Dolan-
+     Gavitt, Ramesh Karri, and Siddharth Garg. 2024. VeriGen: A Large Language
+     Model for Verilog Code Generation. ACM Transactions on Design Automation of
+     Electronic Systems (2024). doi:10.1145/3643681
+MLCAD ’26, September 07–09, 2026, Jeju Island, Republic of Korea                                     Zhiyu Zheng, Yiming Du, Ziyi Wang, and Zhiang Wang
+
+
+A     Artifact Appendix                                                 • Availability/licenses: The public code uses the BSD 3-Clause
+Wenjie Yuan of Fudan University maintains the artifact package and        License and contains no proprietary component. Third-party tools,
+its reproduction workflow.                                                data, and hosted models retain their own terms.
+                                                                        • Workflow/archive: GNU Make, Bash, Python, ORFS, and the
+A.1      Abstract                                                         Codex CLI manage the workflow. The evaluated archive is avail-
+                                                                          able under DOI 10.5281/zenodo.21629308.
+Our artifact contains the ReviewDSE implementation, the prompts
+and protected evaluator used in the experiments, and the source
+programs evaluated in the paper. It also includes a pinned open-
+                                                                        A.3      Description
+source EDA environment and scripts for reproducing Tables 4–6           Access and dependencies. The Zenodo archive and live repository
+and Figures 4–5. The artifact runs on Rocky Linux 8.10 (x86-64)         provide the same entry points and integrity checks. The OpenROAD
+and requires authenticated Codex access. It does not require a GPU,     baseline follows the upstream master branch. The README gives
+a commercial EDA license, or a proprietary PDK. The evaluated           the setup procedure, tested tool versions, and exact pinned revisions.
+release is archived on Zenodo under DOI 10.5281/zenodo.21629308,        Setup requires Linux x86-64, Git, rsync, the listed build packages, and
+and the public repository is available at https://github.com/yuan-      network access, but neither root access nor commercial software.
+fd/DPLEvolve-AE.                                                        Data and models. For Table 5 only, core utilization is set to 70, 90,
+                                                                        and 60 for AES, JPEG, and SWERV, respectively. Table 5 uses three
+A.2      Artifact Check-list (Meta-information)                         archived implementations across six selected and reference roles:
+                                                                        AES uses LEGALM/Diamond, JPEG uses Negotiation/Negotiation,
+• Algorithm/program: ReviewDSE performs white-box design-
+                                                                        and SWERV uses Diamond/Negotiation. Diamond and Negotiation
+  space exploration of OpenROAD detailed placement through a
+                                                                        come from OpenROAD, while the agent implements LEGALM based
+  protected Teacher–Student workflow. Students make bounded
+                                                                        on the published method. Table 6 uses the paper’s exact DEF, Verilog,
+  changes to the source code, and the Teacher reviews full-flow
+                                                                        and SDC inputs.
+  results on nine targets and nine cut-row patterns.
+                                                                           The paper reports a search conducted in April–May 2026. Because
+• Tools/build/binary: The artifact builds pinned OpenROAD,
+                                                                        Codex does not expose a stable service revision, the harness records
+  ORFS, Yosys, and OpenSTA versions with GCC/G++ 9 or later
+                                                                        the model and reasoning effort; all other decoding settings use their
+  and CMake 3.16 or later. Each candidate is built as a separate
+                                                                        service defaults. The harness retries a failed request up to eight times
+  OpenROAD binary.
+                                                                        with a 45-s linear backoff. The repository includes the prompts and
+• Models/access/prompts: The paper configuration uses one
+                                                                        corresponding request records. Because model outputs are stochastic,
+  gpt-5.5 Teacher and four gpt-5.4 Students. The AE
+                                                                        repeated searches may produce different edits.
+  configuration uses one gpt-5.6-sol Teacher and one
+  gpt-5.6-terra Student. All models use xhigh reason-
+  ing effort and are accessed through an authenticated Codex
+                                                                        A.4      Algorithm Flows
+  CLI session. The artifact includes all prompts. Other decoding        Algorithm 1 builds and freezes calibration evidence and source starts;
+  parameters use the service defaults.                                  Algorithm 2 uses that packet in a target-specific Teacher–Student
+• Data: ORFS regenerates the Table 4 inputs. The artifact includes      loop. Both call the protected evaluator, and Level 2 cannot modify
+  three checksummed source snapshots for Table 5 and a separate         the packet.
+  ∼200-MB archive of DEF, Verilog, and SDC files for Table 6.           Algorithm 1 Level 1 calibration and warm-start construction.
+• Environment/hardware: The workflow requires Linux x86-64,             Input: Calibration cases C, source 𝑂 , evaluator 𝐸 , source starts B0 , 𝑆𝐶 Students
+  Bash 4 or later, Make 4 or later, Python 3.11 or later, and the       Output: Frozen packet 𝑊 = (𝐾, B)
+  standard OpenROAD build dependencies. The reference platform           1: 𝐾 ← ∅ ; B ← B0
+                                                                         2: for all 𝑐 ∈ C do
+  runs Rocky Linux 8.10 without a GPU and has two Xeon Plat-             3:    𝑏𝑐 ← Evaluate (𝐸, 𝑂, 𝑐 ) ; 𝑄𝑐 ← TeacherPlan (𝑐, 𝑏𝑐 , 𝐾, B)
+  inum 8462Y+ processors (64 physical and 128 logical cores) and         4:     for all 𝑠 ∈ {1, . . . , 𝑆𝐶 } in parallel do
+  314 GiB of RAM.                                                        5:         𝑂𝑠 ← Instantiate (B, 𝑄𝑐 [𝑠 ] )
+                                                                         6:         Δ𝑠 ← StudentEdit (𝑂𝑠 , 𝑄𝑐 [𝑠 ] )
+• Execution/resources: At least 100 GiB of free disk space is recom-     7:         b𝑠 ← Build (𝑂𝑠 + Δ𝑠 )
+                                                                                    𝑂
+  mended. Setup takes several hours, and complete BO and model-          8:         𝑎𝑠 ← Evaluate (𝐸, 𝑂        b𝑠 , 𝑐 )
+  search campaigns take several days; smaller machines may use           9:     end for
+                                                                        10:     (𝐾, B) ← TeacherReview ( {𝑎𝑠 }, 𝐾, B)
+  less parallelism.                                                     11: end for
+• Metrics/output: Runs report stage HPWL, strict legality, displace-    12: return 𝑊 ← Freeze (𝐾, B)
+  ment, runtime, liveness, and source/binary/metric consistency.
+  Scripts write fresh results, logs, review records, and figures.          Each Student returns a complete source tree and its diff, together
+• Experiments/results: The workflows reproduce Tables 4–6, Fig-         with the full-flow metrics and corresponding evidence for legality,
+  ures 4–5, selected-source replays, Level 1 calibration, and Level 2   runtime, and liveness. The Teacher reviews these results and freezes
+  search. Section A.6 gives the acceptance criteria.                    the selected evidence and source starts for target search. Calibration
+• Cost: The paper reports an average of 2.15B logged tokens (∼0.10B     uses AES, JPEG, and SWERV at 70, 90, and 60 utilization, respectively.
+  active tokens) per target. Cost depends on the account and current       During target search, Students work in private source trees while
+  provider prices.                                                      𝑊 remains read-only. A candidate is promoted only if it passes the
+                                                                        build, legality, metric, source-to-binary consistency, liveness, and
+From Tool Invocation to Source-Mechanism Exploration: Protected White-Box DSE for Open-Source EDA       MLCAD ’26, September 07–09, 2026, Jeju Island, Republic of Korea
+
+
+runtime checks. The Teacher retains other useful outcomes in target-                     • Table 4: A full rerun produces nine legal cases. Mean HPWL
+local history 𝐿𝑑 without changing 𝑊 .                                                       changes are −0.38% for BO, −1.78% for HPWL selection, and
+Algorithm 2 Level 2 Teacher–Student target search.                                          −1.68% for GHR selection; ReviewDSE runtime ratios are 1.34×
+                                                                                            and 1.11×. The acceptance tolerances are 0.06 percentage points
+Input: Target 𝑑 , source 𝑂 , evaluator 𝐸 , frozen packet 𝑊 , 𝑆 Students, 𝑅 iterations,
+    runtime gate 𝑔                                                                          for HPWL and 0.20 for each runtime ratio.
+Output: Promoted candidate 𝑝𝑑 and target-local record 𝐿𝑑                                 • Table 5: The six rebuilt role configurations form three se-
+ 1: 𝑏𝑑 ← Evaluate (𝐸, 𝑂, 𝑑 ) ; 𝐿𝑑 ← {𝑏𝑑 } ; 𝑝𝑑 ← 𝑂
+ 2: CreatePrivateWorkspaces(𝑆, 𝑂 )
+                                                                                            lected/reference pairs, each of which must satisfy Δ𝐻𝑙𝑔 < 0
+ 3: for 𝑟 = 1 to 𝑅 do                                                                       and Δ𝐻 𝑓 > 0. AES, JPEG, and SWERV report −0.76%/+1.48%,
+ 4:    𝑄𝑟 ← TeacherPlan (𝑑, 𝑏𝑑 ,𝑊 , 𝐿𝑑 , 𝑝𝑑 )                                               −14.96%/+20.96%, and −0.12%/+0.02%, respectively.
+ 5:     for all 𝑠 ∈ {1, . . . , 𝑆 } in parallel do                                       • Table 6: A full rerun produces 27 rows whose status and strict-
+ 6:        𝑂𝑠 ← Instantiate (𝑝𝑑 ,𝑊 , 𝑄𝑟 [𝑠 ] )
+ 7:         Δ𝑠 ← StudentEdit (𝑂𝑠 , 𝑄𝑟 [𝑠 ] )                                                legality classifications must match exactly; runtime may vary
+ 8:        𝑂b𝑠 ← Build (𝑂𝑠 + Δ𝑠 )                                                           by 35%. All nine ReviewDSE cases, one Diamond case, and one
+ 9:        𝑎𝑠 ← Evaluate (𝐸, 𝑂         b𝑠 , 𝑑 )                                             Negotiation case must be legal.
+10:     end for                                                                          • Figures 4–5: Figure 4 must contain 96 observed points and mark
+11:    𝑉𝑟 ← ContractValid ( {𝑎𝑠 }, 𝑔)
+12:     𝐿𝑑 ← 𝐿𝑑 ∪ TeacherReview ( {𝑎𝑠 }, 𝑉𝑟 )                                               the three unavailable SWERV points without imputation. Figure 5
+13:     𝑝𝑑 ← PromoteBest (𝑉𝑟 , 𝑝𝑑 ) ; PreparePeerEvidence(𝐿𝑑 )                              must recompute the runtime-ratio Pareto set; the workflow writes
+14: end for
+15: return (𝑝𝑑 , 𝐿𝑑 )                                            ⊲ 𝑊 remains frozen         fresh TSV and SVG files.
+                                                                                         The public Level 1 profile reconstructs calibration because the exact
+                                                                                         Student count and frozen packet are not available from the original
+A.5      Installation and Workflow                                                       run. A fresh search is evaluated using its protected results and search
+From the artifact root, prepare the pinned environment and verify                        trajectory; it is not expected to reproduce the original source edits.
+the toolchain and model access as follows:
+make doctor
+make bootstrap                                                                           A.7    Integrity and Failure Reporting
+make build-tools THREADS=8
+make check                                                                               Run the following checks before reporting any result:
+make prepare-paper-inputs CASE=aes_nangate45 THREADS=8                                   make test
+make validate-evaluator CASE=aes_nangate45 THREADS=8                                     make validate-configs
+make check-demo-models                                                                   make zenodo-audit
+make check-demo-models sends one small request to each                                   The audit checks all three Table 5 source snapshots. The Table 6
+model and must report MODEL_READY for both roles. This verifies
+model access; the functional evaluation does not require a live closed-                  workflow starts only after the downloaded archive passes its in-
+loop search. Reproduce the reported experiments as follows:                              tegrity check. Scripts write new results and use references only for
+bash artifacts/01-table4-qor/reproduce.sh \                                              comparison. If a build, legality check, metric-contract validation, or
+  --threads 10
+make check-table5-data                                                                   numerical comparison fails, the script exits with a nonzero status
+make reproduce-table5 THREADS=10                                                         and preserves the command, run record, result directory, and first
+bash artifacts/03-table6-cutrow/reproduce.sh \
+  --fetch --threads 10                                                                   failure for inspection.
+bash artifacts/04-figures/reproduce.sh
+make reproduce-paper-search \
+  ACKNOWLEDGE_LLM_COST=yes THREADS=10                                                    A.8    Experiment Customization
+The reproduction workflow runs the default flow on nine targets,                         The CASE, THREADS, STUDENTS, and ITERATIONS variables
+performs 400 BO trials per target, replays 18 selected programs,                         specify the target, level of parallelism, and search size. Separate
+evaluates the six Table 5 roles and 27 cut-row cases, and regenerates                    variables specify the Teacher and Student models. A new campaign
+the figures. The workflow still requires the configured Teacher and                      requires a distinct DSE_RUN_PREFIX. Candidate selection always
+Student models. The final command starts a new stochastic search                         applies the paper’s 2× runtime gate, and paper-scale model runs
+and requires explicit acknowledgement of its model cost; this paper-                     require the cost acknowledgement above.
+scale run is not part of the functional check.
+                                                                                         A.9    Methodology
+A.6      Evaluation and Expected Results                                                 The artifact follows the current ACM badging policy, the cTuning
+The scripts derive observed metrics from fresh runs before compar-                       submission guide, and the MLCAD AE instructions.
+ing them with the references. No expected value is copied into an
+observed field.
+

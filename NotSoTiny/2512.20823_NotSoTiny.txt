@@ -1,0 +1,614 @@
+                                         NotSoTiny: A Large, Living Benchmark for RTL Code Generation
+                                                 Razine Moundir Ghorab                                 Emanuele Parisi                      Cristian Gutierrez-Gomez
+                                                   moundir.ghorab@bsc.es                           emanuele.parisi@bsc.es                      cristian.gutierrez@bsc.es
+                                               Barcelona Supercomputing Center                 Barcelona Supercomputing Center             Barcelona Supercomputing Center
+
+                                                 Miquel Alberti-Binimelis                               Miquel Moreto                          Dario Garcia-Gasulla
+                                                    miquel.alberti@bsc.es                          miquel.moreto@bsc.es                           dario.garcia@bsc.es
+                                               Barcelona Supercomputing Center                Barcelona Supercomputing Center              Barcelona Supercomputing Center
+                                                                                             Universitat Politecnica de Catalunya
+
+                                                                                                        Gokcen Kestor
+arXiv:2512.20823v1 [cs.AR] 23 Dec 2025
+
+
+
+
+                                                                                                    gokcen.kestor@bsc.es
+                                                                                               Barcelona Supercomputing Center
+
+                                         Abstract                                                                  achieved by current models on existing benchmarks [12, 13, 24],
+                                         LLMs have shown early promise in generating RTL code, yet evalu-          which provides a weak signal of model progress, and fail to reflect
+                                         ating their capabilities in realistic setups remains a challenge. So      the challenges posed by realistic RTL code.
+                                         far, RTL benchmarks have been limited in scale, skewed toward                As a second main limitation, existing evaluation frameworks of-
+                                         trivial designs, offering minimal verification rigor, and remaining       ten apply minimal verification rigor; in most cases, LLM-generated
+                                         vulnerable to data contamination. To overcome these limitations           designs are only checked for syntax validity and exercised using pre-
+                                         and to push the field forward, this paper introduces NotSoTiny, a         defined simulation testbenches. While testbenches offer a straight-
+                                         benchmark that assesses LLM on the generation of structurally rich        forward means of assessing a module’s behavior, they may exhibit
+                                         and context-aware RTL. Built from hundreds of actual hardware             insufficient coverage, overlook corner cases, or implement too few
+                                         designs produced by the Tiny Tapeout community, our automated             checks to be considered trustworthy. As a result, such evaluations
+                                         pipeline removes duplicates, verifies correctness and periodically        often miss subtle behavioral mismatches, particularly in designs
+                                         incorporates new designs to mitigate contamination, matching Tiny         featuring complex control logic, or deep datapaths.
+                                         Tapeout release schedule. Evaluation results show that NotSoTiny             The third issue of current benchmarks, contamination of evalua-
+                                         tasks are more challenging than prior benchmarks, emphasizing its         tion data leaking into the training set, is often overlooked. Many
+                                         effectiveness in overcoming current limitations of LLMs applied to        benchmark designs are sourced from publicly available, well-known
+                                         hardware design, and in guiding the improvement of such promis-           textbooks, open source repositories and educational sites. These
+                                         ing technology.                                                           resources are among the most commonly used ones to train mod-
+                                                                                                                   ern LLMs, enabling these models to simply reproduce partially
+                                                                                                                   memorized code rather than generating novel solutions. Further-
+                                         1   Introduction                                                          more, most prior benchmarks for RTL code generation include
+                                         The use of Large Language Models (LLMs) for RTL code generation           no contamination mitigation strategy, making it difficult to dis-
+                                         has recently attracted considerable interest in the hardware design       tinguish genuine generalization from recall. Recent studies have
+                                         automation community. Thanks to their strong code-generation              demonstrated the severity of this issue in popular code benchmarks
+                                         capabilities, LLMs can translate high-level specifications, including     (e.g., HumanEval [1]), which have been found to be present in the
+                                         natural-language descriptions, diagrams, and tables, into Verilog,        training corpora of production models like ChatGPT, significantly
+                                         potentially accelerating and partially automating digital hardware        inflating performance metrics [4].
+                                         development. However, despite this growing promise, progress is              To address these limitations, this work presents NotSoTiny, a new
+                                         limited by existing benchmarks, which fail to accurately reflect the      benchmark for evaluating LLMs on structurally complex, context-
+                                         complexity, rigor, and practical challenges of real-world hardware        aware RTL code-generation tasks, explicitly designed to be resilient
+                                         design workflows [7, 15].                                                 to contamination. NotSoTiny is initially built from hundreds of
+                                            Current RTL generation benchmarks suffer from three main lim-          hardware designs contributed by the Tiny Tapeout community, an
+                                         itations: 1) insufficient scale and complexity, 2) shallow verification   open, educational multi-project wafer program where researchers
+                                         protocols, and 3) lack of contamination control. First, existing RTL      and engineers submit digital, mixed signal, and analog circuits for
+                                         generation benchmarks consist mainly of flat, narrowly scoped             fabrication [25]. These designs span a wide range of domains, styles,
+                                         modules that lack the hierarchical composition and design diversity       and abstraction levels, including hierarchical systems, datapath-
+                                         found in real-world hardware. Practical digital systems, in con-          heavy logic, finite-state machines, and custom protocols. After
+                                         trast, feature deep module hierarchies and complex control and            curating the TinyTapout projects, we automatically generate over
+                                         datapath interactions. This structural gap restricts the ability of       1,000 contextual-module completion tasks, an order of magnitude
+                                         current benchmarks to guide the development of LLMs with strong           larger than the next-largest RTL benchmark, where each task is
+                                         generalization and reasoning capabilities. Additional evidence of         derived from a real, taped out hardware design. On each task, one
+                                         limited benchmark complexity is the consistently high pass rates
+                   Razine Moundir Ghorab, Emanuele Parisi, Cristian Gutierrez-Gomez, Miquel Alberti-Binimelis, Miquel Moreto, Dario Garcia-Gasulla, and Gokcen Kestor
+
+
+module is withheld, and LLMs are prompted to regenerate the miss-                    reliable and representative benchmark based on Tiny Tapeout, we
+ing component using the remaining design as context. Unlike prior                    design a multi-stage data processing pipeline, illustrated in Fig-
+benchmarks that provide explicit I/O specifications or standalone                    ure 1, comprising four main components: (1) Filtering, (2) Module
+modules, NotSoTiny requires the model to infer functionality and in-                 Aggregation, (3) Task Building, and (4) Deduplication.
+terface behavior solely from the surrounding implementation. This
+mirrors real-world development scenarios where new components
+                                                                                     2.1     Filtering and Module Aggregation
+must integrate seamlessly into existing systems.
+   To construct contextual-module completion tasks, we developed                    The first stage of the benchmark construction pipeline involves
+a fully automated pipeline that crawls Tiny Tapeout shuttle reposi-                 curating and preprocessing raw RTL designs from Tiny Tapeout.
+tories. Each project is parsed to extract Verilog modules and test-                 For the initial release of NotSoTiny, a total of 1,572 projects from
+benches, producing multiple completion tasks per design by “mask-                   publicly accessible GitHub repositories were collected, associated
+ing out” individual modules and treating them as the generation                     with the fabrication shuttles TT06, TT07, TT08, TT09, TT10 IHP-
+targets. To avoid duplication, we apply hash-based and structural                   02, TT10 IHP-25a, and TTsky25a. Each project typically includes
+similarity checks to identify and remove redundant designs, which                   source code, tests and metadata describing its structure and build
+are often re-submitted across shuttles with minor changes. This en-                 process. To ensure quality and consistency, we apply a Filtering
+sures that each circuit concept appears only once in the benchmark.                 step that discards incomplete or malformed projects. Specifically,
+Finally, each task is paired with its full design context (all remaining            we retain only those projects that contain a src/ directory with
+modules and top-level logic) and the corresponding ground-truth                     RTL source files, a test/ directory with at least one testbench, a
+implementation of the withheld module. Outputs generated by                         Makefile to build and run the design, and a valid info.yaml file
+LLMs are then evaluated using both simulation-based and formal                      that explicitly specifies all required source dependencies. Projects
+verification techniques.                                                            that do not satisfy these structural requirements, or for which
+   Experiments show that NotSoTiny is significantly more challeng-                  referenced source files cannot be located, are excluded from further
+ing than existing RTL benchmarks: state-of-the-art LLMs achieve                     processing. After this filtering step, a total of 1,034 valid projects
+only 20% functional correctness under formal equivalence, despite                   remain.
+high syntax. Min-K analysis [19] further shows low contamination                       For each accepted project, the Module Aggregation step unifies
+risk, establishing NotSoTiny as a rigorous and reliable benchmark.                  its RTL code into a single, stand-alone Verilog file, enabling uni-
+This leads to the following contributions:                                          form parsing and task generation. This step uses vppreproc [20],
+                                                                                    a Verilog preprocessor from the Verilog-Perl suite, which resolves
+      • A large and structurally rich RTL benchmark. We in-
+                                                                                    include directives and macro definitions across multiple source files.
+         troduce NotSoTiny, a dataset of 1,114 deduplicated module-
+                                                                                    The result is a fully expanded, self-contained Verilog file that pre-
+         completion tasks that is significantly larger and more com-
+                                                                                    serves internal module hierarchies and dependencies for the total
+         plex than existing RTL benchmarks. The dataset is publicly
+                                                                                    number of 1,021 projects. These files serve as the foundation for
+         available on HuggingFace1 .
+                                                                                    our contextual module completion tasks.
+      • A rigorous and scalable evaluation methodology. We
+         show that syntax checks and testbenches substantially over-
+         estimate model performance, and provide a formal verifica-                  2.2     Task Building
+         tion pipeline based on equivalence checking that measures                  The next stage decomposes each merged project file into a set of
+         functional correctness at scale.                                           module completion tasks. If a merged file contains n modules, then
+      • A contamination-resilient, periodically updated bench-                      n distinct tasks are generated from it. For each task, the body of
+         mark pipeline. We develop an end-to-end construction                       a single module is removed and designated as the target for com-
+         pipeline, including crawling, merging, task generation, and                pletion, while the remaining modules in the file are retained as
+         near-duplicate filtering, that allows NotSoTiny to be re-                  context. This procedure yields a prompt that presents the model
+         freshed with each new Tiny Tapeout shuttle, enabling long-                 with a realistic design context and asks it to produce the miss-
+         term contamination resilience.                                             ing module’s code. These task mimics the scenario where part of
+                                                                                    a hardware design is missing and must be implemented to inte-
+2   NotSoTiny Benchmark Construction                                                grate with the existing components. In total, this stage yields 5,309
+NotSoTiny is a novel benchmark for systematically evaluating LLM                    contextual-module completion tasks before deduplication.
+capabilities in RTL code generation, focusing on module completion.
+The benchmark is built from data derived from the Tiny Tapeout                       2.3     Temporal Deduplication
+project, a collaborative initiative that allows hardware designers to
+                                                                                     The fourth stage eliminates redundant designs across Tiny Tapeout
+submit open-source digital circuit designs for fabrication on peri-
+                                                                                     shuttles. Given the collaborative and iterative nature of the Tiny
+odic and independent shuttles [25]. Each shuttle aggregates multiple
+                                                                                     Tapeout project, contributors frequently resubmit existing designs,
+individual designs, collectively forming a rich and diverse corpus
+                                                                                     sometimes with minor modifications, or reuse modules from earlier
+of open-source digital hardware implementations. By means of
+                                                                                     shuttles. For example, a simple 8-bit counter module might be
+these shuttles, Tiny Tapeout provides a periodic set of fresh designs
+                                                                                     submitted by multiple people across different shuttle runs. Without
+that help mitigate potential contamination issues. To construct a
+                                                                                     proper filtering, such repetition would lead to artificially inflated
+1 https://huggingface.co/datasets/HPAI-BSC/NotSoTiny-25-12                           evaluation metrics or unfairly advantage models that have seen
+NotSoTiny: A Large, Living Benchmark for RTL Code Generation
+
+
+      Tiny Tapeout shuttles
+
+
+                                                               Module Aggregation                                   3. Task Building
+                                             Filtering
+                                                                                                                                                              4. Temporal Deduplication
+                                                                                                       ?    Module to complete           Module context
+
+                                                                         file1.sv
+
+
+
+
+                                                                                                                                                              TT06
+                                            has src/ dir                                           module   1           module   1          module   1               TASK
+   TASK
+
+
+
+
+
+                                                                                     vppreproc
+                                                                                                                ?                                                     1       2
+
+
+                                                               file2
+                                            has test/ dir
+
+
+
+
+                                                                                                                                                              TT07
+                                                                                                   module   2           module   2          module   2
+                                                                                                                                                                                     TASK
+
+
+                                                                       file3.sv                                                      ?                                                 3
+
+
+
+                                           has Makefile                                            module   N           module   N          module   N
+
+
+
+
+                                                                                                                                                              TT08
+                                                                                                                                                                                             TASK
+   TASK
+
+                                                                                                                                                          ?
+                                                                                                                                                                                              4       5
+
+
+
+                                                                                                   Task 1               Task 2               Task N
+                                                                                                                                                                                     ...
+                                                                   info.yaml
+                                         Discard Project
+
+
+
+
+Figure 1: Overview of the NotSoTiny benchmark construction pipeline. Designs from multiple Tiny Tapeout shuttles are filtered,
+merged, converted into contextual-module completion tasks, and deduplicated to produce a clean, diverse, and contamination-
+resilient benchmark.
+
+
+one shuttle’s data during training. To address this, we adopt a near-               contextual modules and a missing module to be completed, provid-
+duplicate detection pipeline inspired by the BigCode deduplication                  ing a challenging and representative testbed for evaluating LLM
+approach [14] using Datasketch [33]. Our deduplication framework                    performance in automatic RTL code generation.
+combines MinHash fingerprinting with Locality-Sensitive Hashing
+(LSH) [11] to efficiently identify similar RTL designs. This process                2.4          Ensuring Compatibility via Self-Verification
+consists of three sub-steps.
+                                                                                    To finalize the dataset and complete the pipeline execution, we do
+   Signature Generation via MinHash: Each merged RTL de-                            a final filtering on the 3,062 unique tasks identified in the previous
+sign, represented as a unified module-level artifact, is tokenized                  temporal deduplication step. Aligning with our objective to create
+into overlapping world-level 𝑘-grams (shingles) that capture local                  a fully automatic benchmark with negligible manual intervention,
+code structure and syntax. Using a word shingle size of 5 (approxi-                 we employed formal equivalence checking to verify the designs.
+mately 20 characters) to represent each design’s content, we com-                       Our implementation utilizes a Yosys [28] script, the methodol-
+pute MinHash signatures to obtain compact similarity-preserving                     ogy of which is detailed in §4.2. To ensure compatibility, the task’s
+representations of each design. The MinHash yields an approximate                   golden solution is verified against itself using this general verifica-
+Jaccard similarity between any two designs in linear time.                          tion script, rather than against an LLM-generated solution. This step
+                                                                                    filters for tasks that function ’out of the box’ with the general script,
+    Candidate Identification via LSH:. LSH is used to find candi-                   eliminating the need for manual fine-tuning. Consequently, this
+date duplicates without exhaustive pairwise comparison. We par-                     validation step reduced the initial 3,062 tasks to a final benchmark
+tition each MinHash signature into b bands and hash each band                       dataset of 1,114 validated tasks.
+to an identifier. If two designs share at least one identical band
+hash, they are flagged as candidate near-duplicates. This banding
+                                                                                    2.5          Benchmark Scale and Complexity
+technique reduces comparisons by only focusing on likely similar
+pairs. We configure the LSH such that it is expected to detect pairs                The automated construction pipeline described above, including fil-
+with Jaccard similarity above a threshold T = 0.70, a value chosen                  tering, module aggregation, task building, and temporal deduplica-
+to balance precision and recall for code duplication (similar to Big-               tion, results in a benchmark that is not only clean and contamination-
+Code deduplication settings [14]). Each candidate pair identified                   resilient but also substantially larger and more structurally diverse
+by LSH is then measured for actual Jaccard similarity to confirm                    than existing RTL datasets. This is important because one of the
+the duplicate. If the similarity exceeds the threshold, we treat those              central limitations of prior RTL benchmarks is their small scale and
+designs as near-duplicates.                                                         lack of architectural depth, which prevents them from capturing the
+                                                                                    complexity of real-world hardware design. Table 1 compares Not-
+   Temporal Deduplication Policy. After identifying near-duplicates,                SoTiny against several state-of-the-art RTL benchmarks in terms
+we apply a time-aware filter to decide which version of a duplicated                of average sample complexity. We report key indicators, including
+design to keep. Specifically, within each set of duplicate tasks, we                lines of code (LOCs), and a structural complexity score computed
+retain only the version from the oldest Tiny Tapeout shuttle and                    by summing the number of Verilog keywords commonly used to
+remove all later re-submissions. This policy ensures that the bench-                describe module functionality (e.g., always, assign, generate, wire,
+mark preserves the original instance of a design while eliminating                  reg) per design. NotSoTiny contains 1,114 deduplicated tasks, an
+subsequent copies. This incremental deduplication process lets the                  order of magnitude more than previous datasets, and shows sig-
+benchmark evolve with new shuttles without introducing duplicate                    nificantly higher structural complexity, averaging 118 LOCs per
+content that a model might have already seen in prior versions.                     task, and a complexity score of 21.90, highlighting how the aver-
+After performing the deduplication stage, we end up with 3062                       age sample in NotSoTiny is approximately 3 times more complex
+unique module-completion tasks from all Tiny Tapeout shuttles,                      than the other considered benchmarks. These results suggest that
+each derived from a distinct hardware design and free of redun-                     NotSoTiny provides a considerably more challenging dataset for
+dancy. Each task encapsulates a realistic RTL design scenario with                  evaluating the performance of LLM on RTL code generation tasks.
+                   Razine Moundir Ghorab, Emanuele Parisi, Cristian Gutierrez-Gomez, Miquel Alberti-Binimelis, Miquel Moreto, Dario Garcia-Gasulla, and Gokcen Kestor
+
+
+Table 1: Comparison of NotSoTiny with existing RTL bench-                            general LLM evaluation [27]. While such dynamic benchmarking
+marks in terms of scale and structural complexity. NotSoTiny                         demands of maintenance and supervision, it is the only feasible
+provides significantly more samples and higher structural                            solution in a field that evolves as fast as that of generative AI.
+richness than prior datasets, while also being the only bench-                           To quantitatively assess contamination, we adopt the Min-K [19]
+mark designed to be continuously updated (“living”).                                 metric which captures the average log-probability assigned by a
+                                                                                     model to the least likely K% of tokens in a reference solution. A
+                                       Sample statistics                             low Min-K score means that the model found some parts of the
+       Benchmark       Samples                                   Living              solution quite unlikely, which is a strong hint that the solution was
+                                     LOCs      Complexity
+                                                                                     not seen during training. Conversely, a high Min-K indicates that
+    VeriGen [24]              17     17.05              2.12           No            even the most unexpected tokens were predicted with relatively
+    VerilogEval [16]         158     16.58              2.22           No            high confidence, suggesting the model may have memorized the
+    RTLLM [13]                53     37.73              6.01           No            code. Min-K score can be thresholded to get a binary classifier
+    CVDP cid02 [17]           94     71.09              6.52           No            for contamination. However, determining a threshold in practice is
+    RealBench [10]            67    192.03             50.90           No            challenging. That’s why we follow the approach of Samuel et al. [18]
+    NotSoTiny              1,114    118.07             21.90          Yes            to compare average Min-K values across different benchmarks,
+                                                                                     rather than thresholding them [19].
+                                                                                         The contamination study was performed on a diverse set of 11
+                                                                                     LLMs released in a short period, July to December 2024, to ensure
+    RealBench [10] contains samples with high LOC and complex-                       they were exposed to roughly the same data on the internet. The
+ity scores, as it comprises large IPs from open-source repositories.                 selection is diverse in terms of model size (7B to 405B parameters),
+These designs boost the complexity metric through their size, but                    family, and category (domain-specific, coding-focused, and general-
+do not require models to reason about missing components within                      purpose). The models are Llama3.3-70B/ 3.1-405B [6], Qwen2.5-32B/
+a broader system. In contrast, NotSoTiny derives its complexity                      72B [30], Qwen2.5-Coder-7B/ 14B/ 32B [30], OpenCoder-8B [8],
+from multi-module, context-dependent reasoning, where the model                      CodeV-QW [32], Origen [2], HaVen-CodeQwen [31] (using instruct
+must reconstruct a missing module that integrates correctly with                     variants if available). For all these models, we computed Min-K for
+the existing hierarchy, evaluating the LLM’s capacity to infer the                   NotSoTiny’s references and other benchmarks.
+logic to be implemented from the context, rather than from a speci-                      As noted by Wang et al. [26], the Min-K may be sensitive to
+fication document. This form of structural and semantic complexity                   highly detailed prompts, as they significantly affect the likelihood of
+aligns more closely with real engineering workflows. Notice the                      solutions. Therefore, to ensure a fair comparison, we compute only
+methodology used to construct NotSoTiny is fully generalizable:                      the Min-K of the reference module, without the context provided
+it can be applied to any open-source hardware project, including                     in the prompts. We excluded any large modules (>2000 tokens) so
+those included in RealBench [10], to generate arbitrarily complex,                   that NotSoTiny’s tasks are similar in size to those in RTLLM (mean
+context-aware code-completion tasks, thus providing a scalable                       of ≈400 tokens). We also exclude VerilogEval and VeriGen from
+path for building future benchmarks that stress deeper reasoning                     the comparison because their modules are significantly smaller,
+capabilities in LLMs. Finally, the large number of tasks in NotSoTiny                approximately half the size and complexity of RTLLM (Table 1),
+enables a more statistically robust evaluation than in static datasets               and applying the same size-based filtering would discard most of
+with limited sample sizes.                                                           NotSoTiny samples.
+                                                                                         The final result can be seen in Figure 2, which plots the average
+3     Living Benchmark                                                               Min-K score as a function of K for NotSoTiny (aggregated over
+A critical yet often overlooked limitation of existing RTL bench-                    each NotSoTiny shuttle subset) versus the RTLLM benchmark. The
+marks is their vulnerability to training-data contamination. As                      difference is clear: RTLLM shows consistently higher Min-K values
+LLMs increasingly ingest publicly available datasets, including text-                than NotSoTiny across the curve. In fact, the area under the Min-
+books, open-source repositories, and educational materials, there                    K curve for RTLLM is significantly greater, indicating a greater
+is a growing concern that benchmark tasks may overlap with the                       likelihood that models have seen those solutions during training
+model’s pretraining data, This can lead to inflated performance                      (likely because RTLLM’s problems or their solutions were present
+scores driven by memorization rather than rather than generaliza-                    in open-source code that made it into training data). This motivates
+tion. This risk is especially severe for static datasets, whose contents             the need for benchmarks supported by fully automated pipelines
+cannot evolve to stay ahead of future training sets.                                 that permit periodic updates.
+   To address this challenge, NotSoTiny is explicitly designed as a
+living benchmark. Tiny Tapeout releases between two and five new                     4    Evaluations
+shuttles each year, and NotSoTiny leverages this continuous stream                   To evaluate the functional correctness of LLM-generated RTL on
+of fresh, real hardware designs to remain current. The benchmark                     NotSoTiny, we benchmark a broad set of models ranging from 7B
+will be periodically updated by integrating newly released shuttles                  to 1T parameters, including domain-specific, coding-focused, and
+while dropping older ones when necessary, ensuring that evaluation                   general-purpose models, at the end of this section. Models are chosen
+data stays ahead of what contemporary and future LLMs might have                     based on their previously reported performance at RTL tasks2 , and
+seen during training. Similar dynamic benchmarking strategies
+have proven effective in other domains, such as LiveBench for                        2 https://huggingface.co/spaces/HPAI-BSC/TuRTLe-Leaderboard
+NotSoTiny: A Large, Living Benchmark for RTL Code Generation
+
+
+                                                                           occurrences of the assert keyword across the test files associated
+                                                                           with each project, using assertion density as a coarse indicator of
+                                                                           the testbench’s ability to detect and propagate design errors to an
+                                                                           observable point, as emphasized in coverage-driven verification
+                                                                           theory. Figure 4 examines the quality of these native testbenches
+                                                                           per project, in terms of code coverage and assertion density (ig-
+                                                                           noring approximately 2% of the testbenches, featuring more than
+                                                                           30 assertions). The median coverage achieved by each project’s
+                                                                           testbench is only about 67%, and the median number of assertions
+                                                                           is a mere 1 per project. In fact, only a small minority of the test-
+                                                                           benches, approximately 26%, contain more than one assertion and
+                                                                           achieve at least 80% code coverage. This means that, for most Tiny
+                                                                           Tapeout projects, the test stimuli do not perform minimal checking
+                                                                           of output correctness. These findings mirror well-known pitfalls in
+                                                                           hardware verification: low reachability (not hitting all parts of the
+Figure 2: Average Min-K computed for different values of K                 design) and low observability (not detecting errors at outputs) lead
+(i.e., the K% of tokens with lowest probability) around the                to test suites that miss bugs.
+value 𝐾 = 20 recommended by the authors of Min-K. Results
+are aggregated across all samples and models under study.
+Exponential is taken for easier interpretability with the Area             4.2    Formal Verification Analysis
+Under the Curve (AUC), and thanks to its monotonicity, it                  To overcome the limitations of simulation-based verification, we
+doesn’t affect the comparison. Higher values indicate higher               adopt formal verification as our primary strategy for functional cor-
+chances of contamination.                                                  rectness. Specifically, we employ equivalence checking to verify the
+                                                                           equivalence of each generated module against the golden reference
+include Kimi K2 [22], DeepSeek R1 0528 [3], Qwen3 Coder 480B [29],         implementation.
+GPT-OSS 120B [23], Qwen2.5 7B/14B/14B 1M/72B [30], Qwen2.5                     The verification flow is based on the Yosys [28] suite, and it
+Coder 32B [9], HaVen-CodeQwen [31], and OriGen [2] (instruct               proceeds in three phases. In the first step, the golden RTL imple-
+versions used when available). These models were tested on Not-            mentation and the LLM-generated candidate are both loaded into
+SoTiny, and three of those also used to run prior RTL benchmarks           the tool and elaborated to ensure that the correct top-level module
+(e.g., VerilogEval [16], RTLLM [13], CVDP [17]), for comparison            is selected and that both designs are represented in a consistent
+purposes to evaluate the feasibility of using test-benches to check        internal form.
+functionality in §4.1. Based on these results, formal verification is          As a second step, the tool constructs a miter circuit: a compos-
+proposed and defined in §4.2, with the full benchmarking results           ite structure that feeds identical inputs to both implementations,
+are presented and discuss in §4.3.                                         compares all corresponding outputs bit-wise through XNOR gates,
+                                                                           and reduces these comparisons to a single equivalence signal. If
+4.1    Testbench Verification Analysis                                     the two designs are functionally identical, this signal remains high
+For selecting a verification strategy for NotSoTiny, we first examine      for all possible input combinations; any discrepancy drives it low,
+how syntax correctness (STX as Verilog compilation success) and            yielding a concrete counterexample.
+simulation-based functional correctness (FNC-Test as testbench                 In the final step, we apply formal verification to the miter. We rely
+passing) behave across four benchmarks and three representative            on two passes offered by Yosys: equiv_simple and equiv_induct.
+LLMs. Figure 3 illustrates a consistently steep drop from STX to           The equiv_simple procedure performs combinational equivalence
+FNC-Test. This drop is particularly large in CVDP, where more              checking by formulating the question “Can any input assignment
+than half of the syntactically correct solutions fail their testbenches.   produce different outputs?” as a SAT instance over the miter circuit.
+This indicates that functional errors are the main bottleneck in RTL       If the SAT solver returns UNSAT, no such distinguishing input exists,
+generation, as observed in prior work [5]. However, NotSoTiny              and the designs are proven to be combinatorially equivalent across
+behaves differently, as the gap between STX and FNC-Test is negli-         all possible inputs, providing exhaustive coverage unattainable with
+gible. Any generated code that is syntactically valid Verilog passes       finite testbenches. To handle sequential behavior, we additionally
+the associated testbenches 95–97% of the time.                             use equiv_induct, which extends verification to sequential logic
+   To further assess the relevance of Tiny Tapeout’s testbenches,          using bounded 𝑘-induction. Sequential circuits maintain internal
+we study two classical coverage dimensions: Reachability and Ob-           state across clock cycles, so single-step combinational checks are
+servability. Reachability is measured through Synopsys VCS [21]            insufficient. The inductive method proceeds as follows: (1) Base
+code-coverage instrumentation, computing a consolidated score              case, verify that both designs produce identical outputs from reset
+that aggregates line, condition, branch, toggle, and FSM coverage          states; (2) Inductive step, assume equivalence at cycle 𝑡, then prove
+metrics. This measures the extent to which the existing test stimulus      equivalence at cycle 𝑡 + 1 for all possible inputs; (3) Repeat this rea-
+can activate the design’s structural elements, a standard practice for     soning for 𝑘 cycles (in our implementation, 𝑘 = 30). If the induction
+identifying unexercised RTL regions. Observability is approximated         holds, the designs are proven equivalent for all reachable states
+by statically analyzing the Python cocotb tests and counting all           within the bounded depth. This captures state-machine transitions,
+                                    Razine Moundir Ghorab, Emanuele Parisi, Cristian Gutierrez-Gomez, Miquel Alberti-Binimelis, Miquel Moreto, Dario Garcia-Gasulla, and Gokcen Kestor
+
+
+                                    VerilogEval                                    RTLLM                                    CVDP cid02                                 NotSoTiny
+                100     95.38%        95.64%
+                                                       84.10%        86.12%        83.83%         86.38%        82.13%                       84.89%                                     86.79%
+                        81.54%        81.15%                                                                                   80.43%                      77.70%        76.98%
+                80                                                                                                                                                                      84.05%
+                                                                     64.90%                                                                                74.95%        74.65%
+   pass@1 (%)
+
+
+
+
+                60                                     58.85%                      60.00%         59.57%                                                                                            STX
+                                                                                                                                                                                                    FNC (TEST)
+                40                                                                                                             33.62%
+                                                                                                                                                                                                    FNC (EQV)
+                                                                                                                31.06%                       30.31%
+                                                                                                                                                           20.73%        20.90%         23.43%
+                20
+
+                 0
+                      DeepSeek R1   GPT-OSS-120B     Qwen3-Coder   DeepSeek R1   GPT-OSS-120B   Qwen3-Coder   DeepSeek R1   GPT-OSS-120B   Qwen3-Coder   DeepSeek R1   GPT-OSS-120B   Qwen3-Coder
+
+
+Figure 3: Syntax correctness (STX) and testbench correctness (FNC-Test) for three representative LLMs across four RTL
+benchmarks. Results show large drops from STX to FNC-Test on VerilogEval, RTLLM, and CVDP. Formal equivalence correctness
+(FNC-EQV) is also included for the NotSoTiny benchmark
+
+
+                                                                                                                         “partially correct”. It also allows tracking which modules contribute
+                                                                                                                         to low coverage, and identifies systematic weaknesses.
+
+                                                                                                                         4.2.2 Advantages and Limitations of Equivalence Checking. The pro-
+                                                                                                                         posed equivalence-checking-based functional evaluation pipeline
+                                                                                                                         offers a uniform, scriptable flow that applies to thousands of mod-
+                                                                                                                         ules without manual test-vector authoring, while guaranteeing
+                                                                                                                         that no task-specific corner cases are missed, in the presence of a
+                                                                                                                         reference golden solution. Moreover, our experimentation relies
+                                                                                                                         on open-source tools from Yosys [28], ensuring reproducibility.
+                                                                                                                         However, formal equivalence checking also introduces some limi-
+                                                                                                                         tations. First, the inductive proof is bounded to 𝑘 = 30 cycles. Bugs
+Figure 4: Coverage and assertion analysis of Tiny Tapeout                                                                that manifest only after more extended initialization sequences or
+testbenches. Each point represents a project, showing code                                                               deeper state-machine traversals may go undetected, and increas-
+coverage versus number of assertions.                                                                                    ing 𝑘 incurs a high computational cost. Additionally, sequential
+                                                                                                                         equivalence checking assumes both designs start from comparable
+register initialization sequences, and multi-cycle behaviors that                                                        reset states. Different reset polarities or styles may be considered
+equiv_simple alone cannot verify.                                                                                        equivalent if they converge to the same functional behavior within
+   This formal approach provides a mathematical proof that the                                                           a bounded depth. Despite these limitations, our formal verifica-
+LLM-generated design and the golden reference produce identical                                                          tion strategy provides a substantial improvement over prior RTL
+outputs for all valid inputs and state sequences (up to the bounded                                                      benchmarks that rely exclusively on syntax checking or limited
+depth), rather than checking only a finite sample of test vectors. It                                                    simulation testbenches. The combination of exhaustive input-space
+effectively eliminates false positives from incomplete testbenches                                                       exploration (via SAT solving), sequential reasoning (via bounded
+while permitting architectural creativity, an LLM is free to imple-                                                      induction), ensures that functional bugs are detected with high con-
+ment, as long as the functional behavior is provably identical.                                                          fidence, while still permitting LLM-generated designs to explore
+4.2.1 Partition Coverage Metric. While formal equivalence check-                                                         diverse cycle-accurate microarchitectural solutions and allows us
+ing provides a binary pass/fail result, we introduce partition cov-                                                      to check equivalence more efficiently than using induction alone.
+erage as a fine-grained metric for partial credit. For the sake of
+equivalence checking, Yosys represents each design as a set of logic                                                     4.3      Model Performance
+partitions. For the benchmark involving multiple partitions, we                                                          Table 2 summarizes the performance of 11 open-source LLMs, span-
+define Partition Coverage as follows:                                                                                    ning different model families and parameter scales, evaluated on
+                                             Í                                                                           NotSoTiny using our formal equivalence–based metrics. Averaged
+                                                   𝑛∈equivalent partitions partitions(𝑛)                                 across all Tiny Tapeout shuttles, these results reveal three key
+ Partition Coverage =                              Í                                              × 100%
+                                                      𝑚∈all partitions partitions(𝑚)                                     insights: First, model scale remains the strongest predictor of func-
+                                                                   (1)                                                   tional correctness. We observe clear stratification based on model
+   This metric quantifies how much of the golden design’s function-                                                      size. Large-scale models (e.g., Qwen3-coder at 480B, DeepSeek R1
+ality the LLM successfully reproduced. For instance, if a task golden                                                    at 685B) reach EQV scores of 20–23%, medium-scale models achieve
+solution consists of three partitions and the LLM correctly imple-                                                       10–15%, and small models (7B–13B) score below 5%. Nonetheless,
+ments two but fails on the third, traditional functionality checking                                                     even the largest models fall far short of production-ready perfor-
+methodologies would score this as a complete failure. Partition                                                          mance. Context length also plays an important role. Within the
+coverage, instead, reflects that a substantial portion of the design’s                                                   same parameter class, models with larger context windows consis-
+logic was correctly implemented. This granularity enables distin-                                                        tently outperform those with shorter ones, reflecting the long-range
+guishing between generations that are “completely wrong” versus                                                          contextual dependencies found in NotSoTiny.
+NotSoTiny: A Large, Living Benchmark for RTL Code Generation
+
+
+Table 2: LLMs performance on NotSoTiny. The score with the final dataset is shown in the last column; the rest are the results
+obtained per shuttle. Includes parameter count, context length, syntax correctness (STX), formal equivalence correctness (EQV),
+and average partition coverage Cov𝜇 . Best in bold. Using instruct versions of the models if available.
+
+                                              TT06             TT07             TT08             TT09         TT10 IHP-02      TT10 IHP-25a       TTSKY25a          NotSoTiny
+ Model            ↑Params     Context     STX EQV Cov𝜇     STX EQV Cov𝜇     STX EQV Cov𝜇     STX EQV Cov𝜇     STX EQV Cov𝜇     STX EQV Cov𝜇     STX EQV Cov𝜇      STX EQV Cov𝜇
+ Kimi-K2-0905        1000 B     262,144   73.3 13.0 56.2   61.1 15.6 45.2   76.0 20.9 60.1   78.5 21.8 57.3   90.0 23.3 61.9   71.0 19.6 57.1   86.2 18.8 67.3    76.6 19.0 58.0
+ DeepSeek-R1-0528     685 B     163,840   76.9 14.6 59.8   61.1 20.6 46.2   75.6 19.7 59.5   83.1 23.8 59.7   85.3 24.7 60.0   72.4 20.7 59.5   89.5 21.1 69.8    77.7 20.7 59.2
+ Qwen3-Coder-A35B     480 B     262,144   86.3 18.0 68.4   85.2 28.4 67.7   84.6 22.0 69.2   87.7 28.3 65.0   91.3 20.0 59.7   82.8 28.6 68.2   89.6 19.2 69.3    86.8 23.4 66.8
+ gpt-oss-120b         120 B     131,072   80.9 7.4 63.0    59.9 19.2 45.0   73.3 19.8 56.2   88.1 31.8 64.9   86.0 23.3 60.3   67.3 18.2 52.8   83.4 16.6 63.4    77.0 20.9 57.9
+ Qwen2.5-72B           72 B      32,768   64.4 11.7 44.8   50.6 12.8 36.1   47.8 5.6 32.0    76.1 22.4 51.1   68.0 22.7 41.7   58.3 15.1 44.1   72.0 12.7 51.6    62.4 14.7 43.0
+ Qwen2.5-Coder-32B     32 B      32,768   61.1 7.8 41.8    47.5 10.2 33.0   46.8 5.9 30.9    74.2 17.5 48.2   62.0 13.3 36.0   55.8 15.4 40.9   73.9 12.8 54.3    60.2 11.8 40.7
+ Qwen2.5-14B-1M        14 B   1,010,000   45.2 9.8 31.9    46.1 15.7 35.2   54.3 15.5 44.0   56.6 15.9 37.2   56.0 11.3 28.0   41.1 12.1 29.7   54.8 7.1 37.4     50.6 12.5 34.8
+ Qwen2.5-14B           14 B      32,768   45.4 5.6 33.4    45.7 12.9 31.6   35.8 4.7 24.8    55.1 15.0 35.3   52.0 8.0 28.4    33.7 9.0 23.6    51.6 7.6 35.9     45.6 9.0 30.4
+ HaVen-CodeQwen         7B       65,536   32.0 2.8 14.9    27.1 3.4 14.4    25.3 1.7 14.3    48.6 7.2 18.7    40.0 10.7 22.1   22.2 0.4 11.2    38.3 3.2 20.2     33.4 4.2 16.6
+ Qwen2.5-7B             7B       32,768   13.3 0.7 8.3     17.4 6.2 12.6    12.9 2.9 8.2     14.8 3.8 10.3    12.0 7.3 9.0      8.9 1.7 6.1     16.5 1.7 10.3     13.7 3.5 9.3
+ Origen-merged          7B        4,096    7.6 4.1 6.9      5.3 2.7 4.6      3.1 1.0 2.6     10.0 5.8 8.7     12.0 7.3 10.6     4.2 2.2 3.3      1.3 0.0 0.9       6.2 3.3 5.4
+
+
+
+   Second, the gap between STX and EQV is substantial. While                                 Universities MCIU /AEI /10.13039/501100011033 and EU ERDF. We
+leading models exceed 85% STX, EQV drops to roughly 20%, a gap                               are grateful to the Operations department at BSC for their technical
+of more than 60 percentage points, illustrated in Figure 3. This                             support.
+highlights that functional correctness for the generated RTL code                               Finally, we wish to extend our gratitude to Matt Venn and the
+remains elusive to modern LLMs.                                                              entire Tiny Tapeout community, whose work and effort made our
+   Finally, the partition coverage metric provides a more fine-grained                       research possible. We also appreciate the time and effort contributed
+evaluation of LLMs’ ability to infer module behaviour from sur-                              by Nikolas Belle, Dakota Barnes, Arnau Ayguadé, Bernat Homs,
+rounding context. Even when a model fails full equivalence, it often                         and Serik Perez in multiple discussions.
+reproduces 30–60% of the design’s logic partitions correctly. This
+suggests that models may frequently solve simpler module parti-
+tions while struggling with heavy logic subsets. Partition coverage                          References
+thus helps differentiate between generations that are entirely in-                            [1] Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de
+correct and those that partially capture the intended behavior.                                   Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg
+                                                                                                  Brockman, Alex Ray, Raul Puri, Gretchen Krueger, Michael Petrov, Heidy Khlaaf,
+                                                                                                  Girish Sastry, Pamela Mishkin, Brooke Chan, Scott Gray, Nick Ryder, Mikhail
+5    Conclusion                                                                                   Pavlov, Alethea Power, Lukasz Kaiser, Mohammad Bavarian, Clemens Winter,
+                                                                                                  Philippe Tillet, Felipe Petroski Such, Dave Cummings, Matthias Plappert, Fo-
+This paper introduced NotSoTiny, a large, structurally rich, and                                  tios Chantzis, Elizabeth Barnes, Ariel Herbert-Voss, William Hebgen Guss, Alex
+contamination-resilient benchmark for evaluating LLMs on realis-                                  Nichol, Alex Paino, Nikolas Tezak, Jie Tang, Igor Babuschkin, Suchir Balaji,
+                                                                                                  Shantanu Jain, William Saunders, Christopher Hesse, Andrew N. Carr, Jan Leike,
+tic RTL code generation. By framing tasks as contextual-module                                    Josh Achiam, Vedant Misra, Evan Morikawa, Alec Radford, Matthew Knight,
+completion problems and validating outputs with scalable formal                                   Miles Brundage, Mira Murati, Katie Mayer, Peter Welinder, Bob McGrew, Dario
+equivalence checking, NotSoTiny exposes the true difficulty of RTL                                Amodei, Sam McCandlish, Ilya Sutskever, and Wojciech Zaremba. 2021. Eval-
+                                                                                                  uating Large Language Models Trained on Code. arXiv:2107.03374 [cs.LG]
+generation for current LLMs. Our results show that even state-                                    https://arxiv.org/abs/2107.03374
+of-the-art models achieve only 20% functional correctness under                               [2] Fan Cui, Chenyang Yin, Kexing Zhou, Youwei Xiao, Guangyu Sun, Qiang Xu,
+formal verification. Our analyses further show that existing RTL                                  Qipeng Guo, Yun Liang, Xingcheng Zhang, Demin Song, and Dahua Lin. 2025.
+                                                                                                  OriGen: Enhancing RTL Code Generation with Code-to-Code Augmentation
+benchmarks remain constrained by limited scale and are increas-                                   and Self-Reflection. In Proceedings of the 43rd IEEE/ACM International Conference
+ingly vulnerable to training-data contamination.                                                  on Computer-Aided Design (Newark Liberty International Airport Marriott, New
+                                                                                                  York, NY, USA) (ICCAD ’24). Association for Computing Machinery, New York,
+   To enhance the visibility and accessibility, a leaderboard3 is                                 NY, USA, Article 99, 9 pages. doi:10.1145/3676536.3676830
+released and maintained under the TuRTLe framework [5], as illus-                             [3] DeepSeek-AI. 2025. DeepSeek-R1: Incentivizing Reasoning Capability in LLMs
+trated in Appendix A.                                                                             via Reinforcement Learning. arXiv:2501.12948 [cs.CL] https://arxiv.org/abs/25
+                                                                                                  01.12948
+                                                                                              [4] Yihong Dong, Xue Jiang, Huanyu Liu, Zhi Jin, Bin Gu, Mengfei Yang, and Ge
+Acknowledgments                                                                                   Li. 2024. Generalization or Memorization: Data Contamination and Trustwor-
+                                                                                                  thy Evaluation for Large Language Models. In Findings of the Association for
+This work is supported by the AI4S fellowships awarded to Gokcen                                  Computational Linguistics: ACL 2024, Lun-Wei Ku, Andre Martins, and Vivek
+Kestor, Emanuele Parisi, Razine Moundir Ghorab, Cristian Gutierrez                                Srikumar (Eds.). Association for Computational Linguistics, Bangkok, Thailand,
+Gomez, and Miquel Albertí Binimelis as part of the “Generación                                    12039–12050. doi:10.18653/v1/2024.findings-acl.716
+                                                                                              [5] Dario Garcia-Gasulla, Gokcen Kestor, Emanuele Parisi, Miquel Albertí-Binimelis,
+D” initiative, Red.es, Ministerio para la Transformación Digital                                  Cristian Gutierrez, Razine Moundir Ghorab, Orlando Montenegro, Bernat Homs,
+y de la Función Pública, for talent attraction (C005/24-ED CV1),                                  and Miquel Moreto. 2025. TuRTLe: A Unified Evaluation of LLMs for RTL
+                                                                                                  Generation. In 2025 ACM/IEEE 7th Symposium on Machine Learning for CAD
+funded by the European Union NextGenerationEU funds, through                                      (MLCAD). 1–12. doi:10.1109/MLCAD65511.2025.11189228
+PRTR. Additionally, this contribution is also partially supported                             [6] Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Ab-
+by the ELLIOT Grant funded by the European Union under grant                                      hishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schel-
+                                                                                                  ten, Alex Vaughan, et al. 2024. The llama 3 herd of models. arXiv preprint
+agreement No. 101214398, and by the project PID2023-146511NB-                                     arXiv:2407.21783 (2024).
+I00 funded by the Spanish Ministry of Science, Innovation and                                 [7] Zhuolun He, Yuan Pu, Haoyuan Wu, Tairu Qiu, and Bei Yu. 2025. Large Language
+                                                                                                  Models for EDA: Future or Mirage? ACM Trans. Des. Autom. Electron. Syst. 30, 6,
+3 https://huggingface.co/spaces/HPAI-BSC/TuRTLe-Leaderboard                                       Article 90 (Oct. 2025), 53 pages. doi:10.1145/3736167
+                       Razine Moundir Ghorab, Emanuele Parisi, Cristian Gutierrez-Gomez, Miquel Alberti-Binimelis, Miquel Moreto, Dario Garcia-Gasulla, and Gokcen Kestor
+
+
+ [8] Siming Huang, Tianhao Cheng, Jason Klein Liu, Weidi Xu, Jiaran Hao, Liuyihan             https://openreview.net/forum?id=sKYHBTAxVa
+     Song, Yang Xu, Jian Yang, Jiaheng Liu, Chenchen Zhang, et al. 2025. Opencoder:      [28] Clifford Wolf, Johann Glaser, and Johannes Kepler. 2013. Yosys-a free Verilog
+     The open cookbook for top-tier code large language models. In Proceedings of             synthesis suite. In Proceedings of the 21st Austrian Workshop on Microelectronics
+     the 63rd Annual Meeting of the Association for Computational Linguistics (Volume         (Austrochip), Vol. 97.
+     1: Long Papers). 33167–33193.                                                       [29] An Yang, Anfeng Li, Baosong Yang, and et al. 2025. Qwen3 Technical Report.
+ [9] Binyuan Hui, Jian Yang, Zeyu Cui, Jiaxi Yang, Dayiheng Liu, Lei Zhang, Tianyu            arXiv:2505.09388 [cs.CL] https://arxiv.org/abs/2505.09388
+     Liu, Jiajun Zhang, Bowen Yu, Keming Lu, Kai Dang, Yang Fan, Yichang Zhang,          [30] An Yang, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu,
+     An Yang, Rui Men, Fei Huang, Bo Zheng, Yibo Miao, Shanghaoran Quan, Yunlong              Chengyuan Li, Dayiheng Liu, Fei Huang, Haoran Wei, et al. 2025. Qwen2.5
+     Feng, Xingzhang Ren, Xuancheng Ren, Jingren Zhou, and Junyang Lin. 2024.                 Technical Report. arXiv:2412.15115 [cs.CL] https://arxiv.org/abs/2412.15115
+     Qwen2.5-Coder Technical Report. arXiv:2409.12186 [cs.CL] https://arxiv.org/ab       [31] Yiyao Yang, Fu Teng, Pengju Liu, Mengnan Qi, Chenyang Lv, Ji Li, Xuhong
+     s/2409.12186                                                                             Zhang, and Zhezhi He. 2025. HaVen: Hallucination-Mitigated LLM for Verilog
+[10] Pengwei Jin, Di Huang, Chongxiao Li, Shuyao Cheng, Yang Zhao, Xinyao Zheng,              Code Generation Aligned with HDL Engineers. In 2025 Design, Automation &
+     Jiaguo Zhu, Shuyi Xing, Bohan Dou, Rui Zhang, Zidong Du, Qi Guo, and Xing                Test in Europe Conference (DATE). 1–7. doi:10.23919/DATE64628.2025.10993072
+     Hu. 2025. RealBench: Benchmarking Verilog Generation Models with Real-World         [32] Yang Zhao, Di Huang, Chongxiao Li, Pengwei Jin, Muxin Song, Yinan Xu, Ziyuan
+     IP Designs. arXiv:2507.16200 [cs.LG] https://arxiv.org/abs/2507.16200                    Nan, Mingju Gao, Tianyun Ma, Lei Qi, Yansong Pan, Zhenxing Zhang, Rui
+[11] Jure Leskovec, Anand Rajaraman, and Jeffrey David Ullman. 2014. Mining of                Zhang, Xishan Zhang, Zidong Du, Qi Guo, and Xing Hu. 2025. CodeV: Em-
+     Massive Datasets (2 ed.). Cambridge University Press.                                    powering LLMs with HDL Generation through Multi-Level Summarization.
+[12] Mingjie Liu, Nathaniel Pinckney, Brucek Khailany, and Haoxing Ren. 2023. Ver-            arXiv:2407.10424 [cs.PL] https://arxiv.org/abs/2407.10424
+     ilogEval: Evaluating Large Language Models for Verilog Code Generation. In          [33] Eric Zhu and Vadim Markovtsev. 2017. ekzhu/datasketch: First stable release.
+     2023 IEEE/ACM International Conference on Computer-Aided Design (ICCAD).                 doi:10.5281/zenodo.290602
+     IEEE, 1–8.
+[13] Yao Lu, Shang Liu, Qijun Zhang, and Zhiyao Xie. 2024. RTLLM: An Open-
+     Source Benchmark for Design RTL Generation with Large Language Model.
+     In Proceedings of the 29th Asia and South Pacific Design Automation Conference
+     (Incheon, Republic of Korea) (ASPDAC ’24). IEEE Press, 722–727. doi:10.1109/ASP-
+     DAC58780.2024.10473904
+[14] Chenghao Mou. 2023. Large-scale Near-deduplication Behind BigCode. https:
+     //huggingface.co/blog/dedup
+[15] Jingyu Pan, Guanglei Zhou, Chen-Chia Chang, Isaac Jacobson, Jiang Hu, and
+     Yiran Chen. 2025. A Survey of Research in Large Language Models for Electronic
+     Design Automation. ACM Trans. Des. Autom. Electron. Syst. 30, 3, Article 34 (Feb.
+     2025), 21 pages. doi:10.1145/3715324
+[16] Nathaniel Pinckney, Christopher Batten, Mingjie Liu, Haoxing Ren, and Brucek
+     Khailany. 2025. Revisiting VerilogEval: A Year of Improvements in Large-
+     Language Models for Hardware Code Generation. ACM Trans. Des. Autom.
+     Electron. Syst. (feb 2025). doi:10.1145/3718088 Just Accepted.
+[17] Nathaniel Pinckney, Chenhui Deng, Chia-Tung Ho, Yun-Da Tsai, Mingjie Liu,
+     Wenfei Zhou, Brucek Khailany, and Haoxing Ren. 2025. Comprehensive
+     Verilog Design Problems: A Next-Generation Benchmark Dataset for Evalu-
+     ating Large Language Models and Agents on RTL Design and Verification.
+     arXiv:2506.14074 [cs.LG] https://arxiv.org/abs/2506.14074
+[18] Vinay Samuel, Yue Zhou, and Henry Peng Zou. 2025. Towards Data Con-
+     tamination Detection for Modern Large Language Models: Limitations, In-
+     consistencies, and Oracle Challenges. In Proceedings of the 31st International
+     Conference on Computational Linguistics, Owen Rambow, Leo Wanner, Mari-
+     anna Apidianaki, Hend Al-Khalifa, Barbara Di Eugenio, and Steven Schockaert
+     (Eds.). Association for Computational Linguistics, Abu Dhabi, UAE, 5058–5070.
+     https://aclanthology.org/2025.coling-main.338/
+[19] Weijia Shi, Anirudh Ajith, Mengzhou Xia, Yangsibo Huang, Daogao Liu, Terra
+     Blevins, Danqi Chen, and Luke Zettlemoyer. 2024. DETECTING PRETRAINING
+     DATA FROM LARGE LANGUAGE MODELS. In 12th International Conference on
+     Learning Representations, ICLR 2024.
+[20] Wilson Snyder, Paul Wasson, Duane Galbi, and et al. 2025. Verilator. https:
+     //github.com/verilator/verilator
+[21] Inc. Synopsys. [n. d.]. VCS: Functional Verification Solution. https://www.synops
+     ys.com/verification/simulation/vcs.html
+[22] Kimi Team. 2025. Kimi K2: Open Agentic Intelligence. arXiv:2507.20534 [cs.LG]
+     https://arxiv.org/abs/2507.20534
+[23] OpenAI team. 2025.               gpt-oss-120b & gpt-oss-20b Model Card.
+     arXiv:2508.10925 [cs.CL] https://arxiv.org/abs/2508.10925
+[24] Shailja Thakur, Baleegh Ahmad, Hammond Pearce, Benjamin Tan, Brendan
+     Dolan-Gavitt, Ramesh Karri, and Siddharth Garg. 2024. Verigen: A large language
+     model for verilog code generation. ACM Transactions on Design Automation of
+     Electronic Systems 29, 3 (2024), 1–31.
+[25] Matt Venn. 2024. Tiny Tapeout: A shared silicon tape out platform accessible to
+     everyone. IEEE Solid-State Circuits Magazine 16, 2 (2024), 20–29. doi:10.1109/MS
+     SC.2024.3381097
+[26] Zeng Wang, Minghao Shao, Jitendra Bhandari, Likhitha Mankali, Ramesh Karri,
+     Ozgur Sinanoglu, Muhammad Shafique, and Johann Knechtel. 2025. VeriCon-
+     taminated: Assessing LLM-Driven Verilog Coding for Data Contamination. In
+     2025 IEEE International Conference on LLM-Aided Design (ICLAD). 117–123.
+     doi:10.1109/ICLAD65226.2025.00017
+[27] Colin White, Samuel Dooley, Manley Roberts, Arka Pal, Benjamin Feuer, Sid-
+     dhartha Jain, Ravid Shwartz-Ziv, Neel Jain, Khalid Saifullah, Sreemanti Dey,
+     Shubh-Agrawal, Sandeep Singh Sandha, Siddartha Venkat Naidu, Chinmay
+     Hegde, Yann LeCun, Tom Goldstein, Willie Neiswanger, and Micah Gold-
+     blum. 2025. LiveBench: A Challenging, Contamination-Limited LLM Bench-
+     mark. In The Thirteenth International Conference on Learning Representations.
+NotSoTiny: A Large, Living Benchmark for RTL Code Generation
+
+
+A     Appendix: TuRTLe Leaderboard
+Figure 5 presents the leaderboard for the NotSoTiny-25-12 benchmark, comprising 11 LLMs evaluated with the TuRTLe framework [5]. The
+selected models span general-purpose, code-specific, and RTL-specific, alongside some reasoning models. We use instruct versions when
+they are available.
+
+
+
+
+Figure 5: TuRTLe Leaderboard showing model performance on the NotSoTiny-25-12 benchmark for Module Completion.
+Available at: https://huggingface.co/spaces/HPAI-BSC/TuRTLe-Leaderboard.
+

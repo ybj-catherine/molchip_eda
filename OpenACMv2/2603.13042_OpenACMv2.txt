@@ -1,0 +1,514 @@
+                                                  OpenACMv2: An Accuracy-Constrained Co-Optimization
+                                                         Framework for Approximate DCiM
+                                                  Yiqi Zhou1 ,Yue Yuan1 ,Yikai Wang1 ,Bohao Liu2 ,Qinxin Mei2 ,Zhuohua Liu3 ,Shan Shen1,∗ ,Wei
+                                                                         Xing4,∗ ,Daying Sun1,∗ ,Li Li1 , and Guozhu Liu5
+                                                                    1 Nanjing University of Science and Technology, China, 2 Shenzhen University, China
+                                                                                        3 Beihang University, China, 4 University of Sheffield, UK
+                                                                 5 The 58th Research Institute of China Electronics Technology Group Corporation, China
+
+                                                                                      {shanshen,hasdysun}@njust.edu.cn,w.xing@sheffield.ac.uk
+
+                                        Abstract
+
+
+
+
+                                                                                                                                 OpenAC v2
+                                                                                                                                                                    OpenAC          CLK              PE Macro
+                                                                                                                                                                                                                        DIN
+                                        Digital Compute-in-Memory (DCiM) accelerates neural networks by
+                                                                                                                                                                                  RST_N                  Input Buffer
+arXiv:2603.13042v2 [cs.LG] 5 Jun 2026
+
+
+
+
+                                                                                                                                                                      Config.     PE_CE   Control
+
+                                        reducing data movement. Approximate DCiM can further improve                                                                                       Logic
+                                                                                                                                                                                                         SRAM Macro
+
+
+
+
+                                                                                                                                                                                                                                         Contr. & Buff.
+                                                                                                                                                                    PE Complier
+
+                                        power–performance–area (PPA), but demands accuracy-constrained                                                              SRAM Macro
+                                                                                                                                                                                                                                                          SRAM Macro
+
+
+
+
+                                                                                                                                             2-Level Optimization
+                                                                                                                                                                                               Exact/Approx./Log.
+                                        co-optimization across coupled architecture and transistor-level                                                              Complier                     Multiplier                 OpenROAD
+                                                                                                                                                                                   QOUT
+                                        choices. Building on OpenYield, we introduce Accuracy-Constrained                                                            Multiplier
+                                                                                                                                                                     Complier     VDOUT             Output Buffer
+                                                                                                                                                                                                                                                           Multiplier
+
+                                        Co-Optimization (ACCO) and present OpenACMv2, an open                                                                       Flow-Script
+                                                                                                                                                                     Generator
+                                                                                                                                                                                            Approximate DCiM
+
+                                        framework that operationalizes ACCO via two-level optimization:
+                                        (1) accuracy-constrained architecture search of compressor combi-                        Figure 1: The overall structure of OpenACM, an approximate
+                                        nations and SRAM macro parameters, driven by a fast GNN-based                            DCiM compiler, provides an end-to-end DCiM flow. A process-
+                                        surrogate for PPA and error; and (2) variation- and PVT-aware                            ing element contains a multiplier and an SRAM macro.
+                                        transistor sizing for standard cells and SRAM bitcells using Monte
+                                        Carlo. By decoupling ACCO into architecture-level exploration                            power and area, but introduces a hard co-design problem—balancing
+                                        and circuit-level sizing, OpenACMv2 integrates classic single-                           accuracy (e.g., Mean Relative Error Distance (MRED)/Normalized
+                                        and multi-objective optimizers to deliver strong PPA–accuracy                            Mean Error Distance (NMED)) and PPA across coupled archi-
+                                        tradeoffs and robust convergence. The workflow is compatible with                        tecture and transistor choices. These trade-offs are nonconvex,
+                                        FreePDK45 and OpenROAD, supporting reproducible evaluation and                           PVT/variation-sensitive, and strongly influenced by SRAM configu-
+                                        easy adoption. Experiments show that the proposed two-level ACCO                         ration, making manual tuning impractical. An automatic compiler
+                                        framework achieves most of its accuracy-constrained efficiency gain                      is essential. OpenACM [3], the first open-source SRAM-based
+                                        at Level-1 through architecture exploration, delivering roughly 50%+                     approximate CiM compiler, provides an end-to-end DCiM flow
+                                        PDP reduction, while Level-2 transistor-level optimization provides                      (see Fig. 1), but lacks a unified framework that jointly optimizes
+                                        a further single-digit PDP improvement while preserving accuracy,                        architecture exploration and transistor sizing under explicit accuracy
+                                        enabling rapid “what-if” exploration for approximate DCiM. The                           with PVT/variation awareness. More broadly, AutoDCIM [6], SynD-
+                                        framework is available on GitHub.                                                        CIM [19], ARCTIC [26], and OpenC2 [8] target exact arithmetic and
+                                                                                                                                 remain application-agnostic, without accuracy-aware modeling or
+                                        1    Introduction                                                                        rapid evaluation of approximate arithmetic. As a result, ACCO-style
+                                        Digital Compute-in-Memory (DCiM) accelerates neural network                              loops—which require millions of “what-if” queries—are infeasible;
+                                        (NN) workloads by performing low-precision arithmetic in/near                            even a single 16-bit query can take tens of seconds with conventional
+                                        SRAM, reducing data movement and interconnect switching.                                 synthesis/simulation. Compounding the challenge, approximate
+                                        This collapses the von Neumann bottleneck and delivers strong                            DCiM exposes more knobs than exact flows: compressor topology
+                                        power–performance–area (PPA) gains while remaining compatible                            and bit-slicing, partial-product truncation and gating, SRAM bank
+                                        with standard digital design flows [4].                                                  configuration, and transistor sizing across both standard cells and
+                                           Approximate computing further amplifies these gains: many NNs                         SRAM cells. These choices interact through variation and PVT.
+                                        tolerate moderate error without accuracy loss [5, 28]. Leveraging                        Today, there is still no unified, open optimization framework that
+                                        approximate multipliers and compressors can significantly reduce                         jointly reasons about accuracy, topology, and sizing, while providing
+                                                                                                                                 fast evaluation of approximate multipliers within an ACCO loop;
+                                        This work was supported by the Fundamental Research Funds for the Central Universi-
+                                        ties (Grant Nos. 30925010605 and 30924012004), the National Key Laboratory of Inte-      prior DCiM-specific optimization studies do not address this joint
+                                        grated Circuits and Microsystems (Grant No. JCYQ2310803-1), and the Jiangsu Provincial   architecture–transistor co-optimization under accuracy constraints.
+                                        Major Science and Technology Project (Grant No. BG2025012). ∗ Corresponding authors.        To bridge this gap, we introduce Accuracy-Constrained Co-
+                                                                                                                                 Optimization (ACCO), which elevates application-level accuracy
+                                                                                                                                 budgets to first-class constraints in the front-end design loop.
+                                        This work is licensed under a Creative Commons Attribution 4.0 International License.    Building on OpenYield [20] and OpenACM [3], OpenACMv2
+                                        DAC ’26, Long Beach, CA, USA                                                             operationalizes ACCO with a two-level flow: architecture explo-
+                                        © 2026 Copyright held by the owner/author(s).
+                                        ACM ISBN 979-8-4007-2254-7/2026/07                                                       ration under accuracy budgets followed by variation/PVT-aware
+                                        https://doi.org/10.1145/3770743.3804259                                                  circuit sizing for both standard cells and memory cells. OpenACMv2
+integrates a GNN surrogate of approximate multiplier performance                                    Arch.-Level                                                                  Arch.-Level
+                                                                                                       Opt.                                                                         Opt.
+for fast design space exploration, and supports classic single-                                                              Architecture               Architecture
+                                                                                                                            Configuration               Configuration
+and multi-objective optimizers. This top-down divide-and-conquer                                          Transistor Size                                               Transistor Size
+
+
+
+
+                                                                             Accuracy Constraints
+strategy enables efficient search, strong PPA–accuracy tradeoffs,
+and robust convergence. The workflow is fully open-source and                                                               OpenAC                      Open ield
+compatible with FreePDK45 [22] and OpenROAD [1]. OpenACMv2                                                          Multiplier Circuit Generator   SRAM Circuit Generator
+
+makes the following key contributions:                                                              Trans.-Level        MC          PEA-GNN
+                                                                                                                                                       MC Simulation
+                                                                                                                                                                                Trans.-Level
+                                                                                                       Opt.          Simulation      Predictor                                     Opt.
+
+    • Two-Level Optimization for DCiM: We co-optimize
+      architecture-level selections (compressor combinations, SRAM          Figure 2: OpenACMv2 ACCO workflow: Level-1 architec-
+      bank configuration) under explicit application accuracy con-          ture search guided by PEA-GNN, followed by Level-2
+      straints, and circuit-level transistor sizing for both standard and   variation/PVT-aware transistor sizing. Foundation circuit gen-
+      memory cells, running Monte Carlo simulations across PVT              erators are OpenACM and OpenYield.
+      variations.
+    • Algorithmic Integration: We incorporate a suite of single-            assignment (LVT/HVT) can reduce delay, energy, and area. In prac-
+      objective and multi-objective optimizers and demonstrate that         tice, this leads to customized standard-cell implementations rather
+      classic algorithms achieve strong results when ACCO is decou-         than relying solely on off-the-shelf gates; architecture–circuit co-
+      pled into architecture-level and circuit-level sub-stages for both    optimization then pushes energy efficiency toward the Pareto front.
+      logic and memory cell customizations.                                    On the memory side, SRAM macro parameters—row/column
+    • Fast GNN-Based Approximate Multiplier Modeling: We                    splits, array counts, and mux ratios—govern access delay and energy
+      construct PEA-GNN, a performance model to rapidly evaluate            under a fixed capacity budget [25]. Bitcell sizing further tunes perfor-
+      diverse approximate multiplier designs, providing orders-of-          mance but also affects PVT sensitivity and yield stability. Combined
+      magnitude speedup for PPA and error queries while preserving          architecture–transistor co-optimization across macro parameters
+      fidelity needed for accuracy-aware decisions.                         and sizing achieves the best PPA for the DCiM macro.
+                                                                               Together, heterogeneous compressor assignment, selective PP-
+                                                                            column approximation, transistor sizing, and SRAM configuration
+2     Background                                                            create a large, nonconvex design space that existing optimization
+Neural networks exhibit strong tolerance to numerical noise, where          algorithms cannot handle at scale. Meanwhile, most frameworks fo-
+moderate perturbations typically do not affect task-level accuracy [4,      cus on either transistor sizing or architecture-level optimization and
+5, 28]. This property enables trading arithmetic precision for im-          lack accuracy-aware evaluation for DCiM systems. In practice, opti-
+proved PPA efficiency when computation is executed near or inside           mizing architecture and transistor parameters concurrently yields
+SRAM arrays. Within DCiM systems, such approximation yields sub-            similar PPA gains to the two-level, top–down ACCO strategy, but sig-
+stantial energy benefits while remaining compatible with standard           nificantly increases complexity and slows convergence. We therefore
+digital design flows [25].                                                  adopt a two-level approach that decouples architecture exploration
+   Despite these advantages, designing a DCiM processing engine             from device sizing under explicit accuracy budgets.
+(PE) that meets explicit accuracy budgets while optimizing PPA re-             These challenges motivate treating the DCiM PE as a first-class op-
+mains highly challenging. Multipliers dominate both computational           timization target. OpenACMv2 implements ACCO with a top–down
+error and energy in DCiM PEs. Decades of work propose diverse               divide-and-conquer strategy: (1) architecture exploration over com-
+approximate 4–2 compressors and multipliers with varied error/PPA           pressor combinations, PP-column approximation, and SRAM macro
+profiles [2, 11, 16, 17, 21, 24]; Kim and Del Barrio [14] show that         parameters, (2) variation/PVT-aware transistor sizing for logic and
+combining complementary compressors can reduce bias, but only in            memory cells, and (3) fast performance prediction via a PEA-GNN
+restricted settings.                                                        surrogate to avoid expensive simulations.
+   DCiM introduces two architectural degrees of freedom that sig-
+nificantly expand the design space and enable fine-grained trade-           3                       Framework of OpenAC v2
+offs: (1) assigning multiple types of approximate compressors across        Fig. 2 shows a two-level, top–down workflow across the approx-
+partial-product (PP) columns, and (2) selecting which PP columns            imate multiplier and SRAM macro. The top level rapidly explores
+use approximation versus exact compressors (e.g., approximating             architectures using lightweight models and a GNN surrogate to
+lower-significance columns while keeping higher-significance ones           screen candidates. The bottom level performs variation/PVT-aware
+exact, see Fig. 3). This flexibility allows constructing multipliers with   transistor tuning to refine shortlisted designs.
+tunable accuracy and energy to meet application-level constraints.             Approximate Multiplier Optimization. At the top level, we
+However, exploring this large combinatorial space lacks fast, high-         identify compressor assignments and column-level approximation
+fidelity evaluation. Accurate PPA/error estimation typically requires       patterns using efficient search guided by a graph neural network
+logic synthesis, timing analysis, and power simulation per configu-         surrogate; we rapidly estimate PPA and error to rank candidates. At
+ration, which prevents efficient inner-loop search.                         the bottom level, we perform variation/PVT-aware transistor sizing
+   Beyond architectural choices, approximate multipliers can be fur-        for the selected compressors to preserve functional correctness while
+ther improved via transistor-level optimization. For each compressor        further optimizing PDP and area and enhancing robustness across
+family, device sizing, gate decomposition, and threshold-voltage            multiple corners.
+                                                                                     MRED is computed over the subset U+ ={(𝑥, 𝑦) : 𝑅exact (𝑥, 𝑦)>0}
+                                                                                  to avoid division by zero:
+                                                                                                               1   ∑︁    EDa (𝑥, 𝑦)
+                                                                                                MRED(a) =                             .           (1)
+                                                                                                             |U+ |      𝑅exact (𝑥, 𝑦)
+                                                                                                                            (𝑥,𝑦) ∈U+
+
+                                                                                  Here, EDa is the absolute arithmetic error, and MRED measures aver-
+                                                                                  age relative error magnitude; MRED=0 indicates exact computation.
+                                                                                  NMED normalizes by the maximum result 𝑅max =(2𝑁 −1) 2 :
+                                                                                                                  1 ∑︁ EDa (𝑥, 𝑦)
+                                                                                                  NMED(a) =                          ,            (2)
+                                                                                                                 |U|            𝑅max
+                                                                                                                             (𝑥,𝑦) ∈U
+
+                                                                                  where U is the input set used for evaluation (uniform grid or appli-
+                                                                                  cation distribution); NMED ∈ [0, 1] provides an absolute error scale.
+Figure 3: The structure of the 8-bit approximate multiplier.                      Physical metrics are delay 𝐷 (a), dynamic power 𝑃 (a), and area 𝐴(a),
+It consists of 3 stages: (i) partial-product generation, (ii) a                   with power–delay product PDP(a)=𝑃 (a) ·𝐷 (a). Here 𝐷 is worst-case
+configurable reduction tree with approximate compressors                          path delay (50% threshold), 𝑃 captures capacitive switching under
+on selected columns, and (iii) a final carry-propagate adder.                     the workload toggle rates, and 𝐴 is cell area.
+                                                                                     With these metrics, the top-level optimizer solves the following
+   SRAM Macro Optimization. The top level determines macro
+                                                                                  multi-objective problem:
+configurations under capacity budgets using SPICE simulation to
+obtain PPA and prune dominated candidates. Bottom level applies                         min         MRED(a), PDP(a)       s.t. NMED(a) ≤ 𝜀 NMED, (3)
+                                                                                                                       
+                                                                                    a∈ {0,...,𝐾 −1} 𝑡
+variation/PVT-aware sizing for bitcells to ensure stability and timing.
+This two-level, divide-and-conquer flow couples efficient search with             with optional accuracy constraints (MRED or NMED) depending on
+a GNN surrogate, scales to large design spaces, and yields energy-                the application.
+efficient, variation-aware DCiM under accuracy constraints.
+                                                                                  4.1.3 PEA-GNN: Performance Model of Multiplier. To evaluate con-
+                                                                                  figurations efficiently, PEA-GNN encodes a compressor assignment
+4     Conquering the Approximate Multiplier                                       a into a stage-wise graph 𝐺=(𝑉 , 𝐸) aligned with the multiplier’s
+Having outlined the two-level flow, we now focus on the approximate               compression hierarchy. Nodes are combinational logic circuits (HA,
+multiplier. We begin with the architecture-level configuration space              FA, exact/approximate 4–2 compressors); edges are signal intercon-
+and later refine selected compressors at the transistor level.                    nects. Stages {𝑆 1, . . . , 𝑆𝑇 } partition 𝑉 by reduction level (𝑇 equals
+                                                                                  the number of compression stages).
+4.1     Top-Level: Approximate Compressor                                            Graph/node features. For a node with 𝑛 inputs, 𝑚 outputs and
+                                                                                  variant 𝑦, let the truth table be H (𝑦) ∈ {0, 1}2 ×𝑚 (digital mapping
+                                                                                                                                     𝑛
+        Combinations
+Building on Fig. 3, we now formalize the architecture-level configu-              of inputs to outputs). With independent inputs of marginals {𝑝 𝑗 }𝑛𝑗=1
+ration space.                                                                     (bit-1 probabilities; typically 𝑝 𝑗 =0.5 under uniform toggling), define
+                                                                                  the input-combination weights
+4.1.1 Design Parameters. For the 𝑁 -bit multiplier in Fig. 3, partial                                     𝑛
+products (PPs) form 2𝑁 columns indexed by J = {0, . . . , 2𝑁 − 1}.                                          𝑝 𝑗 𝑖,𝑗 (1−𝑝 𝑗 ) 1−𝑏𝑖,𝑗 ,
+                                                                                                          Ö
+                                                                                                                                        𝑏𝑖 ∈ {0, 1}𝑛 ,   (4)
+                                                                                                             𝑏
+                                                                                                   𝜔𝑖 =
+Approximation is restricted to the lower significant columns J𝐿 =                                         𝑗=1
+{0, . . . , 𝑁 − 1}, while the remaining columns J𝐻 = {𝑁 , . . . , 2𝑁 − 1}
+remain exact.                                                                     and the input-probability vector of each nodes 𝒑 in = (H (𝑦) ) ⊤ 𝝎.
+   Within J𝐿 , the layout provides 𝑡 = 9 configurable compressor                  Given an error vector 𝒆 (𝑦) (bit-level deviation from the exact com-
+positions, corresponding to the indexed positions shown in Fig. 3.                pressor), the fused node feature is
+Each slot 𝑖 ∈ {1, . . . , 𝑡 } lies at column 𝑗𝑖 ∈ J𝐿 , and may choose one                                       𝒉 𝑣(𝑘 ) = 𝒑 in ⊙ 𝒆 (𝑦) .                 (5)
+compressor from the library C = {𝑐 0, . . . , 𝑐 𝐾 −1 } with 𝐾 = 8 types. A
+design is thus encoded by a = [𝑎 1, . . . , 𝑎𝑡 ], where 𝑎𝑖 ∈ {0, . . . , 𝐾 − 1}     Stage-wise message passing. Within each stage subgraph 𝐺 [𝑆𝑘 ],
+denotes the selected compressor type. The architecture-level search               GraphSAGE updates embeddings by
+space therefore contains 𝐾 𝑡 = 89 possible combinations.
+                                                                                                                                           
+                                                                                        𝒉 𝑣(𝑘+1) = 𝜎 W𝑘 𝒉 𝑣(𝑘 ) ∥ AGG𝑘 ({𝒉𝑢(𝑘 ) : 𝑢 ∈ N(𝑣)}) , (6)
+                                                                                                       
+   This parameterization explicitly captures: (i) the selective approx-
+imation region defined by J𝐿 , and (ii) heterogeneous compressor                  where 𝜎 is a nonlinearity, W𝑘 are learnable weights, and AGG𝑘 is a
+assignment through the vector a.                                                  neighborhood aggregator (e.g., mean). This propagates localized in-
+                                                                                  formation along the compression flow. After 𝑇 stages, critical nodes
+4.1.2 Objective Functions. Next, we define the accuracy and physical
+                                                                                  Vcritical =𝑉approx ∪ 𝑉last are concatenated to form a global representa-
+metrics used for evaluation and the top-level objective. Given a con-
+                                                                                  tion 𝒈.
+figuration a, we define the exact multiplication result 𝑅exact (𝑥, 𝑦) and
+                                                                                     Regression head. A shared MLP maps 𝒈 to predictions
+the approximate result 𝑅a (𝑥, 𝑦) for inputs (𝑥, 𝑦) ∈ {0, . . . , 2𝑁 −1}2 .
+Let the error distance be EDa (𝑥, 𝑦)=|𝑅a (𝑥, 𝑦)−𝑅exact (𝑥, 𝑦)|.                                                  NMED,
+                                                                                                        b = MRED,                                      (7)
+                                                                                                                                      
+                                                                                                        𝒚                𝐷,      b 𝑃b ,
+                                                                                                                               b 𝐴,
+                                                                                    {0, 1}2 ×𝑚 be the target truth table of compressor 𝑦, where 𝑛 and
+                                                                                             𝑛
+
+
+                                                                                    𝑚 are the numbers of inputs and outputs, respectively. For input
+                                                                                    𝑏𝑖 ∈ {0, 1}𝑛 , let Vout (w; 𝑏𝑖 ) ∈ R𝑚 be simulated output voltages of
+                                                                                    N𝑦 (w), and c(·) the logic classification using technology thresholds
+                                                                                       max , 𝑉 min ). Functional correctness requires
+                                                                                    (𝑉OL      OH
+                                                                                                                         (𝑦)
+                                                                                                    c Vout (w; 𝑏𝑖 ) = H𝑖,:    ∀ 𝑖 ∈ {1, . . . , 2𝑛 }.  (8)
+                                                                                                                   
+
+                                                                                    We define delay 𝐷 (w) as worst-case path delay (50% threshold),
+                                                                                    dynamic power 𝑃 (w) from transient toggling, and area 𝐴(w) from
+Figure 4: PEA-GNN: stage-wise graph, node-feature fusion,                           cell-area models; PDP(w)=𝑃 (w) · 𝐷 (w). Putting these together, the
+and regression.                                                                     bottom-level sizing problem is:
+                                                                                                       min       PDP(w), 𝐴(w)
+                                                                                                                                 
+with Softplus on outputs to ensure non-negativity (consistent with                                    w∈W𝑦
+physical metrics).                                                                                                                                    (9)
+                                                                                             s.t. c Vout (w; 𝑏𝑖 ) = H𝑖,: , ∀𝑖, 𝑤𝑘 ∈ [𝑤𝑘min, 𝑤𝑘max ] .
+                                                                                                                    (𝑦)
+  As shown in Fig. 4, this hierarchical design yields fast, high-fidelity
+predictions for accuracy and PPA while aligning message passing                     Optionally, robustness can be enforced across PVT corners C by re-
+with the compression stages.                                                        placing metrics with their worst-case values, e.g., 𝐷 max (w)= max𝑐 ∈C 𝐷 (w; 𝑐).
+4.1.4 Multi-Objective Optimization Algorithms. Equipped with                           This transistor-level refinement complements Level I architecture
+the surrogate, we adopt the same iterative view as above. At                        by co-optimizing device sizes with compressor assignment, improv-
+iteration 𝑡, select the next feasible compressor configuration x𝑡 +1                ing energy efficiency and implementation robustness of approximate
+either by scoring candidates with 𝑎𝑡 (x) or by applying an up-                      multipliers.
+date operator 𝑈𝑡 ; stochastic methods may accept a proposal with
+probability 𝐴𝑡 . Let the objectives be f (x)= MRED(x), PDP(x) .                     5      Conquering SRAM Macro
+We say x ≺ y if 𝑓𝑖 (x) ≤ 𝑓𝑖 (y) for all 𝑖 and strictly for some                     Having refined multiplier logic, we now focus on the SRAM macro.
+𝑗; the Pareto set is X∗ and the frontier F∗ . (i) MOEA/D [27]:                      We begin with bank-level configuration under a capacity constraint
+scalarization-based selection x𝑡 +1 = arg minx 𝑠𝝀 (x) (weighted                     and later tune bitcells at the transistor level.
+Tchebycheff or weighted sum); subproblems cooperate to approx-
+imate F∗ . (ii) NSGA-II [7]: population update x𝑖𝑡 +1 =𝑈𝑡 (x𝑖𝑡 ) with               5.1      Top-Level: SRAM Bank Configuration
+non-dominated sorting and crowding-distance selection to preserve
+                                                                                    In parallel with multiplier exploration, we use the open-source
+diversity along F∗ . (iii) SMAC [12]: surrogate-guided acquisition
+                                                                                    OpenYield framework for variation-aware analysis. Here we formal-
+x𝑡 +1 = arg maxx 𝑎𝑡 𝑠𝝀 (x) under random-forest models; effective in
+                                                                                    ize the SRAM architecture-level configuration space and notation.
+categorical spaces. (iv) MOBO [10, 23]: acquisition-based selec-
+tion maximizing expected hypervolume improvement; balances                          5.1.1 Design Parameters. We first define the discrete array orga-
+exploration and exploitation toward higher-Pareto-quality solutions.                nization under a capacity constraint. OpenYield explores the ar-
+    Together with PEA-GNN, these backends rapidly generate                          chitectural design space of SRAM macros subject to fixed storage
+accuracy–PDP Pareto frontiers without costly Electronic Design                      capacity. The objective is to identify an array organization—defined
+Automation (EDA), improving architecture-level exploration                          by (𝑟, 𝑐, 𝜇, 𝑛𝑎 ) with rows 𝑟 , columns 𝑐, mux ratio 𝜇, and number of
+throughput. We now transition to bottom-level transistor tuning for                 arrays 𝑛𝑎 —that balances dynamic performance and bank area. All
+compressor implementations.                                                         feasible configurations satisfy the capacity constraint:
+
+4.2     Bottom-Level: Standard Cell Customization                                                               𝑟 × 𝑐 × 𝑛𝑎 = Capacity                           (10)
+Finally, complementing the top-level exploration, transistor-level op-              where Capacity denotes total storage bits. In this section, we set
+timization is performed for each approximate 4–2 compressor based                   Capacity=4 KB×8=32,768 bits, and derive 𝑛𝑎 to ensure full utilization.
+on its CMOS gate-level implementation (technology standard cells:                   Candidates follow power-of-two grids: 𝑟 ∈ {2, 4, 8, . . . , 512} and
+INV, NAND/NOR, XOR/XNOR, AOI/OAI, AND/OR, BUF, etc.).                               𝑐 ∈ {2, 4, 8, . . . , 256}, while 𝜇 is selected from a technology-defined
+4.2.1 Design Parameters. We first define the design variables and                   set.
+grouping used for SPICE evaluation. Channel length 𝐿 is fixed;                      5.1.2 Objective Function. Next, given a valid configuration
+transistor widths are the design variables. For compressor type                     (𝑟, 𝑐, 𝜇, 𝑛𝑎 ), we evaluate dynamic performance and bank area
+𝑦 ∈ {1, . . . , 8}, let G𝑦 ={𝑔1, . . . , 𝑔𝑞 𝑦 } be width-sharing groups of equiv-   using nominal transistor parameters. Let 𝐷 rd and 𝐷 wr be read/write
+alent devices (e.g., pull-up/pull-down pairs). The design vector is                 access delays, and 𝑃rd and 𝑃wr be read/write powers. Define
+w=(𝑤 1, . . . , 𝑤𝑞 𝑦 ) ∈ R+𝑦 with bounds 𝑤𝑘 ∈ [𝑤𝑘min, 𝑤𝑘max ]. Grouping
+                            𝑞
+
+preserves symmetry and reduces dimensionality; the instantiated                         𝐷 max = max{𝐷 rd, 𝐷 wr },     𝑃max = max{𝑃rd, 𝑃 wr },
+                                                                                                                                                                (11)
+netlist N𝑦 (w) is evaluated by circuit-level SPICE simulation.                          𝐴bank (𝑟, 𝑐, 𝜇, 𝑛𝑎 ) = estimated area of the bank for (𝑟, 𝑐, 𝜇, 𝑛𝑎 ).
+4.2.2 Objective Functions. We now state the correctness condition                   To unify the optimization target across both hierarchical levels, we
+and physical metrics, then the bottom-level objective. Let H (𝑦) ∈                  define the figure of merit (FOM) that emphasizes low power, small
+area, and short access delay:                                                Table 1: Inference accuracy and runtime comparison of 8-bit
+                                                                             and 16-bit PEA-GNN models.
+                                          √︁           
+           FOM(𝑟, 𝑐, 𝜇, 𝑛𝑎 ) = − log10 𝑃max 𝐴bank 𝐷 max              (12)                                   8-bit                               16-bit
+                                                                              Metric         MSE (×10−4 ) MRE (%)           R2     MSE (×10−4 ) MRE (%)     R2
+Here, larger FOM indicates better dynamic efficiency for the given            MRED                0.52           2.17      0.998         2.94       4.73   0.977
+organization. With these metrics, architecture-level maximizes                NMED                9.25           1.84      0.996         2.66       2.30   0.959
+                                                                              Delay               6.52           0.03      0.969         7.39       0.22   0.917
+FOM(𝑟, 𝑐, 𝜇) over the feasible set subject to the capacity constraint         Area                1.77           0.11      0.991         3.65       0.12   0.978
+above and the discrete candidate grids. Scanning candidates yields            Power               2.34           0.30      0.989         0.86       0.25   0.968
+power–delay Pareto curves that visualize energy–speed trade-offs              Runtime (s) 0.26 (GNN) vs. 37 (EDA) (142×) 0.25 (GNN) vs. 116 (EDA) (464×)
+across array organizations and bank configurations by FOM. This               EDA evaluation is performed by OpenROAD + OpenSTA + VCS.
+architectural exploration sets up the algorithmic comparison below.
+
+5.1.3 Single-Objective Optimization Algorithms. Equipped with                6.1     Accuracy and Efficiency of PEA-GNN
+the FOM, we use a unified iterative view: at iteration 𝑡, select             As shown in Tab. 1, PEA-GNN closely matches EDA ground truth
+the next feasible configuration x𝑡 +1 either by scoring candidates           across all metrics. For 8-bit designs, all targets achieve MSEs below
+with a function 𝑎𝑡 (x) or by applying an update operator 𝑈𝑡 to               10−3 , with MRED/NMED errors of 2.1%/1.8% and Delay/Area/Power
+the current state; stochastic methods may accept a proposal with             errors under 0.3%. All outputs reach 𝑅 2 >0.94. For 16-bit designs,
+probability 𝐴𝑡 . We minimize 𝑓 (x)=− FOM(x) subject to capacity              accuracy remains high despite the larger space: MRED/NMED errors
+and technology constraints. (i) CBO [9]: Acquisition-based selection         are 4.7%/2.3%, PPA deviations stay below 0.25%, and 𝑅 2 >0.95, con-
+x𝑡 +1 = arg maxx 𝑎𝑡 (x) 𝜋𝑡 (x), where 𝑎𝑡 encodes improvement under           firming the scalability of the stage-wise and hierarchical encoding.
+a GP model and 𝜋𝑡 promotes feasibility; uncertainty balances                 PEA-GNN also provides significant speedups: 0.26,s vs. 37,s for 8-bit
+exploration and exploitation. (ii) PSO [13]: Population update               (142×) and 0.25,s vs. 116,s for 16-bit (464×), enabling rapid evaluation
+x𝑖𝑡 +1 =𝑈𝑡 (x𝑖𝑡 , B𝑡 ), with inertia and attraction toward personal/global   of large design spaces and efficient Pareto-front exploration.
+bests B𝑡 ; particles coordinate toward high-FOM regions. (iii) SA [15]:         Overall, PEA-GNN attains near-EDA accuracy while accelerating
+Neighborhood proposal x′ ∼ N(x𝑡 ) with acceptance 𝐴𝑡 (Δ𝑓 ,𝑇𝑡 );              design-space evaluation by several orders of magnitude, serving as
+occasional uphill moves escape local minima and 𝑇𝑡 cools over time.          an effective surrogate for approximate-multiplier optimization in
+We track convergence, best FOM, and final design quality. Using              OpenACMv2.
+OpenYield’s higher-fidelity circuit models with matched SPICE
+evaluation counts, comparisons are fair and reproducible while
+reflecting dominant failure mechanisms in manufactured arrays.               6.2     Approximate Multiplier
+With the best bank-level organization selected by FOM, we then               6.2.1 Top-Level Results. Fig. 5 and Fig. 6 present the Pareto frontiers
+proceed to bottom-level transistor tuning for SRAM bitcells.                 of the 8/16-bit multipliers under four optimizers. MOEA/D exhibits
+                                                                             the most stable convergence; therefore, five representative points
+5.2    Bottom-Level: SRAM Bitcells                                           (Case1–Case5) are selected for further analysis. Recall ACCO: we
+As our transistor-level step, we size the standard 6T SRAM bit-              treat application-level error budgets (here measured by MRED) as
+cell using OpenYield [20]. We adopt the same settings and algo-              hard constraints in Level-1. Each Case represents a distinct MRED
+rithms as OpenYield: SPICE-based, PVT-aware Monte Carlo across               budget; the architecture search selects designs that meet the budget
+process–voltage–temperature corners; worst-case aggregation of               while minimizing PDP.
+hold/read/write SNM, read/write delay, and dynamic power; and a                 Tab. 2 summarizes their performance on an image blending task.
+robustness-centric figure of merit that increases with margin and            Under ACCO, moving along the frontier from Case1 (relaxed bud-
+penalizes power, delay, and area. Optimization follows OpenYield’s           get, higher MRED) to Case5 (tight budget, lower MRED), PSNR im-
+single- and multi-objective formulations and solver choices, ensuring        proves accordingly, confirming that accuracy-constrained selection
+fair, reproducible comparisons under matched evaluation budgets              translates to task-level quality. The Base design (Yang1 compressor)
+and delivering robust bitcell configurations aligned with the array          achieves the highest PSNR but with an excessively low MRED and
+organization selected at the architecture level.                             large energy overhead; ACCO avoids over-precision by enforcing the
+                                                                             budget and selecting energy-optimal architectures. For each budget,
+                                                                             Level-2 device tuning further reduces PDP while preserving PSNR
+6     Experimental Evaluation                                                (see Lv-1 vs. Lv-2 in Tab. 2), satisfying ACCO’s requirement that
+All experiments are performed on a workstation with an Intel Xeon            device-level changes do not violate the accuracy constraint.
+Gold 6330 CPU (2.00 GHz) and an NVIDIA A100 GPU (40 GB). The                    For the 16-bit case, Tab. 3 reports CIFAR-10 inference under ACCO
+proposed PEA-GNN is implemented in PyTorch and PyTorch Geomet-               budgets spanning roughly an order of magnitude in MRED. Despite
+ric (PyG) using the Adam optimizer. Datasets are automatically gener-        this spread, Top-1/Top-5 accuracy varies by less than 1%, highlighting
+ated within the OpenACMv2 framework based on the Nangate45 nm                NN error tolerance and the value of budgeted approximation. Sev-
+open-cell library, where each synthesized design is evaluated under          eral Pareto-optimal points match the Base design’s accuracy while
+a 5 ns clock period and a 10 fF output load using OpenROAD and               significantly reducing PDP, and Level-2 tuning consistently lowers
+OpenSTA.                                                                     PDP within each budget (Lv-1 vs. Lv-2), with accuracy unchanged.
+                                                            PDP(fJ)          PSNR
+                                      Mult. MRED
+                                                          Lv-1 Lv-2 Test0 Test1
+                                      Base 2.40E-03           484         69.81   70.59
+                                      Case1 5.88E-02       193 191        47.03   46.01
+                                      Case2 3.21E-02       196 192        49.08   48.96
+                                      Case3 1.47E-02       204 199        51.03   51.38
+                                      Case4 6.70E-03       214 206        54.94   56.79
+                                      Case5 4.25E-03       240 229        58.57   64.31
+                                      Test0: Cameraman + Boat, Test1: Cameraman + Lake
+
+                             Table 2: Image PSNR com-
+Figure 5: Arch.-level Pareto parison under accuracy con-                                  Figure 8: Arch.-level SRAM Figure 9: Trans.-level Pareto
+Frontier of 8-bit multiplier straints.                                                    Pareto frontiers under capac- frontiers across the best bank
+obtained by optimizers.                                                                   ity constraints.                     configurations.
+                                                                                          as data multiplexing and pre-decoding; increasing row number re-
+                                       Mult. MRED
+                                                            PDP(fJ)
+                                                                         Top-1 Top-5      duces the array count, yielding lower delay but higher dynamic
+                                                           Lv-1 Lv-2                      power due to larger load on bitlines. Across optimizers, the result-
+                                       Base 1.27E-10     3874             66.6     86.7   ing power–delay trade-off traces a concave Pareto front, with the
+                                       Case1 1.66E-03 1216 1203           65.7     86.3
+                                       Case2 1.22E-03 1219 1204           65.8     86.3   highest-FOM designs clustering near the “elbow” where periphery
+                                       Case3 8.44E-04 1222 1207           65.1     86.2   cost and bitline switching are balanced. These shortlisted banks are
+                                       Case4 4.09E-04 1254 1221           66.5     86.7
+                                       Case5 1.77E-04 1337 1289           65.7     86.4
+                                                                                          passed directly to Level-2 transistor sizing.
+                                                                                             At the bottom level (Fig. 9), transistor sizing across the best bank
+                               Table 3: MRED, PDP, and                                    configurations yields only limited reductions in terms of delay and
+Figure 6: Arch.-level Pareto Top-𝑘 (%) comparison under                                   dynamic power compared with the architecture-level gains. The non-
+frontiers of 16-bit multiplier accuracy constraints.                                      ideal peripheral circuits restrict safe sizing windows, resulting in
+obtained by optimizers.                                                                   wider exploration failing in SPICE simulations during optimization.
+                                                                                          Both Fig. 8 and Fig. 9 demonstrate that only optimizing bitcell devices
+                                                                                          offers incremental headroom but does not materially shift the power–
+                                                                                          delay frontier. Consequently, architecture-level choices dominate
+                                                                                          the SRAM PPA under ACCO, while device-level tuning provides
+                                                                                          fine-grained adjustments.
+
+                                                                                          6.4    Putting All Together
+                                                                                          Under explicit MRED budgets, the two-level ACCO jointly improves
+                                                                                          energy efficiency without degrading task accuracy. Level-1 architec-
+                                                                                          ture exploration establishes the accuracy–PDP frontier at each budget
+Figure 7: Transistor-level Pareto frontiers: across optimizers                            (Fig. 5, Fig. 6; Tab. 2, 3). Level-2 transistor tuning then shifts the fron-
+on the Sabetz compressor [18] (left); across compressors using                            tier left—reducing PDP while keeping PSNR and Top-𝑘 accuracy
+MOEA/D (right). Rhomboids are reference points.                                           unchanged—so the combined flow delivers lower energy at equal or
+6.2.2 Bottom-Level Results. To further improve implementation ef-                         tighter error budgets across bit-widths and compressor families. For
+ficiency, we apply transistor-level optimization to each compressor.                      SRAM macros specifically, bottom-level sizing delivers more area
+Fig. 7 (left) presents the results of four optimization algorithms on the                 reductions—despite negative impact on delay and power—though
+Sabetz compressor, where MOEA/D achieves the best Pareto-front                            detailed area results are omitted due to space limitations.
+convergence and the most favorable PDP–area trade-off. Motivated
+by this observation, we adopt MOEA/D to optimize all eight approx-                        Conclusion & Limitations
+imate compressors individually, as shown in Fig. 7 (right). In every                      OpenACMv2 advances ACCO for DCiM with a two-level flow that
+case, the optimized Pareto front lies to the left of its corresponding                    shifts the accuracy–PDP Pareto front toward lower energy under
+standard-size baseline (diamond markers), indicating that transistor-                     fixed accuracy budgets. Level-1 performs PEA-GNN–guided archi-
+level tuning delivers significant and consistent improvements in the                      tecture search (compressors, SRAM) for 8/16-bit designs; Level-2
+PDP–area space. Importantly, device-level tuning respects ACCO:                           applies variation/PVT-aware sizing to shortlisted logic and memory,
+architectural error (MRED) remains unchanged across Level-2, so                           reducing PDP while preserving PSNR and Top-𝑘 accuracy. Together,
+PDP reductions do not compromise the accuracy budget.                                     the flow yields energy-optimal designs at the required precision
+                                                                                          across compressor families and bit-widths.
+                                                                                             Limitations. (i) Surrogate fidelity and coverage across PVT cor-
+6.3    SRAM Macro                                                                         ners; (ii) narrow objective scope focused on PDP and accuracy—omits
+As shown in Fig. 8, the architecture-level exploration scans bank orga-                   throughput, leakage, IR drop, and routing congestion; (iii) incomplete
+nizations by varying row/column splits, array counts, and mux ratios                      backend signoff integration (place-and-route, parasitic extraction,
+under a fixed capacity budget. Smaller arrays (fewer rows/columns)                        crosstalk); (iv) limited depth in SRAM macro and bitcell/periphery
+exhibit lower energy but longer delay dominated by periphery, such                        co-optimization.
+References                                                                                        Defect and Fault Tolerance in VLSI and Nanotechnology Systems (DFTS). 183–186.
+ [1] Tutu Ajayi, Vidya A Chhabria, Mateus Fogaça, Soheil Hashemi, Abdelrahman                     doi:10.1109/DFT.2015.7315159
+     Hosny, Andrew B Kahng, Minsoo Kim, Jeongsup Lee, Uday Mallappa, Marina                  [25] Kentaro Yoshioka, Shimpei Ando, Satomi Miyagi, Yung-Chin Chen, and Wenlun
+     Neseem, et al. 2019. Toward an open-source digital flow: First learnings from the            Zhang. 2024. A review of SRAM-based compute-in-memory circuits. Japanese
+     openroad project. In Proceedings of the 56th Annual Design Automation Conference             Journal of Applied Physics (2024).
+     2019. 1–4. Available: https://openroad.readthedocs.io/.                                 [26] Hongyi Zhang, Haozhe Zhu, Siqi He, Mengjie Li, Chengchen Wang, Xiankui Xiong,
+ [2] Omid Akbari, Mehdi Kamal, Ali Afzali-Kusha, and Massoud Pedram. 2017. Dual-                  Haidong Tian, Xiaoyang Zeng, and Chixiao Chen. 2024. Arctic: Agile and robust
+     Quality 4:2 Compressors for Utilizing in Dynamic Accuracy Configurable Multipli-             compute-in-memory compiler with parameterized int/fp precision and built-in self
+     ers. IEEE Transactions on Very Large Scale Integration (VLSI) Systems 25, 4 (2017),          test. In 2024 Design, Automation & Test in Europe Conference & Exhibition (DATE).
+     1352–1361. doi:10.1109/TVLSI.2016.2643003                                                    IEEE, 1–6.
+ [3] Anonymous. [n. d.]. OpenACM: An Open-Source SRAM-Based Approximate CiM                  [27] Qingfu Zhang and Hui Li. 2007. MOEA/D: A multiobjective evolutionary algorithm
+     Compiler. ([n. d.]).                                                                         based on decomposition. IEEE Transactions on evolutionary computation 11, 6 (2007),
+ [4] Giorgos Armeniakos, Georgios Zervakis, Dimitrios Soudris, and Jörg Henkel. 2022.             712–731.
+     Hardware approximate techniques for deep neural network accelerators: A survey.         [28] Qian Zhang, Ting Wang, Ye Tian, Feng Yuan, and Qiang Xu. 2015. ApproxANN: An
+     Comput. Surveys 55, 4 (2022), 1–36.                                                          approximate computing framework for artificial neural network. In 2015 Design,
+ [5] Chia-Yu Chen, Jungwook Choi, Kailash Gopalakrishnan, Viji Srinivasan, and Swa-               Automation & Test in Europe Conference & Exhibition (DATE). IEEE, 701–706.
+     gath Venkataramani. 2018. Exploiting approximate computing for deep learning
+     acceleration. In 2018 Design, Automation & Test in Europe Conference & Exhibition
+     (DATE). IEEE, 821–826.
+ [6] Jia Chen, Fengbin Tu, Kunming Shao, Fengshi Tian, Xiao Huo, Chi-Ying Tsui, and
+     Kwang-Ting Cheng. 2023. Autodcim: An automated digital cim compiler. In 2023
+     60th ACM/IEEE Design Automation Conference (DAC). IEEE, 1–6.
+ [7] Kalyanmoy Deb, Amrit Pratap, Sameer Agarwal, and TAMT Meyarivan. 2002. A
+     fast and elitist multiobjective genetic algorithm: NSGA-II. IEEE transactions on
+     evolutionary computation 6, 2 (2002), 182–197.
+ [8] Tianchu Dong, Shaoxuan Li, Yihang Zuo, Hongwu Jiang, Yuzhe Ma, and Shanshi
+     Huang. 2025. OpenC 2: An Open-Source End-to-End Hardware Compiler De-
+     velopment Framework for Digital Compute-in-Memory Macro. In 2025 Design,
+     Automation & Test in Europe Conference (DATE). IEEE, 1–2.
+ [9] Jacob R Gardner, Matt J Kusner, Zhixiang Eddie Xu, Kilian Q Weinberger, and
+     John P Cunningham. 2014. Bayesian optimization with inequality constraints.. In
+     ICML, Vol. 2014. 937–945.
+[10] Michael A Gelbart, Jasper Snoek, and Ryan P Adams. 2014. Bayesian optimization
+     with unknown constraints. arXiv preprint arXiv:1403.5607 (2014).
+[11] Minho Ha and Sunggu Lee. 2018. Multipliers With Approximate 4–2 Compressors
+     and Error Recovery Modules. IEEE Embedded Systems Letters 10, 1 (2018), 6–9.
+     doi:10.1109/LES.2017.2746084
+[12] Frank Hutter, Holger H Hoos, and Kevin Leyton-Brown. 2011. Sequential model-
+     based optimization for general algorithm configuration. In International conference
+     on learning and intelligent optimization. Springer, 507–523.
+[13] James Kennedy and Russell Eberhart. 1995. Particle swarm optimization. In Proceed-
+     ings of ICNN’95-international conference on neural networks, Vol. 4. ieee, 1942–1948.
+[14] HyunJin Kim and Alberto A. Del Barrio. 2024. Low-biased probabilistic multipliers
+     using complementary inaccurate compressors. Digital Signal Processing 146 (2024),
+     104364. doi:10.1016/j.dsp.2023.104364
+[15] Scott Kirkpatrick, C Daniel Gelatt Jr, and Mario P Vecchi. 1983. Optimization by
+     simulated annealing. science 220, 4598 (1983), 671–680.
+[16] Tianqi Kong and Shuguo Li. 2021. Design and Analysis of Approximate 4–2
+     Compressors for High-Accuracy Multipliers. IEEE Transactions on Very Large
+     Scale Integration (VLSI) Systems 29, 10 (2021), 1771–1781. doi:10.1109/TVLSI.2021.
+     3104145
+[17] Amir Momeni, Jie Han, Paolo Montuschi, and Fabrizio Lombardi. 2015. Design
+     and Analysis of Approximate Compressors for Multiplication. IEEE Trans. Comput.
+     64, 4 (2015), 984–994. doi:10.1109/TC.2014.2308214
+[18] Farnaz Sabetzadeh, Mohammad Hossein Moaiyeri, and Mohammad Ahmadinejad.
+     2019. A Majority-Based Imprecise Multiplier for Ultra-Efficient Approximate
+     Image Multiplication. IEEE Transactions on Circuits and Systems I: Regular Papers
+     66, 11 (2019), 4200–4208. doi:10.1109/TCSI.2019.2918241
+[19] Kunming Shao, Fengshi Tian, Xiaomeng Wang, Jiakun Zheng, Jia Chen, Jingyu He,
+     Hui Wu, Jinbo Chen, Xihao Guan, Yi Deng, et al. 2025. SynDCIM: A Performance-
+     Aware Digital Compute-in-Memory Compiler with Multi-Spec-Oriented Subcircuit
+     Synthesis. In 2025 Design, Automation & Test in Europe Conference (DATE). IEEE,
+     1–7.
+[20] Shan Shen, Xingyang Li, Zhuohua Liu, Yikai Wang, Yiheng Wu, Junhao Ma, Yuquan
+     Sun, and Wei W Xing. 2025. OpenYield: An Open-Source SRAM Yield Analysis
+     and Optimization Benchmark Suite. arXiv preprint arXiv:2508.04106 (2025).
+[21] Antonio Giuseppe Maria Strollo, Ettore Napoli, Davide De Caro, Nicola Petra, and
+     Gennaro Di Meo. 2020. Comparison and Extension of Approximate 4-2 Compres-
+     sors for Low-Power Approximate Multipliers. IEEE Transactions on Circuits and
+     Systems I: Regular Papers 67, 9 (2020), 3021–3034. doi:10.1109/TCSI.2020.2988353
+[22] North Carolina State University. 2024. FreePDK45: An Open-Source 45nm Process
+     Design Kit. Available: https://www.eda.ncsu.edu/freepdk/freepdk45/.
+[23] Kaifeng Yang, Michael Emmerich, André Deutz, and Thomas Bäck. 2019. Multi-
+     objective Bayesian global optimization using expected hypervolume improvement
+     gradient. Swarm and evolutionary computation 44 (2019), 945–956.
+[24] Zhixi Yang, Jie Han, and Fabrizio Lombardi. 2015. Approximate compressors
+     for error-resilient multiplier design. In 2015 IEEE International Symposium on
+
