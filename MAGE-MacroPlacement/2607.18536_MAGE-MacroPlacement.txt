@@ -1,0 +1,1284 @@
+                                                                                                                                                                                 1
+
+
+
+
+                                         MAGE: Human-Like Macro Placement via Agentic
+                                                   Multimodal Reasoning
+                                                     Andrew B. Kahng, Fellow, IEEE, Sayak Kundu, Graduate Student Member, IEEE, Bodhisatta
+                                                                           Pramanik, Graduate Student Member, IEEE
+
+
+
+                                            Abstract—Macro placement still requires substantial manual         However, they often miss the higher-level spatial regularity
+                                         refinement in industrial physical design flows. We present MAGE       and functional coherence that characterize expert-designed
+                                         (Macro Placement Agentic Engine), a multimodal multi-agent            floorplans. As a result, automated placements may require
+                                         framework for macro placement refinement. MAGE decomposes
+                                         the macro placement task into a six-phase workflow that com-          substantial manual refinement before they are suitable for
+                                         bines structured floorplanning rules, visual checks, and iterative    downstream implementation. In industrial flows, this refine-
+                                         refinement. Expert floorplanning knowledge is encoded through         ment is often performed by experienced PD engineers after
+                                         natural-language directives and validation criteria, rather than      an initial macro placement is produced by a commercial tool.
+                                         learned from labeled placement data. A tournament-style re-           The designers modify the placement to better reflect hierarchy,
+                                         finement mode evaluates multiple candidate placements and
+                                         propagates feedback from higher-quality solutions. We also            dataflow, alignment, routing access, power-grid constraints,
+                                         introduce four metrics for quantifying human-likeness in macro        and overall floorplan intent. This motivates automated macro
+arXiv:2607.18536v1 [cs.AI] 20 Jul 2026
+
+
+
+
+                                         placement: notch score, whitespace score, pocket score, and           placement methods that can incorporate expert floorplanning
+                                         alignment score. These metrics capture structural properties used     principles directly into the macro placement process.
+                                         by expert designers but not directly measured by conventional
+                                         PPA metrics. Across nine designs in NanGate45 and Global-                This work addresses the above macro placement refinement
+                                         Foundries 12nm enablements, MAGE achieves geometric-mean              challenge by encoding expert floorplanning principles into
+                                         improvements of 11.1%–19.3% in WNS and 70.0%–74.0% in                 a multimodal, validation-driven placement loop. Rather than
+                                         TNS over commercial macro placers. On the three NanGate45             optimizing only for legality or proxy cost objectives, we
+                                         designs, for which human-expert and Hier-RTLMP baselines are          seek macro placements that better capture the organizational
+                                         available, MAGE improves WNS and TNS by 18.3% and 72.5%
+                                         over the human expert, and by 47.0% and 80.4% over Hier-              principles used by expert PD engineers. We propose MAGE
+                                         RTLMP, with comparable wirelength and power. On human-                (Macro Placement Agentic Engine), a multi-agent framework
+                                         likeness metrics, MAGE improves the overall score by 6%–48%           for macro placement that uses multimodal reasoning to gen-
+                                         over all baselines. Additional case studies on anonymized netlists,   erate human-like macro placements. Instead of training a
+                                         unseen designs, dense rectilinear floorplans, and high-utilization    model on labeled placement examples, MAGE encodes expert
+                                         settings show that the framework transfers to new placement
+                                         settings without design-specific retraining.                          floorplanning knowledge through structured prompts, agent
+                                                                                                               interactions, visual checks, and explicit refinement criteria.
+                                                                                                               Our main contributions are as follows.
+                                                                I. I NTRODUCTION                               • A multi-agent framework for human-like macro placement.
+                                            Macro placement is a central problem in VLSI physical                 We propose MAGE, a multi-agent framework that generates
+                                         design. The task is to determine the locations and orientations          macro placements through ten specialized agents organized
+                                         of large pre-designed blocks, such as SRAMs, register files,             into a six-phase pipeline (Section IV). The agents handle
+                                         analog macros, and accelerators, within a chip floorplan.                design interpretation, macro grouping, spatial organization,
+                                         Since macros occupy substantial area and constrain whites-               feasibility checking, refinement, and visual audit. This de-
+                                         pace, routing access, and power delivery, their placement                composition treats macro placement as a structured design
+                                         strongly affects downstream PPA and design convergence.                  process rather than a single monolithic optimization task.
+                                         The problem is NP-hard and in practice requires optimization             To the best of our knowledge, MAGE is the first agentic
+                                         of coupled objectives that include wirelength, congestion,               macro placement framework explicitly designed to generate
+                                         density, routability, and design-rule feasibility. Today, high-          human-like macro placement solutions.
+                                         quality macro placement relies heavily on expert physical             • Two-stage synthesis and evolutionary refinement. MAGE
+                                         design (PD) engineers who reason not only about physical cost            decomposes macro placement into two stages. The first
+                                         metrics, but also about logical hierarchy, dataflow, symmetry,           stage generates placements that prioritize structural prop-
+                                         pin accessibility, and more. By grouping related macros and              erties such as coherent macro grouping, interpretable spa-
+                                         arranging them into regular spatial patterns, engineers try to           tial organization, boundary alignment, and regular macro
+                                         produce floorplans that are structured, interpretable, and more          stacks (Section IV). The second stage applies a Go-With-
+                                         amenable to optimization in later implementation stages.                 The-Winners (GWTW) [2] tournament-style evolutionary
+                                            Despite decades of research, existing macro placement                 optimization to improve implementation metrics, including
+                                         methods [3], [22]–[24], [29]–[31] do not consistently repro-             wirelength and timing, while preserving the structural prop-
+                                         duce this form of human expert reasoning. Classical optimiza-            erties established in the first stage (Section IV-G). We further
+                                         tion methods, analytical placers, and learning-based techniques          enable the framework to explore multiple candidate macro
+                                         can produce legal placements with competitive metric values.             placements rather than following a single macro placement
+                                                                                                                                                       2
+
+
+
+  trajectory.                                                             TABLE I: Summary of notation and terminology.
+• Principles and metrics for human-likeness in macro place-
+                                                                              Symbol                 Description
+  ment. We formalize a set of floorplanning principles that
+                                                                            N , F, Θ                 Design netlist, floorplan spec., configuration
+  characterize human-like macro placement (Section III).               M = {m1 , . . . , mn }        Set of hard macros
+  These principles define the structural properties that MAGE           (wi , hi ), (xi , yi )       Dimensions and coordinates of macro mi
+  seeks to preserve during placement. MAGE encodes these                      oi ∈ O                 Orientation of macro mi
+                                                                              S, C, I                Standard cells, core region, IO/pin info
+  principles through structured prompts, refinement criteria,                     K                  Knowledge corpus
+  visual checks, and a supporting knowledge corpus, rather                   X 0, X ⋆                Initial and refined macro placement
+  than learning them from labeled placement data. We further            G = {g1 , . . . , gk }       Set of hierarchy-aware macro groups
+  introduce four metrics to quantify human-likeness: notch                Q1 , . . . , Q p           Families of similar macro groups
+                                                                          Bg , W g , H g             Bounding box of group g, with width and height
+  score, whitespace score, pocket score, and alignment score
+                                                                           gref , Pref               Reference group and its macro placement
+  (Section III-A). These metrics capture floorplan structure                 P, P ⋆                  Chip-level and final selected macro placement
+  that is important to expert-designed placements but is not                    Tg                   Geometric transformation applied to group g
+                                                                              τmax                   Group-size threshold for recursive sub-grouping
+  directly measured by standard PPA metrics.
+• Evaluation on standard, industrial, and rectilinear floor-                Nv , Ns , R              Tournament variants, survivors, rounds (default
+                                                                                                     6, 3, 6)
+  plans. We evaluate MAGE on designs across NanGate45                       V (r) , W (r)            Variant pool and survivor set at round r
+  and GlobalFoundries 12nm enablements, including standard                        H                  Evaluation history (placements and eGR wirelengths)
+  macro placement designs from the MacroPlacement repos-                       Nmax                  Max. validation iterations (default 3)
+  itory [47], designs from Hier-RTLMP [22], four rectilinear                     cw                  Minimum channel width between macros
+  floorplan variants, and two unseen designs. To the best of       Snotch , Sws , Spocket , Salign   Notch, whitespace, pocket, alignment scores
+                                                                               SHM                   Overall human-likeness score
+  our knowledge, this is the first macro placement work to
+  evaluate placements on rectilinear floorplans. We compare
+  against a human expert baseline, two releases of an un-
+                                                                   floorplanning for hierarchical designs. Subsequent works in-
+  named commercial macro placer, and OpenROAD’s Hier-
+                                                                   corporated additional objectives, including interconnect-driven
+  RTLMP [22].
+                                                                   optimization [6], [14], routability awareness [7], [11], [27],
+• Improved PPA over baselines. MAGE achieves geometric-
+                                                                   and dataflow-aware floorplanning [28]. [34] further proposed
+  mean improvements of 47.0% in WNS and 80.4% in
+                                                                   deferred-decision techniques to improve search quality.
+  TNS over Hier-RTLMP, and 11.1%–19.3% in WNS and
+                                                                   Analytical and mixed-size placement. Analytical placers
+  70.0%–74.0% in TNS over the commercial baselines (Sec-
+                                                                   formulate placement as a continuous optimization problem and
+  tion VI-A). On dense rectilinear designs with over 70%
+                                                                   have been widely used for mixed-size designs [3]. [29] pre-
+  utilization, MAGE achieves 5%–40% better WNS and up
+                                                                   sented ePlace-MS, an electrostatics-based mixed-size placer.
+  to 74% better TNS than the commercial baseline (Sec-
+                                                                   [8] later extended this in RePlAce, which introduced additional
+  tion VI-D). On human-likeness metrics, MAGE outperforms
+                                                                   improvements. [24] proposed MAPLE, a multilevel adaptive
+  all baselines by 6%–48% in overall human-likeness score
+                                                                   placement framework, and [20] developed NTUplace4h for
+  (Section VI-B). On two unseen designs not used dur-
+                                                                   hierarchical mixed-size placement. [35] proposed a floorplan-
+  ing prompt development or knowledge-corpus construction,
+                                                                   guided approach for large-scale mixed-size placement. These
+  MAGE improves WNS by 6%–27% and human-likeness by
+                                                                   methods integrate macro placement into the standard-cell
+  26%–40% over the commercial baselines (Section VI-D).
+                                                                   placement framework.
+   Table I summarizes the notation and terminology used in         Hierarchy-aware macro placement. Previous works have
+this paper. The remainder of the paper is organized as follows.    incorporated hierarchy and architectural structure into place-
+Section II reviews related work. Section III codifies principles   ment [21]. [13] uses design hierarchy to improve routabil-
+of human-like macro placement, defines four human-likeness         ity in mixed-size placement, while [15], [25], [33] ad-
+metrics, and formalizes the optimization objective. Section IV     dresses microarchitectural floorplanning. [12] combines SA
+describes the MAGE framework. Section V explains how               with network-flow-based area migration in a hierarchical
+multimodal reasoning and visual feedback are integrated into       framework. RTL-MP [22] leverages RTL hierarchy to generate
+the placement pipeline. Section VI presents the experimental       human-quality placements through a top-down partitioning and
+results, and Section VII concludes the paper.                      bottom-up macro placement methodology. Hier-RTLMP [23]
+                                                                   extends this approach to larger and more complex IP blocks
+                     II. R ELATED W ORK                            through hierarchical clustering.
+                                                                   Learning-based approaches. Machine learning (ML) has
+   Macro placement has been extensively studied in the lit-        also been explored for macro placement. Early work by [18]
+erature. We group prior work into four categories: classical       has applied genetic algorithms, and [19] learned local-search
+floorplanning, analytical and mixed-size placement, hierarchy-     heuristics for placement improvement. More recently, [30],
+aware macro placement, and learning-based methods.                 [31] proposed deep reinforcement learning for chip floor-
+Classical macro placement. Early macro placement meth-             planning. However, reinforcement-learning-based approaches
+ods are largely based on simulated annealing (SA) [26]             often require expensive training, can be sensitive to design
+and compact geometric representations. [32] introduced the         distribution, and may be difficult to adapt to industrial design
+sequence-pair representation, and [5] proposed B∗ -trees for       constraints [9].
+nonslicing floorplans. [1] extended these ideas to fixed-outline      Across these prior methods, differences mainly arise from
+                                                                                                                                                           3
+
+
+
+optimization formulations, geometric representations, hierar-               •  Pin-aware orientation. Macro orientations are chosen to
+chy modeling, or learning strategy. Most closely related to                    preserve signal-pin access. Pin edges are directed toward
+our work, VeoPlace [41] uses a vision language model (VLM)                     open routing space or nearby logic, while non-pin edges are
+to guide existing low-level placers by proposing placement                     preferentially placed against core boundaries or shared abut-
+regions or soft anchors, with HPWL improvement as the                          ments. This is especially important in stacked placements,
+primary objective under an inference-time rollout budget. In                   where adjacent macros can block pin access.
+contrast, MAGE is not a wrapper around a single base placer;                • IO keepouts. Macros are placed with sufficient clearance
+rather, it is a multi-agent macro placement framework that uses                from IO interfaces to preserve routing access near the chip
+multimodal reasoning, structured expert knowledge, visual                      boundary, especially along the edges used for signal entry
+feedback, and explicit refinement criteria to make placement                   and exit.
+decisions directly. Thus, while prior LLM-based EDA ef-                     • Pocket minimization. A pocket is a free-space region that
+forts [17], [37]–[39] primarily use foundation models for code                 is too narrow or too small to be usable for standard-cell
+generation, verification, documentation, design assistance, or                 placement (formal definition in Section VI-B).2 Placements
+tool scripting, MAGE applies multimodal foundation models to                   should minimize pocket area, since pockets cannot accom-
+the physical-design task itself, targeting human-like structural               modate standard cells and waste core area. In rectilinear
+organization in addition to conventional PPA objectives.                       cores (cores whose boundary is an axis-aligned polygon
+                                                                               other than a simple rectangle), dead zones — regions
+                                                                               inside the floorplan’s bounding box but outside the core
+                                                                               polygon — are a related but distinct concept: dead zones are
+                                                                               geometrically excluded from placement, whereas pockets
+                                                                               are “valid” free space that is merely unusable.
+                                                                            • Whitespace quality. Macro placements should preserve com-
+                                                                               pact, contiguous, and usable whitespace for standard-cell
+                                                                               placement and routing. We distinguish two conditions that
+                                                                               MAGE tries to avoid: (i) pockets and (ii) “fragmentation”
+                                                                               of the central whitespace into multiple disconnected com-
+                                                                               ponents. Both degrade routability and hinder downstream
+                                                                               placement.
+                                                                               Together, these principles define the structural properties
+                                                                            that we associate with human-like macro placement. While
+                                                                            we evaluate MAGE on routability- and timing metrics, the
+                                                                            same structural regularity of human-like placements also ben-
+                                                                            efit power delivery network construction, clock distribution,
+Fig. 1: Six spatial principles for human-like macro placement               and downstream interpretability — advantages that motivate
+in MAGE. Each subfigure contrasts a desirable macro place-                  human designers beyond the metrics measured here. MAGE
+ment with a poor placement.                                                 encodes them as shared rules used throughout the placement
+                                                                            pipeline to maintain consistent floorplanning intent.3
+  III. P RINCIPLES OF H UMAN -L IKE M ACRO P LACEMENT
+   MAGE is based on the observation that expert floorplanners
+apply recurring spatial principles when placing macros in an
+industrial PD flow. These principles are rarely formalized in               A. Human-Likeness Metrics
+the literature, but are common in practice. We codify them
+as a rule system that guides placement decisions in MAGE.                      To quantify how closely a macro placement resembles
+Figure 1 illustrates the six principles.                                    expert floorplanning, we define four complementary metrics.
+• Boundary placement. Macros are placed along the core                      Each metric is normalized to [0, 1], where 1 denotes the most
+  boundary whenever feasible, rather than floating in the                   human-like outcome. These metrics translate the placement
+  interior. Boundary placement preserves larger contiguous                  principles in Section III into measurable scores.4 Let M
+  central regions for standard-cell placement and routing, and              denote the set of placed macros and C the core region. Let
+  produces more structured floorplans.                                      WC and HC denote the width and height of the bounding
+• Macro stacking. Macros are organized into regular vertical                box of C, respectively (Table I). We use cw to denote the
+  or back-to-back horizontal pairs when dimensions and pin                  minimum channel width between macros. This value is fixed
+  access permit.1 Macros with compatible widths or heights
+  may be abutted to reduce wasted whitespace and avoid                         2 Throughout this paper, we use free space to denote the union of all regions
+  fragmented routing channels. Spacing is introduced only                   inside the chip core not occupied by any macro.
+  when needed for pin access or routing resources.                             3 The listed principles are not exhaustive; they reflect the rules used in the
+                                                                            current implementation. Additional expert guidance can be added to extend
+   1 We define macro stacks as a contiguous arrangement of macros abutted   the rule system to other design styles, technologies, or constraints.
+along a shared macro edge. At large scale, with many macro types and           4 The proposed metrics are complementary rather than strictly orthogonal.
+different dimensions, rigid uniform-width stacking can become suboptimal;   For example, the notch score measures geometric artifacts caused by poor
+prior work [27], [36] explores more flexible arrangements. MAGE treats      alignment, while the alignment score measures direct compliance with bound-
+stacking as a preference rather than a hard rule.                           ary placement, edge alignment, corner occupation, and stacking rules.
+                                                                                                                                                      4
+
+
+
+before evaluation and is not tuned per placement method.5                        valid(mi , mj )}|/|A| where valid(mi , mj ) holds if vertically
+Notch score. A notch is a concave step in the collec-                            abutted macros have matching widths within τ , or horizontally
+tive macro silhouette, often caused by misaligned adjacent                       abutted macros have matching heights within τ . If A is empty,
+macros. We detect notches by scanning the leftmost, right-                       Sstack is omitted from Salign and the remaining alignment
+most, topmost, and bottommost macro extents along each                           weights are renormalized. This avoids rewarding placements
+axis. A step change larger than cw between consecutive                           that avoid stacking entirely.
+scan positions is counted  P as a notch. The notch score is                         The four metrics are combined with equal weight-
+Snotch = max (0, 1 − ( i di ℓi )/(Ltotal · 2cw )) where di is                    ing to define the overall human-likeness score: SHM =
+the perpendicular depth of the i-th notch, ℓi is the length                      1
+                                                                                 4 (Snotch + Sws + Spocket + Salign ).
+over which the notch persists along the scanned silhouette, and                  Metric design and limitations. The proposed metrics are
+Ltotal is the total scanned silhouette length. For example, when                 intended as expert-inspired structural proxies, not as universal
+scanning the left or right silhouette along the vertical direction,              definitions of floorplan quality. They are designed to capture
+di is measured horizontally and ℓi vertically. This metric                       properties that recur in expert macro placements. Some legal
+penalizes jagged macro silhouettes and measures compliance                       expert placements may receive lower scores, for example
+with the macro stacking principle.                                               when a rectilinear core naturally induces non-rectangular
+Whitespace score. This metric measures the shape quality of                      whitespace. To reduce implementation dependence, cw , the
+free-space regions using area-weighted rectangularity, where                     rasterization resolution, and the alignment tolerance are fixed
+the rectangularity of a region is the fraction of its own                        before evaluation and are kept identical.
+bounding box that the region fills, and the per-region values are
+averaged with each region weighted by its area. We rasterize
+the core at resolution cw /4, identify connected free-space                      B. Our Goal
+regions, and compute the rectangularity of each significant
+                                                                                    Given a design netlist N , let M = {m1 , m2 , . . . , mn }
+region with area Aj ≥ 4c2w as qj = Aj /(Wjbb Hjbb ), where
+                                                                                 denote the set of hard macros with fixed dimensions (wi , hi ),
+Wjbb and Hjbb are the width and height of the bounding box of
+                                                                                 S the set of standard cells, C the core region, and I the
+the j-th free-space region.6 The whitespace score is the area-
+                                                                                 set of IO pin locations. The core region C may be rectan-
+weighted mean rectangularity             P significant free-space
+                                  over all
+                    P                                                            gular or rectilinear. Given an initial macro placement X 0 =
+regions: Sws = ( j: Aj ≥4c2 qj Aj )/( j: Aj ≥4c2 Aj ). Higher
+                              w                     w                            {(x0i , yi0 , o0i )}ni=1 , the goal is to produce an updated placement
+scores indicate compact and usable whitespace, while lower
+                                                                                 X = {(xi , yi , oi )}ni=1 , where (xi , yi ) is the macro location and
+scores indicate irregular free-space regions.
+                                                                                 oi ∈ O is its orientation. The placement must satisfy two hard
+Pocket score. A pocket is a small residual free-space subregion
+                                                                                 legality constraints:
+with limited utility for standard-cell placement or routing. We
+classify a free-space subregion as a pocket if its minimum                        1) Containment: each macro must lie entirely inside the core
+cross-sectional width is less than 2cw , or if its area is below                     region, i.e., mi ⊆ C for all i.
+the minimum significant free-space threshold 4c2w . The pocket                    2) Non-overlap: no two macros may have positive-area
+score is Spocket = 1−Apocket /Afree , where Apocket is the total                     overlap, i.e., area(int(mi ) ∩ int(mj )) = 0 for all i ̸= j.
+area of all pocket subregions and Afree is the total free area.                  Subject to these constraints, MAGE treats macro place-
+This metric penalizes narrow or low-utility residual spaces.                     ment as a constrained multi-objective refinement problem.
+Alignment score. This metric evaluates boundary placement,                       The desired placement should improve X 0 in terms of
+inter-macro regularity, corner occupation, and stacking cor-                     implementation quality, measured by QPPA (X ), and struc-
+rectness: Salign = w1 Ssnap + w2 Sedge + w3 Scorner + w4 Sstack ,                tural floorplanning quality, measured by SHM (X ): X ⋆ ∈
+where w1 = 0.3, w2 = 0.2, w3 = 0.2, and w4 = 0.3. We use                         arg optX (QPPA (X ), SHM (X )) subject to containment and
+τ = cw /2 as the geometric tolerance for all coordinate-level                    non-overlap. Here, opt denotes a procedural multi-objective
+comparisons. Ssnap is the fraction of macros with at least one                   refinement rather than a fixed weighted scalarization. In the
+edge within τ of the core boundary. Sedge is the fraction of                     current implementation, hard legality constraints are enforced
+macro edges aligned with another macro edge within τ . Scorner                   by validation, human-like placement principles are enforced
+is the fraction of convex core-boundary corners (interior angle                  through rule-guided generation and visual feedback, and
+90◦ ) occupied by a macro within τ ; reflex corners (270◦ ) are                  tournament refinement uses routed wirelength from Cadence
+excluded since they face into the chip interior. A corner is                     Innovus early global routing (eGR) [46] as the objective
+occupied when one macro edge lies within τ of each incident                      cost (QPPA ). Rather than encoding the human-like placement
+boundary segment.                                                                principles as explicit penalty terms, MAGE represents them
+   For stacking, let A denote the set of abutted macro pairs.                    as natural-language directives, visual checks, and refinement
+Two macros are considered abutted if their gap along one                         criteria within the placement loop. This allows the framework
+axis is less than τ and their projections overlap along the                      to account for both PPA objectives and structural floorplanning
+orthogonal axis. We define Sstack = |{(mi , mj ) ∈ A :                           quality.
+  5 We set the channel width to c = 20 µm for NG45 and 10 µm for GF12;
+                                 w
+the finer GF12 node packs more routing tracks per micron, so a narrower
+channel suffices. The IO keepout is set to 10 cw , leaving sufficient room for                         IV. O UR A PPROACH
+the standard-cell logic that connects to the IOs.
+  6 Two free-space regions are considered connected only if they share a           MAGE uses a vision-language model within a multi-
+horizontal or vertical edge; diagonal adjacency does not count.                  agent macro placement framework. The framework follows a
+                                                                                                                                                                                                         5
+
+
+
+                                                                                                                    Algorithm 1: Overall MAGE framework
+                                                                                                                       Input: Netlist N , floorplan F , IO/pin data I, configuration Θ, knowledge
+                                                                                                                              corpus K
+                                                                                                                       Output: Final macro placement solution P ⋆
+                                                                                                                   1 /* Phase 1: Data Parsing & Knowledge Extraction                          */
+                                                                                                                   2 Parse N and F to extract geometry, hierarchy, connectivity, IO, and pin
+                                                                                                                      information;
+                                                                                                                   3 Query K to retrieve prior knowledge and identify known issues in the input
+                                                                                                                      floorplan;
+                                                                                                                   4 /* Phase 2: Hierarchy-Aware Grouping                                      */
+                                                                                                                   5 Construct hierarchy-aware macro groups G = {g1 , . . . , gk } and compute
+                                                                                                                       inter-group connectivity;
+                                                                                                                   6 Identify families of similar groups Q1 , . . . , Qp ⊆ G;
+                                                                                                                   7 /* Phase 3: Group Placement                                                  */
+                                                                                                                   8 group iter ← 0;
+                                                                                                                   9 while group iter < 5 and flyline-length reduction ≥ 2% do
+                                                                                                                  10      Assign/refine bounding box Bg for each group g ∈ G over the core
+                                                                                                                            using connectivity- and IO-aware placement;
+                                                                                                                  11      Render flyline visualization (Fig. 4a); extract visual observations and
+                                                                                                                            consolidate with automated checks (Section V-A);
+                                                                                                                  12      group iter ← group iter + 1;
+                        Fig. 2: Overview of MAGE framework.
+                                                                                                                  13 /* Phase 4: Feasibility Checking                                          */
+                                                                                                                  14 foreach group g ∈ G do
+“decompose–place–validate–refine” workflow, in which place-                                                       15      if |g| > τmax then
+                                                                                                                  16            Recursively partition g into sub-groups and re-run group placement
+ment decisions are guided by design context and visual feed-                                                                     within Bg ;
+back. This workflow is implemented through ten sub-agents                                                         17        Perform feasibility checks on g within Bg ;
+(Figure 2).                                                                                                       18        if feasibility fails then
+                                                                                                                  19              Revise Bg and repeat;
+
+(a) Group placement with flyline   (b) Macro reference placement   (c) Macro placement   (d) Improved placement
+                                                                                                                  20 /* Phase 5: Macro Placement                                              */
+                                                                                                                  21 P ← ∅;
+                                                                                                                  22 foreach similar-group family Qj , j = 1, . . . , p do
+                                                                                                                  23      Select a reference group gref ∈ Qj ;
+                                                                                                                  24      Generate reference placement Pref for gref guided by the principles of
+                                                                                                                            Section III;
+                                                                                                                  25      Validate Pref : legality, pin access, keepouts, whitespace quality;
+                                                                                                                  26      if validation fails then
+                                                                                                                  27            Revise Pref or return to Phase 3;
+Fig. 3: Progressive refinement of a macro placement through                                                       28        Transform Pref to all remaining groups in Qj and merge into P
+the MAGE pipeline on the BlackParrot (Quad-core) design.                                                                     (Algorithm 2);
+From left to right: (a) group bounding-box assignment with
+                                                                                                                  29 /* Phase 6: Independent Validation                                             */
+flylines after Phase 3; (b) reference macro placement for one                                                     30 Perform chip-level validation on P: overlap, boundary placement, IO
+group after Phase 5; (c) chip-level placement after transform-                                                         clearance, channel spacing, boundary utilization;
+                                                                                                                  31 if failure due to macro placement then return to Phase 5;
+and-merge across similar-group families; and (d) final place-                                                     32 else if failure due to group placement then return to Phase 3;
+ment after tournament-style evolutionary optimization.                                                            33 Invoke a stateless independent auditor and execute a full audit on P;
+                                                                                                                  34 if audit fails then
+                                                                                                                  35        Incorporate failure report and iterate up to Nmax iterations;
+
+A. Framework Overview                                                                                             36 /* Tournament-Based Solution Selection                             */
+                                                                                                                  37 if tournament mode enabled then P ⋆ ← T OURNAMENT(N , F , I, Θ, K)
+   Our six-phase core placement pipeline applies eight sub-                                                            (Algorithm 3);
+agents: (1) data parser, (2) hierarchy-aware grouping, (3) group                                                  38 else P ⋆ ← P;
+                                                                                                                  39 return P ⋆ ;
+placement, (4) feasibility checker, (5) macro reference place-
+ment, (6) transform-and-merge, (7) macro validation, and
+(8) independent validation auditor. When tournament mode
+is enabled (Section IV-G), two additional sub-agents support                                                      of structurally similar groups Q1 , . . . , Qp . Groups within
+cross-iteration improvement: (9) an analysis agent and (10) a                                                     the same family later share a reference placement, reducing
+reflection agent. The input to MAGE comprises (i) an initial                                                      repeated placement effort and promoting consistent structure.
+floorplan and macro placement from an existing tool or manual                                                     Lines 7–12 (Phase 3): Phase 3 is an iterative loop run by
+flow, (ii) design netlist N , (iii) IO and pin information I,                                                     the group placement sub-agent (3). Each iteration assigns a
+(iv) configuration parameters Θ, and (v) knowledge corpus K.                                                      bounding box to every macro group over the core region
+The six-phase pipeline is summarized in Alg. 1 and described                                                      using connectivity- and IO-aware placement, with the goal of
+below.                                                                                                            reducing inter-group connections, preserving IO access, and
+Lines 1–3 (Phase 1): The data parser (1) extracts geometry,                                                       maintaining usable whitespace. Before the iteration can com-
+hierarchy, connectivity, IO, and pin information from the                                                         plete, a mandatory visualization gate fires (Section V-A): the
+inputs. It also queries the knowledge corpus to retrieve prior                                                    sub-agent renders a flyline diagram, inspects it, and integrates
+placement knowledge and identify floorplan issues, such as vi-                                                    visual findings with automated checks before either accepting
+olations of the human-like placement principles in Section III.                                                   the current assignment or revising it in the next iteration. The
+Lines 4–6 (Phase 2): The grouping sub-agent (2) organizes                                                         loop terminates when the relative reduction in total weighted
+macros into hierarchy-aware groups and identifies families                                                        flyline length falls below 2% or after five iterations.
+                                                                                                                                                                6
+
+
+
+Lines 13–19 (Phase 4): The feasibility checker (4) verifies                        (i) It applies the same set of prefixes to every instance in
+that each group can be realized within its assigned bounding                       the netlist, macros and standard cells alike, assigning each to
+box. It checks macro area, candidate packing patterns, and                         exactly one group; there is no separate standard-cell grouping
+the routing-channel spacing required for pin access. Groups                        scheme. (ii) Then, the group-to-group connection matrix is
+exceeding a size threshold τmax are recursively partitioned into                   built [40] by scanning each net in the netlist: for a net
+sub-groups. If feasibility fails, the bounding box or candidate                    whose pins span groups ga and gb , the (ga , gb ) entry is
+packing pattern is revised and the check is repeated.7                             incremented by one; a net spanning more than two groups
+Lines 20–28 (Phase 5): For each similar-group family Qj , the                      increments every pairwise entry. Each entry thus counts the
+reference placement sub-agent (5) selects a reference group                        number of nets shared by the two groups. Because standard
+and generates a macro placement guided by the principles                           cells inherit a group label from the very same prefixes, the
+in Section III. The macro validation sub-agent (7) checks                          matrix reflects full logical connectivity rather than macro-
+legality, pin access, keepouts, and whitespace quality. Once                       to-macro nets alone. E.g., a net macro → std-cell → macro is
+the reference placement is accepted, the transform-and-merge                       recorded as a connection between the two macros’ groups, and
+sub-agent (6) copies its relative macro arrangement to the                         a net that connects only standard cells of two groups likewise
+remaining groups in the family using translation, reflection,                      contributes to their entry, even when no macro lies on the net.
+or rotation as needed, and merges the resulting placements.                        See [50] for source code of our implementation. High-fanout
+Lines 29–35 (Phase 6): The macro validation sub-agent (7)                          nets with more than 100 pins are filtered to avoid distorting
+checks the merged placement for overlap, boundary placement,                       the connectivity model.
+IO clearance, channel spacing, and boundary utilization. If val-                      The grouping agent also identifies families of similar groups
+idation fails, control returns to Phase 5 or Phase 3 depending                     Q1 , . . . , Qp ⊆ G. Two groups are considered similar if they
+on the failure type. A stateless independent auditor (8) then                      have the same macro count and matching macro types and
+performs a separate visual audit. This auditor has no access                       dimensions. Groups in the same family later share a reference
+to the reasoning history of the previous phases, providing an                      macro placement, as described in Section IV-E. Finally, IO
+additional check against self-consistent but flawed solutions.8                    pins are classified by core edge, and their connections to macro
+Lines 36–39: If tournament mode is enabled, multiple can-                          groups are tracked for IO-proximity-aware group placement in
+didate placements are evaluated and selected using Alg. 3.                         Phase 3.
+Otherwise, the current validated placement is returned directly.
+   Each phase produces structured artifacts, including decision                    C. Phase 3: Group Placement
+logs, visualizations, and JSON placement files. These artifacts                       The group placement agent assigns group bounding boxes,
+are passed to later phases and provide the context needed                          i.e., bounding box Bg for each macro group g ∈ G within
+for subsequent macro placement decisions. The feasibility                          the core region C. The objective is to reduce weighted flyline
+checker, reference placement agent, macro validation agent,                        length subject to two constraints: (i) preserving IO access,
+and independent auditor all use the placement principles                           and (ii) tiling the entire core, i.e., the group
+described in Section III. This keeps the floorplanning rules                                                                     S bounding boxes
+                                                                                   partition C with no gaps and no overlaps ( g∈G Bg = C, with
+consistent across the pipeline. Figure 3 illustrates the progres-
+                                                                                   pairwise disjoint interiors).10 For rectilinear floorplans, tiling is
+sive refinement of a macro placement through MAGE.
+                                                                                   performed over the true core polygon rather than its bounding
+                                                                                   box. We refer to each boundary segment of C as a core edge.
+B. Phases 1, 2: Data Parsing and Hierarchy-Aware Grouping                             Before group placement, IO pins are clustered by proximity.
+   The data parser reads the design inputs, including macro                        Groups are ranked by IO affinity, and groups with strong IO
+dimensions, floorplan boundary, IO locations, netlist connec-                      connectivity are assigned to IO-adjacent regions first. For core
+tivity, and master-cell pin locations. It extracts the geometry                    edges with dense IO clusters, MAGE reserves wider routing
+required for downstream placement. For rectilinear floorplans,                     channels between the IO pins and nearby group boxes. Then,
+the parser constructs the core region C, classifies boundary                       inter-group placement is guided by weighted flylines between
+corners as convex or concave, and identifies dead zones.                           group centroids, with weights derived from the group-to-group
+The parser also queries the knowledge corpus K to retrieve                         connection matrix from Phase 2. Strongly connected groups
+relevant placement knowledge and flag floorplan issues, such                       are placed near each other.
+as violations of the placement principles in Section III. The                         Phase 3 itself proceeds iteratively. In each iteration, the
+grouping agent decomposes the design into hierarchy-aware                          agent: (i) proposes a complete group-box assignment, (ii) runs
+macro groups G = {g1 , . . . , gk }.9                                              validation scripts, (iii) renders a visualization and extracts
+   Each group is anchored by a hierarchical prefix taken                           observations from the rendered image, and (iv) produces a
+from the macro hierarchy—the path under which that group’s                         structured report before revising or accepting the placement.
+macros reside. The grouping agent then does the following.                         The visualization includes core boundaries, group boxes, IO
+   7 We maintain several candidate packing patterns motivated by interactions
+                                                                                   pins, group-to-group and IO-to-group flylines, and a coverage
+with industry experts. These patterns include vertical stacks, horizontal rows,
+                                                                                   overlay that highlights any unclaimed core area (Figure 3). The
+back-to-back pairs, L-shapes, and U-shapes. See [50] for details.                  process terminates when (i) all validation checks pass, (ii) the
+   8 By “self-consistent but flawed”, we mean a placement that is internally
+                                                                                     10 We define weighted flyline length as
+                                                                                                                               P
+justified by the producing phase’s reasoning, but still violates a floorplanning                                              (gi ,gj ) wij ∥ci −cj ∥1 , where wij
+criterion such as pin accessibility, whitespace usability, boundary compliance,    is the connection weight between groups gi and gj from the group-to-group
+or IO keepout.                                                                     connection matrix, and ci , cj are the centroids of their assigned bounding
+   9 In our experiments, k typically lies between 3 to 18.                         boxes. IO-to-group flylines are handled similarly using IO-cluster centroids.
+                                                                                                                                                               7
+
+
+
+relative reduction in weighted flyline length falls below 2%                   Algorithm 2: Transform-and-merge procedure
+between consecutive iterations, or (iii) the maximum iteration                    Input: Validated reference macro placement Pref ; similar-group family Qj
+count is reached.11                                                                      with designated reference group gref ∈ Qj ; group bounding boxes
+                                                                                         {Bg }g∈Qj ; IO pin data I
+                                                                                  Output: Merged chip-level macro placement P
+
+D. Phase 4: Feasibility Check                                                 1 /* Reference Initialization                                               */
+                                                                              2 P ← Pref ;
+   Before macro coordinates are generated for a group, the                    3 /* Per-Group Transformation                                               */
+feasibility checker verifies that the group can be physically                 4 foreach target group g ∈ Qj \ {gref } do
+realized within its assigned bounding box Bg . This is a                      5      Determine spatial relation between Bgref and Bg ;
+                                                                              6      Select transformation Tg ∈ {translation, mirror-X, mirror-Y,
+mandatory gate: Phase 5 proceeds only after all groups pass                            rotation-180◦ };
+feasibility. Groups with |g| > τmax are recursively partitioned               7      foreach macro m ∈ Pref do
+                                                                              8            Identify the corresponding macro m′ in target group g using the
+into sub-groups by re-invoking Phases 2–4 within the parent                                  matched macro type and index within the similar-group family
+group’s bounding box. Groups with 10 < |g| ≤ τmax may                                        Qj ;
+                                                                              9            Apply Tg to the coordinates of m and assign the transformed
+be partitioned if needed, while groups with |g| ≤ 10 pro-                                    coordinates to m′ ;
+ceed without partitioning.12 The resulting sub-group bounding                10            Remap the orientation of m′ under Tg ;
+boxes tile the parent group’s bounding box area.                             11        Verify containment: all transformed macros lie within Bg ;
+                                                                             12        Verify boundary placement and stacking relations are preserved;
+   For each group or sub-group g, let Bg have width Wg and                   13        Verify pin accessibility and IO keepout compliance w.r.t. I;
+height Hg . Under a candidate packing pattern, suppose the                   14        if any constraint is violated then
+                                                                             15              return FAIL and return to Phase 5;
+pattern requires nx packing columns with effective widths
+                                                                             16        Let Pg′ denote the transformed placement for g;
+{ŵ1 , . . . , ŵnx } and ny packing rows with effective heights             17        P ← P ∪ Pg′ ;
+{ĥ1 , . . . , ĥny }. A packing column (resp. row) is a vertical
+(resp. horizontal) track containing one or more macros, and                  18 /* Chip-Level Validation                                                  */
+                                                                             19 Check P for cross-group overlaps, insufficient channel spacing, and boundary
+its effective width (resp. height) is the maximum macro width                     violations;
+(resp. height) among macros in that track. Let cx and cy denote              20 Perform boundary-utilization audit: edge coverage, corner occupation, and
+                                                                                  central whitespace quality;
+the horizontal and vertical channel spacings, and let δio,x and              21 if any chip-level check fails then return FAIL;
+δio,y denote the total IO keepout margin consumed along the                  22 return P;
+
+horizontal and vertical axes of Bg , respectively. Concretely,
+δio,x = dL           R
+               io +dio is the sum of the left- and right-side keepouts,
+and δio,y = dB                T
+                       io + dio is the sum of the bottom- and top-           are chosen using signal-pin locations. For each macro, edges
+side keepouts, where each side’s keepout dio· is the mandatory               that contain signal pins are directed toward routing channels
+clearance from any IOs on that side. Feasibility requires                    or nearby whitespace, while edges with no signal pins are
+                   Pnx                                                       preferentially placed against core boundaries or shared abut-
+                      i=1 ŵi + (nx − 1)cx + δio,x ≤ Wg ,
+                   Pny                                              (1)      ments. Arrangement patterns, such as vertical stacks, same-
+                      j=1 ĥj + (ny − 1)cy + δio,y ≤ Hg .                    row abutments, L-shapes, U-shapes, and grids, are selected
+For sides adjacent to dense IO clusters, the reserved IO margin              based on group geometry, boundary position, IO proximity,
+is doubled. If either inequality is violated, the checker reduces            macro mix, and connectivity.13 The resulting placement is
+channel spacing, changes the packing pattern, or requests a                  written in a JSON format used by the visualization and
+revised bounding box from Phase 3.                                           validation scripts.
+                                                                             Transform-and-merge. After Pref passes validation, the
+                                                                             transform-and-merge step maps it to the remaining groups
+E. Phase 5: Macro Placement                                                  in Qj ; see Alg. 2. The chip-level placement P is initial-
+   Phase 5 consists of three steps: reference placement,                     ized with the validated reference placement (Lines 1–2).
+transform-and-merge, and validation.                                         For each target group g, the spatial relationship between
+Reference placement. For each similar-group family Qj , the                  Bgref and Bg determines the transformation, e.g., translation,
+reference placement agent selects one reference group gref ∈                 reflection, or 180◦ rotation (Lines 5–6). Macro coordinates
+Qj and generates a macro placement Pref . This (gref , Pref )                and orientations are remapped accordingly (Lines 7–10). The
+pair is the input that Alg. 2 (transform-and-merge) consumes                 transformed placement is then checked for containment, non-
+when propagating Pref to the remaining groups in Qj . This                   overlap, boundary placement, pin accessibility, IO keepout
+placement serves as the template for the remaining groups in                 compliance, and whitespace quality (Lines 11–13). If any
+the family (see [50] for details).                                           check fails, control returns to the reference placement step
+   The placement follows a boundary-first strategy consistent                (Lines 14–15). After all groups are merged, cross-group non-
+with Section III. Candidate boundary slots are generated from                overlap, boundary compliance, channel spacing, and whites-
+core corners, core edges, and group edges. Slots are ranked                  pace quality are checked (Line 19). A boundary-utilization
+by their ability to preserve central whitespace, maintain IO                 audit further checks core-edge coverage, corner occupation,
+and pin access, and support regular stacking. Larger macros                  and fragmentation of the remaining whitespace (Line 20).
+are assigned to higher-ranked slots first. Macro orientations                Validation. The validation step uses both automated checks
+   11 In our experiments, the maximum number of group-placement iterations    13 In our implementation, the prompt includes a library of example arrange-
+is set to five.                                                              ment patterns, but the agent may compose new arrangements when they better
+   12 In our implementation, τ
+                              max = 30.                                      match the group geometry and connectivity.
+                                                                                                                                                                             8
+
+
+
+and visual review. Automated scripts check legality, pin access,                              Algorithm 3: Tournament-style optimization
+IO keepouts, whitespace quality, and post-merge correctness                                       Input: Design inputs (N , F , I), configuration Θ, knowledge corpus
+with respect to the human-likeness principles in Section III,                                            K, number of variants Nv , survivor count Ns , number of
+producing PASS/FAIL results with violation details. The ren-                                             tournament rounds R
+                                                                                                  Output: Best macro placement solution found, P ⋆
+dered placement is then reviewed to detect spatial issues that
+                                                                                             1 /* Initialization                                                        */
+may not be captured by numerical checks. Any FAIL item
+                                                                                             2 Initialize variant pool V (1) = {v1 , . . . , vNv } with distinct seeds,
+triggers a feedback loop: macro arrangement failures return to                                     contexts, and improvement suggestions;
+reference placement, while group bounding-box failures return                                3 Initialize evaluation history H ← ∅;
+to Phase 3. This ensures that local macro placement errors                                   4 /* Tournament Loop                                         */
+and higher-level group-placement errors are corrected at the                                 5 for round r ← 1 to R do
+appropriate stage [50].                                                                      6      /* Parallel placement and evaluation                  */
+                                                                                             7      foreach variant v ∈ V (r) do
+                                                                                             8          Run Phases 1–6 of MAGE with tournament mode disabled
+   (a) Group placement with flyline   (b) Whitespace roundness   (c) Boundary coverage map                  to obtain macro placement Pv ;
+                                                                                              9            Run Innovus global placement and early global routing on
+                                                                                                            Pv ;
+                                                                                             10            Record eGR routed wirelength µv ;
+                                                                                             11            H ← H ∪ {(Pv , µv )};
+                                                                                             12       /* Selection                                                 */
+                                                                                             13       Rank all variants by µv ;
+                                                                                             14       Select the top-Ns survivors W (r) ⊂ V (r) ;
+                                                                                             15       /* Analysis and reflection
+                                                                                                          (sub-agents 9--10)                                       */
+Fig. 4: Some visual artifacts used for feedback in MAGE.                                     16       foreach survivor w ∈ W (r) do
+(a) Group-placement flyline visualization. (b) Whitespace                                    17           Invoke analysis agent (sub-agent 9): compare Pw against a
+roundness heatmap; purple indicates fragmented whitespace                                                   reference placement, extract placement discrepancies
+                                                                                                            {d1 , d2 , . . .} and compute per-discrepancy HPWL
+with low roundness. (c) Boundary-coverage map; red lines                                                    attribution
+                                                                                                            P              {∆1 , ∆2 , . . .} such that
+mark boundary gaps. Design: BlackParrot.                                                                       k ∆k = HPWL(Pw ) − HPWL(Pref );
+                                                                                             18           Invoke reflection agent (sub-agent 10): evaluate whether
+                                                                                                            prior suggestions helped or failed, generate revised
+                                                                                                            guidance for round r + 1;
+F. Phase 6: Independent Validation Sub-Agent                                                          /* Go-with-the-winners replication
+                                                                                             19                                                                     */
+   Phase 6 performs an independent audit of the post-merge                                   20       Build V (r+1) by replicating survivors proportionally to rank
+                                                                                                       until |V (r+1) | = Nv ;
+macro placement P. Although Phase 5 already checks post-                                     21       Attach parent context, analysis feedback, and reflection
+merge correctness, that validation is part of the same gen-                                            feedback to each replicated variant in V (r+1) ;
+eration loop that produced the placement. Phase 6 therefore
+invokes a separate validation agent that has no access to the                                22 /* Solution Selection                                                 */
+                                                                                             23 P ⋆ ← arg min(P,µ)∈H µ;
+reasoning history of Phases 1–5. This provides a second-pass                                 24 return P ⋆ ;
+audit from a fresh context, using only the rendered artifacts
+and validation reports. The goal is to catch residual issues that
+may survive the integrated validation loop, such as blocked pin
+access, insufficient IO keepout, poor boundary compliance,                                   G. Tournament-Style Parallel Optimization
+narrow routing channels, or fragmented whitespace.                                              MAGE supports a tournament-style optimization mode in-
+   The Phase 5 validator and the Phase 6 auditor differ in                                   spired by Go-With-The-Winners [2]. Alg. 3 summarizes the
+three respects: the Phase 5 validator inherits the full reasoning                            procedure. A pool of Nv placement variants is initialized, and
+history of Phases 1–5 and shares the generators’ goal of                                     an evaluation history H stores all evaluated placements and
+producing a passing macro placement, while the Phase 6                                       their eGR routed wirelength values (Lines 1–3). In each round,
+auditor is stateless (sees only P, validation script outputs, and                            all variants independently run the full MAGE pipeline in par-
+rendered images) and is prompted to find what the in-loop                                    allel. Each resulting macro placement is evaluated by running
+validator missed. The auditor runs the validation scripts from                               Innovus eGR and measuring the rWL (µv ) from eGR (Lines 4–
+Phase 5 and reviews the generated artifacts: (i) PASS/FAIL                                   11). We consider µv only because eGR is the latest stage in the
+reports, (ii) placement visualizations with macro pin edges and                              flow that runs relatively fast per variant (full post-route signoff
+highlighted violations, (iii) whitespace diagnostics, and (iv)                               would inflate tournament cost by an order of magnitude per
+textual feedback (Figure 4). It then produces a visual feedback                              round) and because eGR rWL is empirically a strong proxy for
+report with specific rearrangement suggestions for affected                                  downstream PPA metrics (Table II). The variants are ranked
+groups or sub-groups (Figure 5). A regression guard tracks                                   by the rWL from eGR, and the top-Ns variants are selected
+placement quality across validation iterations to detect cases                               as survivors (Lines 12–14). For each survivor, an analysis
+where fixing one issue degrades another. If violations remain                                step compares its placement against a single reference place-
+after Nmax iterations, the unresolved failures are documented                                ment, namely the input commercial macro placer solution.
+with root-cause analysis, and the best valid or least-violating                              The analysis estimates how much each placement difference
+iteration is selected as the final output. Feedback from the                                 contributes to HPWL by recomputing HPWL after isolating
+independent auditor returns to Phase 5 for macro arrangement                                 the affected groups or macros. It considers differences such as
+issues and to Phase 3 for group placement issues.                                            (i) distances between connected groups, (ii) spatial spread of
+                                                                                                                                                                       9
+
+
+
+macros within a group, and (iii) nearest-neighbor relationships                  MAGE Visual Feedback Report (sub-agent 8, excerpt)
+among macros (Lines 15–17). A reflection step then identifies                    Placement audit observations:
+which prior suggestions were useful and generates revised                        • The placement uses a 4-tile quadrant layout. Macros are concentrated along the
+                                                                                   top, left, and right edges, with a large open area in the center and bottom.
+guidance for the next round (Line 18). The next-round pool                       • Pin-edge lines are visible on most macros and generally face toward open channels
+is constructed by GWTW replication: higher-ranked survivors                        or the chip interior. No cases of pin edges facing directly into adjacent macros.
+are replicated more often until the pool size reaches Nv .14                     Whitespace diagnostic observations:
+Each replicated variant inherits its parent context, analysis                    • Roundness map: The free space forms a cross-shaped pattern centered on the
+                                                                                   chip. Roundness is 0.086 (< 0.3) because the whitespace has narrow corridors
+feedback, and reflection feedback (Lines 19–21). Finally, the                      extending between macro stacks rather than a compact central region.
+placement with the lowest eGR rWL in H is returned as P ⋆                        • Boundary coverage: Top edge ∼76% covered (good), left/right edges ∼66% each
+                                                                                   (moderate), bottom edge 0% (correct—all 135 IOs are on this edge).
+(Lines 22–24).
+                                                                                 Actionable rearrangement suggestion:
+                                                                                 • Fix IO keepout violations (158 failures): Shift all macros in the bottom two
+  V. M ULTIMODAL R EASONING AND V ISUAL F EEDBACK                                  tiles upward by ≥10µm (from lly=50µm to lly≥60µm). This resolves all 158
+                                                                                   violations without changing the relative macro arrangement.
+   A design principle of MAGE is that placement quality
+should be assessed through both automated checks and visual
+feedback. Automated scripts enforce hard constraints such as                    Fig. 5: Excerpt of a visual feedback report generated by the
+overlap, boundary, and channel-spacing violations. However,                     independent validation auditor. The report converts rendered
+several properties of expert floorplans are spatial, including                  placement images and whitespace diagnostics into image-
+stacking regularity, pin accessibility, whitespace organization,                derived observations and actionable refinement suggestions for
+and overall visual coherence. MAGE therefore uses visual                        the next placement iteration. Design: BlackParrot.
+inspection as a mandatory part of the placement framework.
+Vision is used in two ways as described below, with some
+representative visual artifacts shown in Figure 4.                              B. Auxiliary Vision Pipeline
+                                                                                   The visualization gates of Section V-A ensure each place-
+A. Mandatory Visualization Gates                                                ment iteration is inspected before it proceeds. The auxiliary
+                                                                                vision pipeline serves a complementary purpose: rather than
+   Every iteration in Phase 3 and Phase 5 follows a mandatory
+                                                                                gating a single iteration, it converts selected visual artifacts
+visual gating sequence. Before proceeding, the corresponding
+                                                                                into structured natural-language feedback that is written into
+sub-agent must: (i) generate a placement visualization, (ii) run
+                                                                                the shared context and consumed by downstream sub-agents
+automated checks, (iii) inspect the rendered image, (iv) extract
+                                                                                and later iterations, letting visual observations propagate with-
+visual observations, and (v) produce a structured report.15 In
+                                                                                out re-passing raw images at every prompt.
+Phase 3, the visualization is a group flyline diagram showing
+                                                                                   The pipeline reuses the artifacts already rendered by the
+group bounding boxes, IO pins, and weighted inter-group
+                                                                                visualization gates (e.g., Phase 3 flyline diagrams, Phase 5
+flylines (Figure 4(a)). This image is used to assess whether
+                                                                                macro, etc.) but emits text rather than images. Each artifact
+strongly connected groups are placed near each other and
+                                                                                is summarized into observations and actionable suggestions.
+whether unnecessary flyline crossings remain. In Phase 5,
+                                                                                During tournament optimization, for instance, it flags macros
+the visualization shows individual macros, group membership,
+                                                                                lying far from the centroids of their respective sets of con-
+macro pin edges, group bounding boxes, the core boundary,
+                                                                                nected standard cells and tracks how these displacements
+and highlighted violations. It is paired with whitespace diag-
+                                                                                evolve across iterations.
+nostics, including a roundness heatmap, a distance-to-center                       When the auxiliary VLM detects a quality issue, it produces
+map, and a boundary-coverage map (see Figures 4(b) and (c)).                    a structured feedback document — the visual observation,
+These views help identify violated human principles.                            the affected groups or macros, and a suggested refinement
+   Each visual review must include visual-only facts i.e., ob-
+                                                                                (Figure 5). The feedback is routed to the phase responsible for
+servations derived strictly from the rendered layout rather than
+                                                                                the issue: Phase 3 for group-level issues, Phase 5 for macro-
+from numerical audit data alone. This requirement ensures that
+                                                                                arrangement issues, or the tournament analysis step for cross-
+the image is explicitly inspected rather than only summarized
+                                                                                variant improvement. Rendered artifacts are thus converted
+from script outputs. The review also evaluates three visual
+                                                                                into structured guidance for subsequent refinement, rather than
+quality criteria: whitespace shape quality, pin visibility, and
+                                                                                used only for final inspection.
+floorplan regularity. A visual failure triggers a return to the
+appropriate placement phase even if all automated checks
+                                                                                          VI. E XPERIMENTAL S ETUP AND R ESULTS
+pass. When validation returns to an earlier phase, MAGE
+generates side-by-side comparisons of the current and previous                     We implement MAGE in Python and use Anthropic Claude
+placements. The report must document visual improvements,                       Opus 4.6 [44] as the VLM backbone for all agents. The aux-
+visual regressions, and any accepted tradeoffs. A regression                    iliary vision pipeline (Section V-B) uses a separate VLM in-
+guard tracks iteration-to-iteration metrics to prevent a fix in                 stance for image analysis. All experiments are run on a server
+one criterion from degrading another.                                           with eight 2.4 GHz Intel Xeon(R) Gold 6148 processors and
+                                                                                376 GB RAM. We evaluate MAGE on nine benchmark designs
+   14 In our implementation, MAGE maintains six variants i.e., N = 6. The
+                                                                 v              across two technology enablements: (i) Ariane [42], BlackPar-
+best variant is copied three times, the second-best twice, and the third-best   rot (Quad-core) [43], and MemPool Group [48] in NanGate45
+once.
+   15 The rendering scripts, the visual-only-fact extraction prompts, and the   (NG45) [47], [49]; and (ii) Ariane, BlackParrot, Tabla01,
+visual quality checks are available in [50].                                    Tabla05, Tabla09, and Tabla13 [16] in GlobalFoundries 12nm
+                                                                                                                                                                        10
+
+
+
+                                                                                  TABLE II: Post-route PPA comparison across NG45 and GF12
+                                                                                  designs. Below each design name, the triplet (Inst., Macros,
+                                                                                  Types) reports the total instance count, the number of hard
+                                                                                  macros, and the number of unique macro types, respectively.
+                                                                                  NG45 values are absolute (rWL in mm, Pwr in mW, WNS in
+                                                                                  ps, TNS in ns); GF12 values are normalized as described in
+                                                                                  Section VI-A. Human and Hier-RTLMP baselines are available
+                                                                                  only for NG45. The best value per design is shown in bold.
+                                                                                      Tech.   Design           Method             rWL     Pwr WNS               TNS
+                                                                                                               Human               4681    832    -88        -46.8
+                                                                                              Ariane           Comm-1              4057    852   -154       -196.5
+Fig. 6: Evaluation flow for macro placements produced by                                                       Comm-2              3994    830   -144       -127.9
+                                                                                              (109K, 133, 1)
+different macro placers. The Design obfuscator block prevents                                                  Hier-RTLMP          5297    836   -165       -223.4
+                                                                                                               MAGE                4424    832    -81        -32.7
+tool-specific or enablement-specific information from being
+                                                                                                               Human              25916   4470    -97       -321.9
+exposed to the LLM.                                                                   NG45 BP                  Comm-1             23144   4429   -144       -356.2
+                                                                                                               Comm-2             24080   4447   -182       -842.0
+                                                                                           (736K, 220, 6)
+                                                                                                               Hier-RTLMP         28866   4512   -150       -456.6
+                                                                                                               MAGE               26987   4479    -88       -139.7
+(GF12). To evaluate generalization, we further include two                                                    Human          107598       2640    -49           -11.9
+unseen16 GF12 designs, VTA [4] and GeneSys01 [16]. We                                         MemPool         Comm-1         102907       2587    -20            -1.0
+                                                                                                              Comm-2         104674       2587    -14            -8.7
+compare MAGE against three baselines: (i) Comm-1 and (ii)                                     (2.57M, 324, 4)
+                                                                                                              Hier-RTLMP     114073       2695    -62            -4.9
+                                                                                                              MAGE           107309       2636    -32            -0.8
+Comm-2, two releases of an unnamed commercial macro
+placer, and (iii) OpenROAD’s Hier-RTLMP [23], [45].17                                         Tabla01          Comm-1
+                                                                                                               Comm-2
+                                                                                                                                  1.000 1.000
+                                                                                                                                  0.985 1.002
+                                                                                                                                                 -0.28 -1080.0
+                                                                                                                                                 -0.25 -769.3
+Evaluation flow. Figure 6 shows the end-to-end evaluation                                     (320K, 760, 7)
+                                                                                                               MAGE               1.391 1.027    -0.22 -463.3
+methodology, which follows [9], [10]. First, each RTL de-                                     Tabla05         Comm-1              1.000 1.000    -0.20      -276.0
+sign is synthesized with Cadence Genus 21.1 to produce a                                                      Comm-2              0.985 0.991    -0.18       -73.8
+                                                                                              (550K, 2488, 7)
+                                                                                                              MAGE                1.445 1.086    -0.15       -15.8
+gate-level netlist. The synthesized netlist is then loaded into
+                                                                                              Tabla09          Comm-1             1.000 1.000    -0.19       -98.5
+Cadence Innovus 21.1 [46], where the commercial macro                                 GF12    (185K, 368, 8)
+                                                                                                               Comm-2             0.994 0.985    -0.18      -182.5
+placer generates an initial macro placement. The resulting                                                     MAGE               1.458 1.071    -0.15       -48.5
+
+floorplan DEF is passed to the Cadence Genus iSpatial flow                                    Tabla13         Comm-1              1.000 1.000    -0.19      -216.9
+                                                                                                              Comm-2              0.995 0.999    -0.15      -125.8
+for physical-aware synthesis and initial standard-cell place-                                 (352K, 1232, 8)
+                                                                                                              MAGE                1.589 1.081    -0.18       -72.9
+ment. Macro placement solutions are then generated using                                      Ariane           Comm-1             1.000 1.000    -0.16      -142.3
+Comm-1, Comm-2, Hier-RTLMP, and MAGE, where avail-                                                             Comm-2             1.031 0.993    -0.12      -106.4
+                                                                                              (93K, 133, 1)
+                                                                                                               MAGE               1.223 1.021    -0.10       -68.0
+able.18 For each macro placement solution, the floorplan DEF
+                                                                                              BP               Comm-1             1.000 1.000    -0.09      -138.9
+is loaded into Innovus 21.1 for place-and-route. Standard                                     (665K, 196, 6)
+                                                                                                               Comm-2             0.987 1.000    -0.14      -225.5
+                                                                                                               MAGE               1.099 1.010    -0.08       -33.4
+cells are reset to unplaced, macro locations are legalized
+using refine_macro_placement, and the flow proceeds
+through power delivery network generation, placement, clock                       TABLE III: Geometric-mean improvement of MAGE over each
+tree synthesis, routing, and post-route optimization. From each                   baseline. Positive values indicate improvement by MAGE. rWL
+post-routed design, we extract routed wirelength (rWL), total                     and Pwr are reported as percentage reduction; WNS and TNS
+power, worst negative slack (WNS), and total negative slack                       are reported as percentage improvement.
+(TNS). Note that this post-route rWL is the final reported                               MAGE vs.        rWL (%)       Pwr (%)      WNS (%)      TNS (%)
+wirelength and is distinct from the eGR wirelength used as
+                                                                                         Human                   0.6        0.1           18.3           72.5
+the in-loop ranking metric µv during tournament optimization                             Comm-1                -29.7       -3.8           19.3           70.0
+(Section IV-G). In parallel, each macro placement is evaluated                           Comm-2                -29.7       -4.5           11.1           74.0
+                                                                                         Hier-RTLMP              9.8        1.1           47.0           80.4
+by a human-likeness metric evaluator (Section III-A), which
+reports overall human-likeness scores.
+   We organize the results into four parts: (i) PPA evaluation                    anonymized designs, unseen designs, rectilinear floorplans,
+(Section VI-A); (ii) human-likeness evaluation (Section VI-B);                    and utilization sweep (Section VI-D).
+(iii) ablation studies on the knowledge corpus K and visual
+feedback (Section VI-C); and (iv) additional case studies on                      A. Evaluation of PPA
+   16 Unseen designs are not used during prompt development, knowledge-
+                                                                                     Table II reports post-route PPA for the NG45 and GF12
+corpus construction, or manual tuning of the MAGE configuration Θ. They           enablements. Because GF12 is a proprietary enablement, all
+are evaluated only after the framework is finalized.                              GF12 numbers that we report are normalized: rWL and Pwr
+   17 The commercial baselines are included to contextualize solution quality,
+                                                                                  are normalized to the Comm-1 result of each design, and WNS
+not as product benchmarks. Hier-RTLMP does not complete some of the               and TNS are normalized to the target clock period. NG45
+benchmarks.
+   18 We do not pass DEF, LEF, Verilog, or other design files directly to MAGE.   numbers are reported as absolute values. Table III summarizes
+Instead, a reference parser extracts only the required macro, standard-cell,      geometric-mean improvements, and Figure 7 shows the cor-
+floorplan, IO, and connectivity information into CSV files. All dimensions        responding macro placements. Across the evaluated baselines,
+are scaled, and macro master names are anonymized before being provided
+to the VLM. This obfuscation step, shown in Figure 6, prevents tool-specific      MAGE improves WNS by 11.1%–47.0% and TNS by 70.0%–
+or enablement-specific information from being exposed.                            80.4% in geometric mean. The main improvement is in timing:
+                                                                                                                                         11
+
+
+
+                                       (a) NG45
+                                                                      MAGE vs. Comm-1: Against Comm-1, MAGE improves
+                Human         Comm-1    Comm-2    Hier-RTLMP   MAGE
+                                                                      geometric-mean WNS by 19.3% and TNS by 70.0%, at the
+                                                                      cost of 29.7% higher rWL and 3.8% higher power. The TNS
+      Ariane
+
+                                                                      improvement is observed across all evaluated designs. The
+                                                                      tradeoff is more visible in GF12, where MAGE incurs higher
+                                                                      rWL but reduces TNS by 57%–94% on Tabla designs.
+                                                                      MAGE vs. Comm-2: Compared with Comm-2, MAGE im-
+      BP
+
+
+
+
+                                                                      proves geometric-mean WNS by 11.1% and TNS by 74.0%,
+                                                                      with 29.7% higher rWL and 4.5% higher power. MAGE
+      MemPool
+
+
+
+
+                                                                      improves TNS on all designs, and WNS also improves in most
+                                                                      cases, with two exceptions. On MemPool, Comm-2 achieves
+                                                                      the best WNS (−14 ps), while MAGE achieves the best TNS
+                                       (b) GF12                       (−0.8 ns). On Tabla13, Comm-2 achieves better WNS, while
+                            Comm-1      Comm-2         MAGE           MAGE achieves better TNS.
+                                                                      MAGE vs. Hier-RTLMP: The largest gains are observed
+                                                                      against Hier-RTLMP on NG45. MAGE improves geometric-
+                  Tabla01
+
+
+
+
+                                                                      mean WNS by 47.0% and TNS by 80.4%, while also reducing
+                                                                      rWL by 9.8% and power by 1.1%. Unlike the comparisons
+                                                                      with Comm-1 and Comm-2, this is not a timing–wirelength
+                                                                      tradeoff: MAGE improves every reported PPA metric over
+                  Tabla05
+
+
+
+
+                                                                      Hier-RTLMP.
+                                                                      Timing vs. rWL remarks. We see that commercial baselines
+                                                                      often have lower total rWL, but MAGE still reaches better
+                                                                      WNS and TNS. I.e., a lower total rWL does not mean better
+                  Tabla09
+
+
+
+
+                                                                      timing. All methods share the same floorplan: the die and
+                                                                      core boundary, the IO placement, and the power-ground (PG)
+                                                                      configuration are identical, and only the macro placement dif-
+                                                                      fers. Every placement therefore has the same total whitespace,
+                  Tabla13
+
+
+
+
+                                                                      and only locations change (Figure 7). Comm-1 and Comm-2
+                                                                      pack the macros into the interior and split the whitespace into
+                                                                      many small pockets. MAGE instead follows our human-like
+                                                                      rules (Section III): it aligns the macros, keeps clear macro
+                                                                      channels, leaves an IO keep-out, and holds the whitespace in
+                  Ariane
+
+
+
+
+                                                                      one continuous region. We have examined the post-route paths
+                                                                      to understand why this helps timing. The improvement comes
+                                                                      from three effects that act together: clock insertion delay,
+                                                                      clock skew, and congestion (standard-cell density) around the
+                                                                      critical register-to-register logic. More concretely, for Ariane-
+                  BP
+
+
+
+
+                                                                      NG45, the reason is the clock: MAGE lowers the worst clock
+                                                                      insertion delay from 0.43 to 0.20 ns and the skew from 0.44
+Fig. 7: Macro placement comparisons across NG45 and GF12              to 0.34 ns, and on the same start-to-end path almost all of the
+enablements. (a) NG45 designs are compared across Human,              slack difference comes from clock skew, not from the datapath
+Comm-1, Comm-2, Hier-RTLMP, and MAGE. (b) GF12 de-                    wiring. For BP-NG45, the reason is congestion: MAGE keeps
+signs are compared across Comm-1, Comm-2, and MAGE.                   the critical logic at a lower standard-cell utilization (45.8%
+                                                                      vs. 49.5%), so it avoids ∼ 2,750 violating register-to-register
+                                                                      paths that the denser commercial placements add (9,622 vs.
+(i) relative to the human expert baseline, MAGE achieves              6,868), and this improves TNS from −357 to −139 ns. The
+similar rWL and power with better WNS and TNS, (ii) relative          trend in Figure 8 agrees with this. Overall, we see indications
+to Hier-RTLMP, it improves all reported PPA metrics, and (iii)        that the human-like placement rules are what give MAGE its
+relative to the commercial baselines, it trades higher rWL and        better post-route timing.
+power for better timing, especially TNS.
+                                                                      TABLE IV: Geometric-mean improvement of MAGE over
+MAGE vs. Human: On the NG45 designs, MAGE improves
+                                                                      each baseline for human-likeness metrics. Positive values
+geometric-mean WNS by 18.3% and TNS by 72.5% over
+                                                                      indicate improvement by MAGE.
+the human expert baseline, while maintaining comparable
+rWL and power. The improvement is consistent across the                 MAGE vs.     Snotch (%) Sws (%) Spocket (%) Salign (%) SHM (%)
+designs. The largest TNS gain occurs on MemPool, where                  Human             14.0      1.9         4.0       0.4      6.0
+TNS improves by 93%. These results indicate that MAGE can               Comm-1            15.2      7.8        11.8      18.2     37.5
+achieve key physical characteristics of expert floorplans while         Comm-2            68.1     12.3        15.6      15.0     47.8
+                                                                        Hier-RTLMP        32.0      3.6        18.8       7.2     37.4
+improving post-route timing.
+                                                                                                                                  12
+
+
+
+                                                                   TABLE V: Ablation: effect of knowledge corpus K on Ariane
+                                                                   and BP in NG45. Best values per design in bold.
+                                                                           Design Variant    rWL    Pwr WNS        TNS SHM
+                                                                                             (mm) (mW)     (ps)     (ns)
+
+                                                                                  MAGE       4424   832   −81     −32.7    0.72
+                                                                           Ariane
+                                                                                  MAGE\K     4536   836   −99     −60.2    0.73
+                                                                                  MAGE   26987 4479 −88 −139.7             0.68
+                                                                           BP
+                                                                                  MAGE\K 28056 4492 −132 −258.0            0.68
+
+                                                                   TABLE VI: Ablation: effect of visual feedback on Ariane and
+Fig. 8: Per-design min-max-normalized TNS versus human-            BP in NG45. Best values per design in bold.
+likeness score SHM across all (design, method) pairs. For each
+                                                                          Design Variant     rWL    Pwr WNS       TNS SHM
+design, TNS is min-max normalized across methods so that 1                                   (mm) (mW)    (ps)      (ns)
+denotes the best TNS and 0 the worst. Higher human-likeness
+                                                                                 MAGE        4424   832 −81 −32.7          0.72
+is positively associated with better post-route timing (Pearson           Ariane
+                                                                                 MAGE\V      4628   839 −119 −109.0        0.70
+r = +0.38, p = 0.053; Spearman ρ = +0.42, p = 0.030).
+                                                                                  MAGE   26987 4479 −88 −139.7             0.68
+                                                                          BP
+                                                                                  MAGE\V 27145 4475 −122 −221.9            0.64
+
+B. Evaluation of Human-Likeness
+   Table IV summarizes the geometric-mean improvement of           collateral, and rely solely on the information extracted from
+MAGE over each baseline for the human-likeness metrics             the input netlist and floorplan.
+defined in Section III-A. Against the human expert baseline           As Table V shows, removing K degrades WNS by 35.2%
+on NG45, MAGE improves the overall human-likeness score            and TNS by 84.4% on average, with little effect on rWL
+SHM by 6.0%, with the largest gain in notch score (+14.0%).        (3.7%), power (0.3%), or SHM (−0.7%) — showing that K
+The notch gain does not indicate that the expert placements        affects timing, not structure (the principles of Section III are
+are poorly structured; rather, it reflects that MAGE follows       enforced via prompts regardless of K). Concretely, K stores
+uniform-width stacking, yielding much better aligned macro         prior-run artifacts (decision records, literature, accepted macro
+silhouettes, whereas an expert designer tolerates minor silhou-    placement patterns) indexed by design; the relevant entries are
+ette irregularities in exchange for other objectives such as pin   retrieved during Phases 1, 3, and 5 and appended to the sub-
+accessibility. On the remaining sub-scores MAGE tracks the         agent’s prompt. For BP this supplies cues such as a preferred
+expert closely (Table IV), showing that it can potentially match   four-tile quadrant symmetry, which generic principles alone
+expert-level organization while yielding better PPA. Apart         cannot provide.
+from the human baseline and MAGE, Hier-RTLMP attains the           Effect of visual feedback. We compare the full MAGE frame-
+highest human-likeness, consistent with its design goal of pro-    work against a variant MAGE\V in which all visual feedback
+ducing human-quality macro placements [45]. Figure 8 shows         is disabled: the mandatory visualization gates are bypassed,
+the relationship between human-likeness and TNS. Placements        the auxiliary vision pipeline (Section V-B) is removed, and the
+with higher SHM tend to have better timing outcomes.               three visual quality checks are skipped, so all spatial reasoning
+                                                                   must be performed from numerical data alone.
+
+C. Ablation Studies
+   We run two targeted ablations — removing the knowledge
+corpus K and the visual feedback pipeline (Section V) —
+on Ariane and BP (NG45). We limit the study to two de-
+signs given the high per-run cost (Section VI-D). For each
+ablation, we remove one component and report the average
+change relative to the full framework. For rWL and power,
+degradation is computed as 100 · (Mabl − Mfull )/Mfull , where
+Mabl and Mfull denote the metric value for the ablated
+and full MAGE runs, respectively. For SHM , degradation is
+computed as 100 · (Sfull − Sabl )/Sfull , where Sabl and Sfull     Fig. 9: Effect of visual feedback on Ariane and BP (NG45).
+denote the human-likeness scores of the ablated and full           Without visual feedback, macro groups become fragmented;
+runs, respectively. Tables V and VI list the per-design values     full MAGE produces more human-like macro placements.
+for the full and ablated runs; we report the corresponding
+average degradation over Ariane and BP for each metric in             As Table VI shows, removing visual feedback degrades
+the discussion below.                                              WNS by 40.5% and TNS by 133.0%, with SHM dropping
+Effect of knowledge corpus. We compare the full MAGE               4.2%, while rWL (2.3%) and power (0.4%) are largely un-
+framework against a variant MAGE\K in which the knowledge          affected. Figure 9 shows the reason: without vision, macros
+corpus is removed: sub-agents 1, 3, and 5 no longer receive        scatter with irregular gaps and poor boundary use, whereas
+prior placement knowledge, known design issues, or design          the full framework snaps them to the boundary with struc-
+                                                                                                                                                                13
+
+
+
+tured stacks. These are issues visual inspection catches but
+numerical checks miss.
+
+D. Case studies
+   We present four case studies that evaluate MAGE beyond
+the standard benchmark setting: anonymized netlists, unseen
+designs, rectilinear floorplans, and high-utilization layouts.
+These studies test whether MAGE depends on semantic design
+information, generalizes zero-shot, and remains effective on
+non-rectangular or area-constrained floorplans.
+                                                                                     Fig. 10: Visual comparison of Comm-1 and MAGE on two
+TABLE VII: Effect of netlist anonymization on MAGE.                                  unseen designs. Top: VTA (GF12). Bottom: G ENE S YS 01
+“Anon.” denotes the anonymized variant. Best results in bold.                        (GF12). Left: Comm-1. Right: MAGE.
+
+ Design (NG45) Variant             rWL (mm) Pwr (mW) WNS (ps) TNS (ns)
+                   MAGE (Anon.)        4687       841           -86          -69.9   higher rWL. Figure 10 illustrates the same pattern observed
+ Ariane
+                   MAGE                4424       832           -81          -32.7   on the main benchmarks: MAGE forms cleaner boundary-
+ BP
+                   MAGE (Anon.)        25766     4466       -126            -310.8   aligned stacks and more contiguous whitespace, while Comm-
+                   MAGE                26987     4479        -88            -139.7
+                                                                                     1 produces less human-like macro placements.
+
+1. Anonymized designs. To evaluate the role of semantic
+design information, we anonymize Ariane and BP by replacing
+module, instance, net, and port names with generic identifiers
+while preserving hierarchy, connectivity, macro dimensions,
+and floorplan geometry. This also disables the knowledge
+corpus K, since design-specific entries can no longer be
+retrieved. Table VII shows that anonymization degrades tim-
+ing: TNS worsens from −32.7 ns to −69.9 ns on Ariane and
+from −139.7 ns to −310.8 ns on BP. Because connectivity
+and geometry are preserved, this case study isolates what
+names contribute beyond structure: descriptive identifiers (e.g.,                     (a) Hor. and ver. convexity.                   (b) Mixed convexity.
+tile_y0x0, pu_core[2]) let the LLM recognize regular                                 Fig. 11: Placement comparison on dense rectilinear floorplans
+arrays, functional groupings, and symmetry that are not re-                          (>70% utilization). In both subfigures, top: A RIANE (NG45),
+coverable from the raw connectivity matrix. When names are                           bottom: BP (NG45), left: Comm-1, and right: MAGE.
+stripped, the framework must infer these relationships from
+connectivity alone, which is harder and yields less symmetrical
+group placement.                                                                     TABLE IX: Results on dense rectilinear floorplan designs
+                                                                                     (>70% utilization). HV: horizontal and vertical convexity (Fig-
+TABLE VIII: Results on unseen designs (zero-shot general-                            ure 11a). Mixed: horizontal top, vertical bottom (Figure 11b).
+ization). Below each design name, the triplet (Inst., Macros,                        Best values per design-variant in bold.19
+Types) reports the total instance count, the number of hard
+macros, and the number of unique macro types, respectively.                          Design (NG45) Type      Method   rWL (mm) Pwr (mW) WNS (ps) TNS (ns)
+
+All designs are GF12, so values are normalized as in Table II:                                       HV
+                                                                                                             Comm-1         3981         829       -117      -76.6
+                                                                                                             MAGE           4859         829       -105      -70.1
+rWL and Pwr to Comm-1, WNS and TNS to the target clock                               Ariane
+period. The best value per design is shown in bold.                                                          Comm-1         4273         835       -118      -92.4
+                                                                                                     Mixed
+                                                                                                             MAGE           4934         845       -112      -94.0
+
+          Design          Method    rWL    Pwr WNS      TNS SHM                                              Comm-1        24072        4450       -205    -1250.1
+                                                                                                     HV
+                                                                                                             MAGE          32757        4597       -123     -326.9
+          VTA             Comm-1 1.000 1.000 -0.22 -170.4             0.5            BP
+          (168K, 83, 8)   MAGE   1.142 1.022 -0.16 -101.8             0.7                                    Comm-1        32566        4652       -415   -11667.1
+                                                                                                     Mixed
+                                                                                                             MAGE          32252        4633       -354   -11959.2
+          GeneSys01       Comm-1 1.000 1.000 -0.17      -82.7         0.5
+          (695K, 368, 6) MAGE    1.157 1.009 -0.16      -60.7         0.6            3. Rectilinear floorplan designs. We next evaluate dense rec-
+                                                                                     tilinear floorplans for Ariane and BP in NG45, with utilization
+                                                                                     above 70%. Table IX shows that MAGE improves WNS on
+2. Unseen designs. To test zero-shot generalization, we apply
+                                                                                     all four rectilinear variants. The largest gain occurs on BP-
+MAGE to two GF12 designs, VTA and GeneSys01, that
+                                                                                     HV, where WNS improves from −205 ps to −123 ps and TNS
+were not used during prompt development or knowledge-
+corpus construction. As shown in Table VIII, MAGE improves                              19 Convexity refers to the shape of the rectilinear core cutout. In an HV
+timing over Comm-1 on both designs: WNS/TNS improve by                               (horizontal-and-vertical convex) variant, the core is clipped along both a
+27%/40% on VTA and by 6%/27% on GeneSys01. MAGE also                                 horizontal and a vertical edge, producing an L-shaped boundary that is convex
+                                                                                     in both directions. In a Mixed variant, the cutout is horizontal along the top
+achieves higher human-likeness scores (0.70 vs. 0.50 on VTA                          and vertical along the bottom, yielding a boundary whose convex direction
+and 0.63 vs. 0.50 on GeneSys01), at the cost of 14%–16%                              differs between its upper and lower halves.
+                                                                                                                                                           14
+
+
+
+                                                                                                                     68%        75%           80%
+                               1.05                                   Ariane
+                                                                      BP
+Normalized Routed Wirelength
+
+                                                                      Tabla09
+
+
+
+
+                                                                                                       Comm-1
+                               1.00                                   GeneSys01
+
+
+
+
+                                                                                              Ariane
+                               0.95
+
+
+
+
+                                                                                                       MAGE
+                               0.90
+
+                               0.85
+
+
+
+
+                                                                                                       Comm-1
+                                      1   2   3               4   5          6
+                                                  Iteration
+
+
+
+
+                                                                                              BP
+  Fig. 12: Normalized routed wirelength across tournament
+
+
+
+
+                                                                                                       MAGE
+  iterations for four designs (normalized to iteration 1 mean).
+  Solid lines: best variant per iteration. Shaded regions: spread
+  between worst and best variants. The monotonically decreas-                     Fig. 13: Placement comparison across utilization levels. MAGE
+  ing trajectories demonstrate the effectiveness of the analysis                  preserves regular stacking as utilization increases, while
+  and reflection agents in guiding iterative improvement.                         Comm-1 placements become more fragmented.
+
+                                                                                  TABLE X: Results with utilization sweep. Enablement: GF12.
+  improves from −1250.1 ns to −326.9 ns. The mixed-convexity                      Values are normalized: rWL and Pwr to the Comm-1 result at
+  cases show some tradeoff: MAGE improves WNS but does not                        each utilization, and WNS and TNS to the target clock period
+  always improve TNS. Overall, these results show that MAGE                       (fixed across utilizations). Best values per design–utilization
+  generalizes to rectilinear floorplan designs.                                   pair in bold.
+  Evolution trajectory. Figure 12 plots the normalized routed
+  wirelength of MAGE’s variants across tournament iterations                                 Design Util Method              rWL      Pwr WNS       TNS
+
+  for four designs: Ariane, BP, Tabla09, and Genesys01. Val-                                                    68
+                                                                                                                     Comm-1 1.000 1.000   -0.16   -142.3
+                                                                                                                     MAGE   1.223 1.021   -0.10    -68.0
+  ues are normalized to the iteration 1 mean, and the shaded
+                                                                                             Ariane                  Comm-1 1.000 1.000   -0.16   -130.9
+  region shows the spread between worst and best variants in                                                    75
+                                                                                                                     MAGE   0.964 0.988   -0.10    -69.9
+  each round. All four designs exhibit a downward trajectory,
+                                                                                                                     Comm-1 1.000 1.000   -0.13   -137.4
+  confirming that the tournament’s analysis and reflection agents                                               80
+                                                                                                                     MAGE   1.259 1.037   -0.11   -107.8
+  (Section IV-G) successfully guide iterative improvement. Ar-
+                                                                                                                     Comm-1 1.000 1.000   -0.09   -138.9
+  iane shows the strongest convergence, with the best variant                                                   68
+                                                                                                                     MAGE   1.099 1.010   -0.08    -33.4
+  dropping from 0.95× to 0.83× of the initial mean (a ∼13%                                   BP                      Comm-1 1.000 1.000   -0.11   -347.3
+                                                                                                                75
+  improvement) by iteration 6, accompanied by a narrowing                                                            MAGE   1.081 1.004   -0.05    -29.6
+  spread that indicates the variant pool concentrating around                                                        Comm-1 1.000 1.000   -0.33 -2850.0
+                                                                                                                80
+  stronger solutions. BP converges more gradually, reaching                                                          MAGE   1.105 0.987   -0.07   -42.9
+
+  ∼0.91× by iteration 6 (∼7% improvement), with a wider
+  shaded region reflecting the greater difficulty of placing 220                  advantage is largest at high utilization. On BP at 80% utiliza-
+  macros across 6 types. Tabla09 shows steady improvement                         tion, MAGE improves normalized WNS from −0.33 to −0.07
+  from 0.98× to ∼0.90× (∼8% improvement), with the tightest                       and normalized TNS from −2850.0 to −42.9. Figure 13 shows
+  spread among all designs, suggesting that the smaller design                    that as utilization increases, Comm-1 placements become more
+  (368 macros) leaves less room for variant diversity. Genesys01                  fragmented, while MAGE preserves boundary-snapped stacks
+  (an unseen design) shows a trajectory comparable to the                         and organized routing channels. These results show that the
+  main benchmarks, reaching ∼0.91× by iteration 6, confirming                     placement principles used by MAGE remain effective under
+  that the tournament mechanism generalizes to designs not                        tighter area constraints.
+  used during prompt development. Across all four designs, the                    LLM resource usage. Each MAGE tournament run uses
+  tournament yields an average 9% rWL improvement over the                        6 variants across 6 rounds. For a single-variant run, input
+  iteration 1 mean. Most of the gain occurs in the first 2–3                      tokens range from 78M to 189M and output tokens from
+  iterations, after which the trajectory plateaus—suggesting that                 1.8M to 4.3M, at a current cost of $6–$14 per variant. A
+  R = 3 could suffice in practice.                                                full tournament run costs $220–$509, averaging $310 per
+  4. Utilization sweep. Last, to evaluate MAGE under tighter                      design. Wall-clock tournament runtime ranges from 4.9 hours
+  area constraints, we increase utilization on Ariane and BP                      to 18.8 hours, averaging 10.0 hours; variants within each
+  in GF12 while keeping the target clock period fixed. In this                    round execute in parallel, so runtime tracks the slowest variant
+  sweep, rWL and Pwr are normalized to the Comm-1 result at                       per round. Unsurprisingly, the runtime is dominated not by
+  each utilization, while WNS and TNS are normalized to the                       LLM generation but by downstream P&R evaluation, e.g.,
+  target clock period. Table X shows that MAGE achieves the                       MemPool’s 2.6M instances induce long P&R runs while token
+  best WNS and TNS across all six design–utilization pairs. The                   usage is comparable to the other designs. We emphasize that
+                                                                                                                                                              15
+
+
+
+while MAGE is slower than conventional macro placers which                          [9] C.-K. Cheng, A. B. Kahng, S. Kundu, Y. Wang and Z. Wang, “As-
+might run in seconds to minutes, it targets a different operating                       sessment of reinforcement learning for macro placement”, Proc. ISPD,
+                                                                                        2023, pp. 158–166.
+point: producing human-like macro placements to reduce or                          [10] C.-K. Cheng, A. B. Kahng, S. Kundu, Y. Wang and Z. Wang, “An
+eliminate manual refinement steps that today require days to                            updated assessment of reinforcement learning for macro placement”,
+weeks of engineer time.                                                                 IEEE TCAD, (2025) (DOI 10.1109/TCAD.2025.3644293).
+                                                                                   [11] C.-H. Chiou, C.-H. Chang, S.-T. Chen and Y.-W. Chang, “Circular-
+                                                                                        contour-based obstacle-aware macro placement”, Proc. ASP-DAC, 2016,
+                      VII. C ONCLUSION                                                  pp. 172–177.
+                                                                                   [12] W. Choi and K. Bazargan, “Hierarchical global floorplacement using
+   We have presented MAGE, a multimodal multi-agent frame-                              simulated annealing and network flow area migration”, Proc. DATE,
+work for human-like macro placement. Rather than treating                               2003, pp. 1104–1105.
+                                                                                   [13] Y.-L. Chuang, G.-J. Nam, C. J. Alpert, Y.-W. Chang, J. Roy and
+macro placement as a single monolithic optimization problem,                            N. Viswanathan, “Design-hierarchy aware mixed-size placement for
+MAGE decomposes the task into a six-phase workflow with                                 routability optimization”, Proc. ICCAD, 2010, pp. 663–668.
+explicit visual feedback and validation. Expert floorplanning                      [14] J. Cong, M. Romesis, and J. R. Shinnerl, “Fast floorplanning by
+                                                                                        lookahead enabled recursive bipartitioning”, IEEE TCAD, 25(9) (2006),
+knowledge is encoded through structured natural-language                                pp. 1719–1732.
+directives, visual checks, and refinement criteria, allowing                       [15] M. Ekpanyapong, J. Minz, T. Watewai, H.-H. S. Lee and S. K. Lim,
+the framework to reason about hierarchy, grouping, boundary                             “Profile-guided microarchitectural floorplanning for deep submicron
+                                                                                        processor design”, IEEE TCAD, 25(7) (2006), pp. 1289–1300.
+placement, stacking regularity, whitespace quality, and pin                        [16] H. Esmaeilzadeh, S. Ghodrati, J. Gu, S. Guo, A. B. Kahng, J. K. Kim et
+accessibility without per-design training. Across NG45 and                              al., “VeriGOOD-ML: An open-source flow for automated ML hardware
+GF12 designs, MAGE improves post-route timing over aca-                                 synthesis”, Proc. ICCAD, 2021, pp. 1–7.
+                                                                                   [17] A. Ghose, J. Jang, A. B. Kahng and J. Lee, “Automated QoR improve-
+demic and commercial baselines, with the largest gains seen                             ment in OpenROAD with coding agents”, arXiv:2601.06268, 2026.
+in TNS. It also matches or exceeds the human expert baseline                       [18] B. H. Gwee and M. H. Lim, “A GA with heuristic-based decoder for
+in structural organization while maintaining comparable wire-                           IC floorplanning”, Integration, 28(2) (1999), pp. 157–172.
+                                                                                   [19] Z. He, Y. Ma, L. Zhang, and X. Zhou, “Learn to floorplan through
+length and power. Human-likeness metrics, ablation studies,                             acquisition of effective local search heuristics”, Proc. ICCD, 2020, pp.
+and case studies on anonymized, unseen, rectilinear, and high-                          324–331.
+utilization designs all support a central premise that: human-                     [20] M.-K. Hsu, Y.-F. Chen, C.-C. Huang, S. Chou, T.-H. Lin, T.-C. Chen
+                                                                                        et al., “NTUplace4h: A novel routability-driven placement algorithm for
+like macro organization provides a useful structural prior                              hierarchical mixed-size circuit designs”, IEEE TCAD, 33(12) (2014), pp.
+for downstream routing and timing closure. More broadly,                                1914–1927.
+MAGE shows that multimodal reasoning can encode expert                             [21] C.-C. Hu, D.-S. Chen, and Y.-W. Wang, “Fast multilevel floorplanning
+                                                                                        for large scale modules”, Proc. ISCAS, 2004, pp. 205–208.
+physical-design judgment in a transparent and editable form.                       [22] A. B. Kahng, R. Varadarajan, and Z. Wang, “RTL-MP: Toward practical,
+Future work includes reducing wirelength and power overhead                             human-quality chip planning and macro placement”, Proc. ISPD, 2022,
+through stronger PPA-aware feedback, extending the frame-                               pp. 3–11.
+                                                                                   [23] A. B. Kahng, R. Varadarajan, and Z. Wang, “Hier-RTLMP: A hierar-
+work to soft macros and standard-cell-aware floorplanning,                              chical automatic macro placer for large-scale complex IP blocks”, IEEE
+and applying the same methodology to adjacent floorplanning                             TCAD, 43(5) (2024), pp. 1552–1565.
+tasks such as pin access planning, power-grid planning, and                        [24] M.-C. Kim, N. Viswanathan, C. J. Alpert, I. L. Markov and S. Ramji,
+                                                                                        “MAPLE: Multilevel adaptive placement for mixed-size designs”, Proc.
+stacked multi-die (3DIC) floorplanning.                                                 ISPD, 2012, pp. 193–200.
+Acknowledgments. We acknowledge the use of Claude                                  [25] D. H. Kim and S. K. Lim, “Bus-aware microarchitectural floorplanning”,
+Opus 4.6 to assist in implementing MAGE. The final code                                 Proc. ASP-DAC, 2008, pp. 204–208.
+                                                                                   [26] S. Kirkpatrick, C. D. Gelatt, and M. P. Vecchi, “Optimization by
+was thoroughly reviewed, verified, and edited by us. We                                 simulated annealing”, Science, 220(4598) (1983), pp. 671–680.
+maintain full accountability for the content and accuracy of the                   [27] J.-M. Lin, Y.-L. Deng, S.-T. Li, B.-H. Yu, L.-Y. Chang and T.-W. Peng,
+codebase. No AI was used for generating any text or images                              “Regularity-aware routability-driven macro placement methodology for
+                                                                                        mixed-size circuits with obstacles”, IEEE TVLSI, 27(1) (2019), pp. 57–
+in the manuscript.                                                                      68.
+                                                                                   [28] J.-M. Lin, Y.-L. Deng, Y.-C. Yang, J.-J. Chen and P.-C. Lu, “Dataflow-
+                              R EFERENCES                                               aware macro placement based on simulated evolution algorithm for
+                                                                                        mixed-size designs”, IEEE TVLSI, 29(5) (2021), pp. 973–984.
+ [1] S. N. Adya and I. L. Markov, “Fixed-outline floorplanning: Enabling           [29] J. Lu, H. Zhuang, P. Chen, H. Chang, C.-C. Chang, Y.-C. Wong et
+     hierarchical design”, IEEE TVLSI, 11(6) (2003), pp. 1120–1135.                     al., “ePlace-MS: Electrostatics-based placement for mixed-size circuits”,
+ [2] D. Aldous and U. Vazirani, “‘Go with the winners’ algorithms”, Proc.               IEEE TCAD, 34(5) (2015), pp. 685–698.
+     IEEE FOCS, 1994, pp. 492–501.                                                 [30] A. Mirhoseini, A. Goldie, M. Yazgan, J. Jiang, E. Songhori, S.
+ [3] A. Agnesina, P. Rajvanshi, T. Yang, G. Pradipta, A. Jiao, B. Keller et al.,        Wang et al., “Chip placement with deep reinforcement learning”,
+     “AutoDMP: Automated DREAMPlace-based macro placement”, Proc.                       arXiv:2004.10746, 2020.
+     ISPD, 2023, pp. 149–157.                                                      [31] A. Mirhoseini, A. Goldie, M. Yazgan, J. W. Jiang, E. Songhori, S. Wang
+ [4] S. Banerjee, S. Burns, P. Cocchini, A. Davare, S. Jain, D. Kirkpatrick et          et al., “A graph placement methodology for fast chip design”, Nature,
+     al., “A highly configurable hardware/software stack for DNN inference              594 (2021), pp. 207–212.
+     acceleration”, arXiv:2111.15024, 2021.                                        [32] H. Murata, K. Fujiyoshi, S. Nakatake and Y. Kajitani, “VLSI module
+ [5] Y.-C. Chang, Y.-W. Chang, G.-M. Wu, and S.-W. Wu, “B*-trees: A new                 placement based on rectangle-packing by the sequence-pair”, IEEE
+     representation for non-slicing floorplans”, Proc. DAC, 2000, pp. 458–              TCAD, 15(12) (1996), pp. 1518–1524.
+     463.                                                                          [33] V. Nookala, Y. Chen, D. J. Lilja and S. S. Sapatnekar,
+ [6] T. Chen, Y. Chang, and S. Lin, “A new multilevel framework for large-              “Microarchitecture-aware floorplanning using a statistical design
+     scale interconnect-driven floorplanning”, IEEE TCAD, 27(2) (2008), pp.             of experiments approach”, Proc. DAC, 2005, pp. 579–584.
+     286–294.                                                                      [34] J. Z. Yan and C. Chu, “DeFer: Deferred decision making enabled fixed-
+ [7] Y.-F. Chen, C.-C. Huang, C.-H. Chiou, Y.-W. Chang and C.-J. Wang,                  outline floorplanner”, Proc. DAC, 2008, pp. 161–166.
+     “Routability-driven blockage-aware macro placement”, Proc. DAC,               [35] J. Z. Yan, N. Viswanathan, and C. Chu, “An effective floorplan-guided
+     2014, pp. 1–6.                                                                     placement algorithm for large-scale mixed-size design”, ACM TODAES,
+ [8] C.-K. Cheng, A. B. Kahng, I. Kang and L. Wang, “RePlAce: Advancing                 19(3) (2014), pp. 1–25.
+     solution quality and routability validation in global placement”, IEEE        [36] C.-H. Chang, Y.-W. Chang, and T.-C. Chen, “A novel damped-wave
+     TCAD, 38(9) (2018), pp. 1717–1730.                                                 framework for macro placement”, Proc. ICCAD, 2017, pp. 504–511.
+                                                                                                                                  16
+
+
+
+[37] M. Liu, T.-D. Ene, R. Kirby, C. Cheng, N. Pinckney, R.                     Andrew B. Kahng is Distinguished Professor of
+     Liang et al., “ChipNeMo: Domain-adapted LLMs for chip design”,             CSE and ECE at the University of California, San
+     arXiv:2311.00176, 2023.                                                    Diego. His interests include IC physical design, the
+[38] Z. He, H. Wu, X. Zhang, X. Yao, S. Zheng, H. Zheng, et al., “ChatEDA:      design-manufacturing interface, combinatorial opti-
+     A large language model powered autonomous agent for EDA”, IEEE             mization, and AI/ML for EDA and IC design. He
+     TCAD, 43(10) (2024), pp. 3184–3197.                                        received the Ph.D. degree in Computer Science from
+[39] S. Thakur, B. Ahmad, H. Pearce, B. Tan, B. Dolan-Gavitt, R. Karri et       the University of California, San Diego.
+     al., “VeriGen: A large language model for Verilog code generation”,
+     ACM TODAES, 29(3) (2024), pp. 1–31.
+[40] A. Vidal-Obiols, J. Cortadella, J. Petit, M. Galceran-Oms and F. Mar-
+     torell, “RTL-aware dataflow-driven macro placement”, Proc. DATE,
+     2019, pp. 186–191.
+                                                                                Sayak Kundu is a Ph.D. student in the ECE de-
+[41] I. Uchendu, S. Goel, K. Hou, E. Songhori, K.-H. Lee, J. W. Jiang et
+                                                                                partment at the University of California, San Diego.
+     al., “See it to place it: Evolving macro placements with vision-language
+                                                                                He received his bachelor’s degree in Electronics
+     models”, arXiv:2603.28733, 2026.
+                                                                                and Telecommunication Engineering from Jadavpur
+[42] Ariane RISC-V CPU repo. Accessed: March 11, 2026. [Online].
+                                                                                University, Kolkata, in 2017. His research interests
+     Available: https://github.com/openhwgroup/cva6
+                                                                                include optimization and machine learning applica-
+[43] BlackParrot repo. Accessed: March 11, 2026. [Online].
+                                                                                tions in IC physical design flow and methodology.
+     Available: https://github.com/black-parrot/black-parrot
+[44] Anthropic’s Claude Opus 4.6. Accessed: March 11, 2026. [Online].
+     Available: https://www.anthropic.com/news/claude-opus-4-6
+[45] Hier-RTLMP repo. Accessed: March 11, 2026. [Online]. Available:
+     https://github.com/The-OpenROAD-Project/OpenROAD/tree/master/
+     src/mpl                                                                    Bodhisatta Pramanik received the M.S. degree in
+[46] Cadence Innovus v21.1. https://cadence.com                                 computer engineering from the Iowa State Univer-
+[47] MacroPlacement repo. Accessed: March 11, 2026. [Online].                   sity, Iowa, in 2022. He is currently pursuing the
+     Available: https://github.com/TILOS-AI-Institute/MacroPlacement            Ph.D. degree at the University of California at San
+[48] MemPool repo. Accessed: March 11, 2026. [Online].                          Diego, La Jolla. His research interests include par-
+     Available: https://github.com/pulp-platform/mempool                        titioning, placement, large-scale combinatorial opti-
+[49] NanGate45 PDK. Accessed: March 11, 2026. [Online].                         mization, and agentic EDA.
+     Available: https://eda.ncsu.edu/freepdk/freepdk45/
+[50] MAGE repository. [Online].
+     Available: https://github.com/ABKGroup/MAGE
+

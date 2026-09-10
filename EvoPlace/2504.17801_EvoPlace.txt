@@ -1,0 +1,613 @@
+                                              Evolution of Optimization Algorithms for Global
+                                                  Placement via Large Language Models
+                                                              Xufeng Yao1 , Jiaxi Jiang1 , Yuxuan Zhao1 , Peiyu Liao1 , Yibo Lin2 , Bei Yu1
+
+
+                                            Abstract—Optimization algorithms are widely employed to                                   64.63 HPWL               Placement
+                                                                                                                                                                                                                  Algo Code
+
+
+
+
+                                                                                                                   HPWL (Obejctive)
+                                         tackle complex problems, but designing them manually is often                                                          Engine                              self.init_pos[0:placedb.num_movable_no
+                                                                                                                                                                                                    des] = np.random.normal(
+                                                                                                                                                                                                       loc=(placedb.xl * 1.0 + placedb.xh *
+                                         labor-intensive and requires significant expertise. Global place-                                        Retrieve                                          1.0) / 2,
+                                                                                                                                                                                                    We omit following parts to save area
+                                                                                                                                                              Prompt          Generate
+                                         ment is a fundamental step in electronic design automation                                                                     LLM
+                                                                                                                                            59.80                                                   # Advanced Cluster-based Initialization
+                                         (EDA). While analytical approaches represent the state-of-the-art
+arXiv:2504.17801v1 [cs.NE] 18 Apr 2025
+
+
+
+
+                                                                                                                                                     Original Algo                  New Algo        if params.global_place_flag and
+                                                                                                                                                                                                    params.random_center_init_flag:
+                                         (SOTA) in global placement, their core optimization algorithms                               Init Algo                                Merged
+                                                                                                                                                                                                      cluster_factor =
+                                                                                                                                                                                                    int(np.sqrt(num_movable_nodes / 150)) + 1
+                                         remain heavily dependent on heuristics and customized compo-                                    Evo                 58.69               In
+                                                                                                                                                                                                      node_clusters = np.random.randint(0,
+                                                                                                                                                                                                    cluster_factor, num_movable_nodes)
+                                                                                                                                                                       57.57 HPWL                     for cluster_id in range(cluster_factor):
+                                         nents, such as initialization strategies, preconditioning methods,                                        Prec Algo                                           idx = np.where(node_clusters ==
+                                                                                                                                                                                                    cluster_id)[0]
+                                         and line search techniques. This paper presents an automated                                                 Evo    Opt Algo                                  cluster_center_x =
+                                                                                                                                                                                                    np.random.uniform(placedb.xl, placedb.xh)
+                                                                                                                                                               Evo Lower is better                  # Net-weight-informed noise addition
+                                         framework that leverages large language models (LLM) to evolve                                                                                             # Iterative Refinement with Early
+                                                                                                                                                                                                    Cooling
+                                         optimization algorithms for global placement. We first gener-                                1      2         3    4       5       6              (103 )   We omit these implementations and
+                                                                                                                                                                                                    following parts to save area
+
+                                         ate diverse candidate algorithms using LLM through carefully                                                   Number of generations
+                                         crafted prompts. Then we introduce an LLM-based genetic flow
+                                         to evolve selected candidate algorithms. The discovered optimiza-
+                                                                                                                                           Fig. 1 Evolution of Optimization Algorithms
+                                         tion algorithms exhibit substantial performance improvements
+                                         across many benchmarks. Specifically, Our design-case-specific
+                                         discovered algorithms achieve average HPWL improvements of                competitive results with much shorter initialization time. As
+                                         5.05%, 5.29% and 8.30% on MMS, ISPD2005 and ISPD2019                      a result, it provides a heuristic that moving all cells to
+                                         benchmarks, and up to 17% improvements on individual cases.               the center of the layout. Despite this, macro initialization
+                                         Additionally, the discovered algorithms demonstrate good gener-
+                                         alization ability and are complementary to existing parameter-            remains challenging due to its greater influence on the final
+                                         tuning methods.                                                           results. SkyPlace [20] proposes macro-aware clustering and
+                                                                                                                   semidefinite programming relaxation for placement initial-
+                                                                 I. I NTRODUCTION                                  ization, which consumes longer running time overhead due
+                                            Global placement is a crucial step in VLSI physical design             to the SDP solver cost. Preconditioning is another critical
+                                         and significantly impacts the circuit performance. Previous               part in optimization algorithms [4], [10], [21], which usually
+                                         solutions rely on heuristic methods such as partitioning [1],             aims at solving the inverse matrix of the Hessian matrix
+                                         simulated annealing [2] and min-cut [3] as base algorithms                for optimization. For instance, ePlace [10] approximates the
+                                         to minimize wirelength. Quadratic approaches [4]–[6] ap-                  inverse of Hessian matrix using vertex and net degrees in
+                                         proximate wirelength and density using quadratic functions.               nonlinear optimization. Lastly, gradient-based optimizers form
+                                         Analytical placement is the current SOTA for VLSI place-                  the foundation of analytical approaches, often with customized
+                                         ment [7]–[12]. Analogy to deep learning, analytical placement             components. For instance, DREAMPlace families [22]–[26]
+                                         has two important components: optimization algorithms and                 introduces a Barzilai-Borwein method enabled Nesterov algo-
+                                         differentiable objective models. The task is to minimize the              rithm, and other heuristics include noise injection at high over-
+                                         objective, i.e., wirelength model [13]–[19], via moving cell              flow plateaus and placement termination based on divergence
+                                         locations. The cell locations are optimized via the gradients             checks. Overall, designing algorithm remains challenging due
+                                         of the objective which is largely dependent on optimization               to the NP-hard nature of the problem [27].
+                                         algorithms.                                                                  Key Motivation: Large language models (LLM) have
+                                            Due to complexity of the problem, existing optimization                shown great potential in many areas [28]–[36]. In the field
+                                         algorithms in placement engine remains highly heuristic and               of automatic algorithm design, recent works [37], [38] have
+                                         customized, including heuristic initialization, customized pre-           shown that LLMs can evolve algorithms tailored to specific
+                                         conditioning methods and tailored line search techniques. Ini-            combinatorial optimization problems [39]. The key motivation
+                                         tialization strategies determine the initial positions of macros          is to leverage the advanced capacity of LLM to comprehend
+                                         and cells, which significantly impact the final optimization              the problem, provide various heuristic ideas, implement these
+                                         results. Previous solutions [8], [10] formulate quadratic func-           ideas into code and improve the existing algorithm code via
+                                         tions and solve it to determine initial placements. Later                 execution feedback. Given their remarkable performance, a key
+                                         DREAMPlace [10] shows that random initialization can obtain               question arises: Can LLM improve existing optimization al-
+                                                                                                                   gorithms for global placement? Nevertheless, current works
+                                           This work is supported in part by The Research Grants Council of Hong   mainly addresses small-scale optimization problems, leaving
+                                         Kong SAR (Project No. CUHK14208021).
+                                           The authors are with The Chinese University of Hong Kong1 , Hong Kong   industry challenges, like placement, largely unexplored.
+                                         SAR. Peking University2 .                                                    To address this challenge, this paper presents an automated
+   # x position init, move to center of layout
+   self.init_pos[0:placedb.num_movable_nodes] = np.random.normal(
+                                                                           work to design new algorithms effectively in placement
+       loc=(placedb.xl * 1.0 + placedb.xh * 1.0) /                         problem.
+   2,scale=(placedb.xh - placedb.xl) * 0.001,
+    # y position init, move to center of layout (same as x position)     • Our results demonstrate significant improvement on sev-
+    Similar to x position, we omit implementations here to save area
+                                                                           eral benchmarks under strict fair comparison, which
+                   (a) DREAMPlace Implementation
+   # Adaptive Density Scaling; omit implementation here
+                                                                           shows the great potential of automatic algorithm design
+   # Calculate layout center; omit implementation here
+   # Adaptively scale x, y positions; omit implementation here
+                                                                           in EDA field.
+   # Advanced Cluster-based Initialization                               • We release all code, prompts, and discovered optimization
+   if params.global_place_flag and params.random_center_init_flag:
+     cluster_factor = int(np.sqrt(num_movable_nodes / 150)) + 1            algorithms, which can inspire researchers for further
+     node_clusters = np.random.randint(0, cluster_factor,
+   num_movable_nodes)                                                      explorations.
+     for cluster_id in range(cluster_factor):
+       idx = np.where(node_clusters == cluster_id)[0]
+       cluster_center_x = np.random.uniform(placedb.xl, placedb.xh)                        II. R ELATED W ORKS
+       cluster_center_y = np.random.uniform(placedb.yl, placedb.yh)
+       self.init_pos[idx] = np.random.normal(                          A. Heuristics and Customized Algorithms in Global Place-
+         loc=cluster_center_x,scale=(placedb.xh - placedb.xl) / (15
+   * cluster_factor),size=len(idx))
+   # Net-weight-informed noise addition
+                                                                       ment
+   # Iterative Refinement with Early Cooling
+   We omit these implementations and following parts to save area         Heuristic and customized algorithms are widely used in
+                   (b) Discovered Initialization Example               global placement due to the problem’s NP-hard nature [27].
+                                                                       For instance, AutoDMP [40] introduces two parameters to
+            Fig. 2 Discovered algorithms example.                      set the initial cell location as a percentage of the width
+                                                                       and height of the layout. [41] introduces a macro orienta-
+                                                                       tion refinement heuristic. RePlAce [11] introduces local and
+framework that utilizes LLM to evolve optimization algorithms          global density function with some heuristics implementations.
+for global placement. Our framework focuses on three key               DREAMPlace-4.0 [25] improves preconditioner by incorpo-
+optimization components: initialization, preconditioner, and           rating net-weighting information. DREAMPlace-4.1 [26] in-
+optimizer. As shown in Fig. 1, the process begins by retrieving        troduces a robust SA algorithm to solve legalization issues.
+the original algorithm codes from the placement engine. These          RePlAce [11] proposes a dynamic step size adaptation method.
+codes are then combined with carefully curated prompts for             ePlace [10] introduces Nesterov optimizer with tailored line
+the LLM, which generates and refines new algorithm codes.              search techniques, which incorporates carefully designed op-
+The evolved algorithm codes are integrated back into the               timizer parameters. This work mainly focuses on mentioned
+placement engine to produce the results. The evolution frame-          three components while ignoring other heuristic parts. How-
+work executes this process iteratively to generate and evolve          ever, our framework can easily incorporate these heuristics and
+optimization algorithms. The details of evolution framework            make it into a large evolution framework.
+includes algorithm candidates generation and evolution two
+processes. Specifically, we first generate large amounts of            B. Automatic Algorithm Design and Evolution
+candidate algorithms offline via LLM, then we introduces an               Designing algorithms is labor-intensive and requires signif-
+efficient LLM-based genetic flow to evolve chosen candidates.          icant expertise. Recent works that leveraging LLM to design
+We leverage a large GPU cluster to accelerate whole evolution          algorithms provide new perspective for this problem [38].
+process to make it within a desired running time. Additionally,        FunSearch [37] is the pioneer paper that leveraging LLM
+we introduce an algorithm-level design space exploration flow          for algorithms generation and evolution targeting optimization
+tailored for resource-constrained scenario.                            problem such as bin packing. It defines an algorithm-level code
+   Key Findings: LLM exhibit remarkable capabilities in                prompt template including “evaluate”, “solve” and “heuristic”
+evolving optimization algorithms, resulting in significant             to prompt LLM to produce new heuristics and generate related
+improvements in placement quality. Fig. 2 provides an                  code. The generated code is executed, and feedback is used
+example for discovered initialization algorithm code snippet.          to iteratively refine the heuristics and code through the LLM.
+Compared with DREAMPlace version which simply move x, y                Later several works follow this pattern and improve by intro-
+position to the center of layout with a simple noise addition for      ducing sophisticated prompt engineering such as evolve both
+exploration purpose. The discovered algorithm leverages more           heuristic and code [42], exploring multi-objective setting [43]
+net information and add more heuristics including adaptive             and designing new cost functions [44]. However, current LLM
+density scaling, clustering, net-weight-informed noised addi-          for algorithm design approach does not touch complex NP-
+tion and other heuristics to improve macro initialization. Fig. 3      hard industry challenges like placement [27], where LLM has
+compares our method with DREAMPlace-4.1 on the MMS                     to leverage placement knowledge prior to enhancing existing
+benchmark adaptec1 design case. Our placement appears more             algorithms, such as initialization.
+compact, aesthetic and regularity. Quantitatively, our approach
+achieves over 10% improvement in Half-Perimeter Wirelength                                     III. M ETHOD
+(HPWL) compared to DREAMPlace-4.1. Note that placement                    Our framework leverages LLM to evolve optimization
+is the core problem in EDA and even 1% HPWL improvement                algorithms for global placement task, specifically targeting
+is not negligible. Our contributions are as follows:                   three optimization components: initialization, preconditioner,
+  •   We propose an LLM-based algorithm evolution frame-               and optimizer. The algorithm evolution process follows a
+                 HPWL: 64.63                     HPWL: 57.57            markdown-style format to structure the prompt, which includes
+                                                                        task description, context, algorithm code, related analysis,
+                                                                        specific instructions and output format. While the basic tem-
+                                                                        plate structure remains fixed, components like algorithm code
+                                                                        and related analysis are dynamically updated. The template
+                                                                        enforces clear instructions and output formats to ensure useful
+                                                                        and structured responses from the LLM.
+                                                                        Chain-of-Thoughts Prompt Engineering. We leverage
+           (a) DREAMPlace-4.1                      (b) Ours
+                                                                        Chain-of-Thoughts (CoT) [45] to enhance the algorithm gener-
+                                                                        ation process. The LLM first analyzes the current optimization
+  Fig. 3 Comparison between DREAMPlace-4.1 and ours.                    algorithm, and this analysis is then incorporated into the new
+                                                                        prompt template. This CoT approach provides richer context
+           Initia algo          Precond algo         Optimizer algo     for algorithm generation. Additionally, the inherent variability
+         prompts & code                                                 in LLM’s analyses introduces beneficial randomness, leading
+         prompts & code                 LLM                             to diverse candidate algorithms.
+         prompts & code                                                 Leveraging Extra Placement Inputs. Placement inputs such
+                     (a) Step1: Algorithms Generation                   as logical netlist and physical cell library contain valuable
+                                                                        patterns that can enhance optimization algorithms, yet effec-
+        Select      Evolve     Select    Evolve     Select     Evolve
+                                                                        tive extraction and utilization of such information remains a
+                  LLM                   LLM                   LLM       challenge. Despite efforts to utilize placement inputs, such
+                                                                        as DREAMPlace-4.0 [25]improving preconditioner via incor-
+                         Leads to              Leads to                 porating different net-weighting, these expert-designed algo-
+                      (b) Step2: Algorithms Evolution                   rithms still cannot fully exploit latent patterns. We propose
+Fig. 4 LLM-based Algorithm Generation and Evolution                     using LLM to dynamically select and leverage placement
+Pipeline.                                                               inputs. Fig. 6 shows partial placement inputs and a discovered
+                                                                        algorithm with placement inputs example. The discovered
+                                                                        algorithm generated by LLM makes use of some extra place-
+sequential pipeline where each component builds upon its                ment inputs (not used in default implementation) to improve
+predecessors. For example, the preconditioner is selected and           algorithms. We collect placement inputs from the placement
+evolved based on the evolved initialization algorithm. As               engine and integrate it into LLM prompts for automated
+shown in Fig. 4, our framework mainly contains two steps.               feature selection and algorithm synthesis. Results indicate that
+In the first step, we employ LLM to generate diverse algo-              LLMs can effectively synthesize sophisticated functions to
+rithm candidates for all three componenets offline (detailed            extract valuable optimization insights from placement inputs.
+in Section III-A). The generated candidates of each component           Self-Referencing Prompt Engineering. We also propose
+are merged into placement engine and then evaluated in                  a self-referencing technique to improve candidate algorithm
+parallel on a GPU cluster. In the second step, rather than              generation process. First, using previous outputs, we prompt
+solely selecting top-performing algorithms, we implement a              the LLM to generate a high-level idea for a new optimiza-
+balanced selection strategy considering both performance and            tion algorithm. Next, this high-level idea guides the LLM
+diversity as described in Section III-B. Finally, we apply              to produce corresponding code implementation. Finally, this
+genetic algorithms to evolve the selected candidates as outlined        implementation serves as a reference for generating the final
+in Section III-C.                                                       placement-engine-format candidate algorithms.
+   Although the proposed LLM-based algorithm design                        In general, the candidates are generated in four sequential
+demonstrates significant improvement, the running time is a             steps: (1) LLM analyzes the given algorithm codes, (2) this
+new bottleneck in resource-constrained scenario. Therefore,             analysis feeds into a new prompt template to generate high-
+we introduce a new algorithm-level design space (DSE) ex-               level idea, (3) the idea guide LLM to generate reference code
+ploration to tackle the running-time problem as presented               implementation, and (4) the reference code helps generate
+in Section III-D.                                                       final desired candidate algorithms. Each step uses slightly
+                                                                        different prompt templates with customized instructions and
+A. Candidates Generation
+                                                                        output formats, with details omitted for brevity.
+   The candidate algorithm generation phase leverages LLM
+to produce a diverse set of feasible optimization algorithms.           B. Candidates Selection
+We design specialized prompts to guide LLM in generating                   After generating N candidate algorithms, we evaluate their
+the desired outputs.                                                    HPWL performance in parallel using a GPU cluster. For the
+Prompt Construction For Optimization Algorithms. Fig. 5                 next evolution stage, we need to select top−m high-performed
+demonstrates a simplified prompt template example. We use a             algorithms. The greedy approach is to select the top−m
+      # Task: Improve DREAMPlace Initialization Algorithm             Algorithm 1 Evolution Flow
+      ## Context - Problem: Analytical global placement in EDA…
+      ## DREAMPlace Init Algo:                                        1: Input: Sorted candidates A = {a1 , a2 , · · · , am } and iterations T ;
+      ```python                                                       2: Output: Best a∗ ;
+      [DREAMPlace Init Implementation Snippet Here]
+      ```                                                             3: for t ← 1 to T do
+      ## Analysis of Current DREAMPlace Init Algo                     4:     Update UCB scores and choose the best a∗ following Equation (4);
+      [COT Analysis Here]                                             5:     Evolve and Self-Reflect generated candidates am+1 via Equation (3);
+      ## Instructions
+      [Detailed Instructions Here]                                    6:     A ← A ∪ am+1 ; Sort candidates via HPWL; A ← A \ a1 ;
+      ## Output Format                                                7: end for
+      [Detailed Output Format Design Here]
+                                                                      8: return Best a∗ in candidate lists A;
+
+             Fig. 5 A Simplified Prompt Example.
+
+                                                                      C. Candidates Evolution
+                  Input                      Description                After selecting candidate algorithms, we leverage LLM to
+               node size x                     cell width
+               node size y                     cell height
+                                                                      evolve chosen algorithms through an iterative process.
+              pin offset x                pin offset x to node        Evolution Prompt Engineering. The evolution prompt ex-
+              pin offset y                pin offset y to node
+               net weights               Weights for each net         tends our candidate algorithm generation approach described
+            total space area          total placeable space area      in Section III-A, maintaining the use of CoT, extra placement
+        total moveable node area        total movable cell area       inputs and self-reference techniques. We enhance this process
+                     (a) Partial Placement Inputs                     by incorporating self-reflection prompt outputs into the evolu-
+      density_scaling = min(1.0, (placedb.total_space_area
+      - placedb.total_filler_node_area) /                             tion prompt to improve the given candidate algorithms.
+      placedb.total_movable_node_area)
+      center_x = (placedb.xl + placedb.xh) / 2
+      node_x_median = np.median(placedb.node_x[:num_movable_nodes])
+                                                                      Self-Reflection Prompt Engineering. For each evolved algo-
+      self.init_pos[0:num_physical_nodes] = ((1 - density_scaling)    rithm, we integrate it into the placement engine and evaluate its
+      * node_x_median + density_scaling * center_x)
+                                                                      HPWL performance. The self-reflection prompt mainly deals
+             (b) Discovered Algorithm with Placement Inputs
+                                                                      with three possible outcomes compared with the current best
+                 Fig. 6 Partial Placement Inputs.                     candidate: (1) execution failure of the evolved algorithm, (2)
+                                                                      HPWL improvement, or (3) HPWL degradation. We combine
+                                                                      the HPWL feedback into new prompt template and prompt
+                                                                      the LLM to play a self-reflection [47] to refine the previously
+algorithm with the best HPWL scores. However, we notice               algorithm version.
+that some high-performed algorithms often share similar high-            The whole evolution process iteratively executes evolution
+level ideas, which may cause redundant LLM generation and             and self-reflection prompts to obtain evolved algorithms. We
+limit exploration on other candidates’ evolution. Therefore, we       modify instructions and output format to get desired outputs.
+propose to select top−m high-performed and diverse candidate          Denote LLM as πθ , two evolution prompts as pe1 and pe2 ,
+algorithms {a1 , a2 , · · · , am } ∈ A by maximizing following        and reflect prompt as pr . pe1 generates an initial evolution
+objectives:                                                           without reflection, while pe2 incorporates reflection analysis.
+                                                                      Given m−th algorithm, the new evolved algorithm am+1 is
+                 X                   X
+           max        f (ai ) + α         dis(ai , aj ),     (1)
+                 ai ∈A               ai ,aj ∈A
+                                                                      given by:
+
+where f (·) represents the objective function that returns neg-                      aˆm , rm = πθ (pe1 , am ),
+ative normalized HPWL value, dis(·) function denotes the                                   rˆm = πθ (pr , am , aˆm , rm ),                  (3)
+distance function which measure the negative cosine similarity                         am+1 = πθ (pe2 , am , aˆm , rˆm ),
+between two algorithm embeddings. Equation (1) is an NP-
+hard problem which can be reduced to the classical k-clique           where aˆm is the extracted evolved algorithm generated from
+problem [46]. We provide a greedy solution to tackle this             LLM via first evolution prompt. rm is the HPWL feedback
+problem. We first prune the candidate selection space by              of aˆm , rˆm is the self-reflection analysis. The final evolved
+selecting top−k (k > m) performing candidates. We then                algorithm am+1 is obtained from second evolution prompt
+include the best candidate algorithm a∗ into candidate lists          with self-reflection analysis and previous algorithm versions.
+because we observe that the best one is likely to “win”               In practice, multiple evolution and self-reflection cycles can
+throughout the evolution process. Then we iteratively select          be executed in parallel for the selected candidate algorithm to
+algorithms ai into candidates lists by maximizing following           improve evolution results.
+objectives:                                                           Evolution Flow. We select one candidate algorithm to evolve
+                      X                                               each iteration given m candidate algorithms. To select the can-
+  max f (ai ) + α            dis(ai , aj ) + β dis(ai , a∗ ). (2)
+                                                                      didate algorithm effectively, we adopt the Upper Confidence
+                    ai ,aj ∈A\a∗
+                                                                      Bound (UCB) algorithm [48], this involves choosing the best
+After each selection step, we append the chosen one into              candidate algorithm a∗ based on the evolution scores of each
+candidate lists A. This process ends until we collect pre-            candidate algorithm at every step. We define Q(a) as the
+defined m candidates.                                                 normalized obtained HPWL scores for a selected candidate
+algorithm, N (a) as the number of trials for this algorithm,       Algorithm 2 DSE Flow
+and t as the total number of trials. The algorithms selection is    1: Input: All algorithm design space A and optimization steps N ;
+based on the following equations:                                   2: Output: Pareto Set P, initially P ← ∅;
+                                                                    3: Randomly sample initial sets, initialize GP and EI function;
+                                                                    4: for n ← 1 to N do
+                                      s         !
+            ∗                            log(t)                     5:     Update surrogate model and EI based on sampled data;
+           a ← argmax Q(a) + λ                    .          (4)
+                                                                    6:      a∗ ← arg maxa∈A EI(a) ;
+                    a∈A                  N (a)
+                                                                    7:      Run Placement Engine with a∗ to obtain feedback y ;
+The UCB algorithm, derived using Hoeffding’s inequality [49],       8:     P ← P ∪ a∗ ;
+                                                                    9: end for
+offers a sublinear regret, providing an effective balance be-      10: return Pareto Set from P ;
+tween exploring new candidates and exploitation.
+   Algorithm 1 demonstrates our evolution pipeline. Given
+                                                                             Offline Pretrain                        Bayesian Optimization
+m candidate algorithms, we select one candidate each time                  Placement Input                              Surrogate Model
+based on their UCB score as calculated by Equation (4).                                                                   Update
+Then we evolve selected algorithms via evolution and self-                       +
+                                                                                                     NN
+reflection prompt through Equation (3). After evolution, we               embedding                 Supervise
+append the new evolved algorithms into candidate lists. We                               Offline                Evaluation         Sampel Selection
+                                                                                       Evaluation
+sort the candidate list with HPWL values and delete the worst
+one. This process iteratively evolve the candidate algorithms                                                     Placement
+until it reaches the pre-defined iteration steps.                                                                  Engine
+
+
+D. Algorithm-level Design Space Exploration                                            Fig. 7 Algorithm DSE framework.
+   Despite the significant improvement discovered algorithms,
+the algorithm execution time is a potential bottleneck in                                IV. E XPERIMENTAL R ESULTS
+resource constrained scenarios. Therefore, we propose an
+                                                                   A. Implementation and Benchmarks
+algorithm-level DSE framework to tackle this problem. Fig. 7
+illustrates our Algorithm-level DSE framework, which com-             We implement our framework on top of open-sourced
+bines offline pretraining and online search pipeline. For exam-    DREAMPlace-4.1 [26]. To ensure reproducibility, we maintain
+ple, we pretrain on the ISPD2019 benchmark and leverage            all default hyper-parameters and settings as specified in [26]
+the surrogate model for the MMS benchmark. We employ               and fix random seeds to ensure stability of results.
+an embedding model [28] to extract feature embeddings for             Our experiments utilize the GPT-4o API (version gpt-4o-
+candidate algorithms and a two-layer neural network to capture     2024-08-06) and Embedding API (version text-embedding-3-
+features from the placement inputs. These embeddings are           large). We leverage a distributed GPU cluster comprising 60
+concatenated, and a second two-layer neural network processes      NVIDIA RTX 2080 Ti and 150 RTX 3090 GPUs for parallel
+the combined features. The offline model is trained using          execution. We generate at least 1000 feasible candidates for
+HPWL results as supervision.                                       each optimization components. In evolution phase, the total
+   Similar to conventional DSE settings [40], [50]–[53], we        trail numbers is 1000 for each case.
+treat generated placement algorithms as design space and seek         We evaluate our algorithms on three benchmarks:
+optimal solutions under time constraints (limited sampling).       MMS [58], ISPD2005 [59], and ISPD2019 [60]. MMS, de-
+Our method employs Bayesian Optimization (BO) [54], [55]           rived from ISPD2005/ISPD2006, is a widely-used and com-
+with two key components: a surrogate model for performance         petitive benchmark where all macros are movable and I/O
+prediction with uncertainty estimates, and an acquisition func-    object sizes are set to zero. We also use a modified ver-
+tion for efficient design space exploration. New design points     sion of the ISPD2005 benchmark, where macros and I/O
+are selected using the acquisition function and leveraged to       objects are movable without altering their shapes, as intro-
+update the surrogate model. We implement Gaussian process          duced in [26]. ISPD2019, though originally a routing bench-
+(GP) [56] as surrogate model, characterized by mean and            mark, can be adapted for placement problems, allowing us
+variance functions. Each time given a new data point, GP up-       to demonstrate the generality of our framework. Additionally,
+dates accordingly. We use expected improvement (EI) [57] as        we also observe over 5% HPWL improvement on the TILOS
+acquisition function. Algorithm 2 demonstrates our Algorithm-      benchmark [61]. However, since some implementations in
+level DSE framework. We first randomly sample some design          DREAMPlace-4.1 [26] have not yet open-sourced, we refrain
+point from candidate lists and initialize GP and EI function.      from releasing full results to ensure reproducibility using
+Then we iteratively update surrogate model GP based on             publicly available code.
+sampled points via EI until reaching the pre-defined iterations.   B. Performance Analysis
+In the end, we obtain output set.
+   In this work we only consider HPWL as objective. There-         Case-by-Case Results Analysis. TABLE I and Tables II
+fore, we select the best evaluated algorithm in the end.           and III demonstrate case-by-case evolution results. In this
+However, our framework is compatible with multi-objective          setting, we evolve our algorithms via design case HPWL feed-
+optimization problem.                                              back, which is same to conventional data-driven RL methods
+                                   TABLE I Results on MMS benchmarks based on case-by-case algorithms
+         Design         Default DREAMPlace          DREAMPlace w/ BB Method            DREAMPlace w/ BB Method∗                            Ours
+          Case      Status    HPWL   Runtime        Status HPWL     Runtime            Status HPWL      Runtime       Status    HPWL      Runtime      TT     HPWL↓
+    adaptec1         ✓        65.24       29.58      ✓         64.63           26.09       ✓       64.78    35.06       ✓       57.57       28.75     0.15     11.13%
+    adaptec2         ✓        76.07      174.88      ✓         74.71           43.88       ✓       73.89    50.43       ✓       71.64       49.40     0.38     3.05%
+    adaptec3         ✓        155.44      83.01      ✓         155.58          79.11       ✓       152.77    64.00      ✓       125.75      76.85     0.44     17.69%
+    adaptec4         ✓        142.72     102.79      ✓         142.48          85.94       ✓       141.63    50.93      ✓       119.86      77.82     0.22     15.37%
+    adaptec5         ✓        307.35     103.63      ✓         306.84          92.71       ✓       308.68   101.05      ✓       306.82     101.12     0.65     0.59%
+    bigblue1         ✓        85.16       39.29      ✓         85.32           32.57       ✓       85.25    32.14       ✓       78.64       30.28     0.15     7.75%
+    bigblue2         ✓        125.33     187.13      ✓         125.33         164.33       ✓       124.91    50.33      ✓       124.64      47.80     0.18     0.22%
+    bigblue3         ✓        270.87     181.51      ✓         273.84         194.47       ✓       269.98   225.35      ✓       257.70     279.26     2.12     4.55%
+    bigblue4         ✓        643.55     233.31      ✓         642.88         282.51       ✓       642.02   247.73      ✓       640.74     246.91     1.46     0.20%
+    newblue1         ✓        58.61       32.62      ✓         59.33           34.45       ✓       59.52    38.19       ✓       57.47       42.22     0.21     3.43%
+    newblue2         ✓        151.51      83.24      ✓         152.87          80.42       ✓       151.47    58.65      ✓       149.82      76.12     0.43     1.10%
+    newblue3         ×        448.59     118.01      ✓         270.08          92.84       ✓       295.03   139.80      ✓       271.32     143.71     1.22     8.04%
+    newblue4         ✓        223.40      54.21      ✓         223.24          59.69       ✓       230.04    60.81      ✓       218.39      97.87     0.27     5.06%
+    newblue5         ✓        387.90     132.79      ✓         388.98         160.38       ✓       403.11   191.51      ✓       402.97     204.47     1.62     0.03%
+    newblue6         ✓        406.33     148.31      ✓         406.82         168.85       ✓       407.03   115.91      ✓       405.68     129.98     0.54     0.33%
+    newblue7         ✓        879.37     281.74      ✓         881.64         304.60       ✓       883.68   232.04      ✓       866.64     285.26     1.43     1.93%
+       Ratio                1.000      1.000                 0.976      0.947                 0.980         0.919                0.931      0.995               5.05%
+     w/ BB Method∗ indicates self-implementation version based on open-source code. TT indicates total runtime of whole evolution process, which is measured in hours.
+
+                         TABLE II Results on I/O-freed ISPD2005 benchmarks based on case-by-case algorithms
+         Design         Default DREAMPlace          DREAMPlace w/ BB Method            DREAMPlace w/ BB Method∗                            Ours
+          Case      Status    HPWL   Runtime        Status HPWL     Runtime            Status HPWL      Runtime       Status    HPWL      Runtime      TT     HPWL↓
+    adaptec1         ✓        67.91      122.99      ✓         65.92          127.88       ✓       72.71     31.34      ✓       68.44      27.53      0.09     5.87%
+    adaptec2         ✓        79.74      145.01      ✓         77.65          143.08       ✓       82.46     30.01      ✓       80.99      32.55      0.11     1.78%
+    adaptec3         ✓        153.51     162.94      ✓         151.31         173.44       ✓       133.61    78.37      ✓       127.60     76.92      0.51     4.50%
+    adaptec4         ✓        213.86      86.86      ✓         141.45          85.94       ✓       132.67    64.23      ✓       125.96     62.73      0.30     5.06%
+    bigblue1         ✓        83.60      137.89      ✓         82.55          132.94       ✓       82.56     35.60      ✓       80.90      35.91      0.15     2.01%
+    bigblue2         ×        273.28     151.88      ✓         99.92          149.06       ✓       98.75    138.47      ✓       91.98      140.07     0.54     6.86%
+    bigblue3         ✓        301.70     161.26      ✓         296.79         197.04       ✓       287.13   270.18      ✓       252.12     237.08     2.14     12.19%
+    bigblue4         ✓        658.75     285.61      ✓         620.00         314.12       ✓       612.45   295.67      ✓       587.77     340.21     1.76     4.03%
+         Ratio                1.000      1.000                 0.859          1.043                0.853    0.819               0.809       0.786              5.29%
+
+
+
+TABLE III Results on ISPD2019 based on case-by-case algo-
+rithms
+             DREAMPlace          w/ BB Method∗                      Ours
+           HPWL   Runtime       HPWL    Runtime       HPWL        Runtime         HPWL↓
+ Ratio      1.000    1.000       1.000      0.988      0.906           1.12        8.30%
+
+
+TABLE IV Results on MMS based on generalized algorithms
+             DREAMPlace          w/ BB Method∗                      Ours
+           HPWL   Runtime       HPWL    Runtime       HPWL        Runtime         HPWL↓                      (a) adaptec1                       (b) bigblue1
+ Ratio      1.000    1.000       0.980      0.919      0.974           1.01       0.509%
+                                                                                                      Fig. 8 Rudy-RSMT Pareto frontiers comparison.
+TABLE V Results on ISPD2005 based on generalized algo-
+rithms
+             DREAMPlace          w/ BB Method∗                      Ours
+                                                                                               size global placement and customized macro legalization.
+           HPWL   Runtime       HPWL    Runtime       HPWL        Runtime         HPWL↓        DREAMPlace w/ BB Method and DREAMPlace w/ BB
+ Ratio      1.000    1.000       0.853      0.819      0.824           0.83        2.85%       Method∗ indicates the results presented on original paper [26]
+                                                                                               and our self-implementation results. We provide two version’s
+TABLE VI Selected results on discovered initialization algo-                                   results because case-by-case results may perform differently
+rithms                                                                                         within different environments, sometimes even close to 1%
+          Design      w/ BB Method∗           Selected Init Algorithm
+           Case      HPWL    Runtime       HPWL      Runtime      HPWL↓
+                                                                                               difference. It can be shown that our self-implement obtains
+     adaptec1        64.78       35.06     61.45       37.95        5.14%                      similar results compared with paper result [26]. Although some
+     adaptec3        152.77      64.00     129.86      71.71       14.99%                      cases may have around 1% difference, such as case newblue3
+     adaptec4        141.63      50.93     123.85      56.48       12.55%
+     bigblue1        85.25       32.14     78.98       35.65        7.35%                      on MMS benchmark and case adaptec3 and adaptec4 on
+                                                                                               ISPD2005 benchmark. Nevertheless, the overall HPWL per-
+                                                                                               formance ratio is stable. We observe the discovered algorithms
+and recent algorithm design and evolution pipeline [37], [38],                                 demonstrate significant improvement on almost all cases while
+[62]–[67]. Default DREAMPlace indicates DREAMPlace-4.1                                         maintaining same-level running-time on top of DREAMPlace
+without Barzilai-Borwein method which we serve as a stable                                     engine. Specifically, some cases such as adaptec1, adaptec3
+baseline. Note that This version’s performance is much bet-                                    on MMS and biglue3 on ISPD2005 all show over 10%
+ter than the Default DREAMPlace performance in previous                                        HPWL improvement. Even greater gains are observed on the
+papers such as [26] because we use the latest open-source                                      ISPD2019 benchmark, which, although primarily a routing
+DREAMPlace version [26] with two-stage flow for mixed-                                         benchmark, is rarely used in placement research. We high-
+    7
+    6     Runtime (h)                  AutoDMP          Ours      BB
+
+
+
+
+                                                                                                                                         Improvement
+    5                                   HPWL           HPWL      SVM
+                              Ratio      1.00           0.93
+
+
+
+
+                                                                                            HPWL
+
+
+
+
+                                                                                                                   HPWL
+    4                                                             RT
+    3                                                            XGB
+    2
+    1                                                            Ours
+                              0.1            0.5              1.0      0.9     0.95   1.0
+               P EP u r s
+        WM M       O         Runtime Ratio    Ours         AutoDMP           HPWL Ratio
+  (a) Versus AI Methods             (b) Versus AutoDMP                 (c) DSE Comparison           (a) adaptec1          (b) adaptec5                 (c) ISPD2005
+
+        Fig. 9 DSE comparison and running-time results.                                            Fig. 10 Discovered algorithm results observations.
+
+TABLE VII DSE results on IO-freed ISPD2005 benchmarks
+                       Ours (Exact)                           Ours (DSE)                    resourced-constrained scenario. Fig. 9 (c) compares our
+                     HPWL     Runtime          HPWL           Runtime    Runtime↓           method with SVM, RF (RandomForest) and XGB (XGBoost)
+         Ratio       1.000        1.000            1.037       0.165         83.50%
+                                                                                            on ISPD2005 benchmark. The x-axis shows the HPWL ratio,
+                                                                                            with BB method as the baseline. Under the same DSE setting
+                                                                                            with 100 design points selection, our method surpasses all
+light the generalization capability of our algorithm-evolution
+                                                                                            others competitors within the same search time. TABLE VII
+framework on this benchmark. There are two possible statuses:
+                                                                                            shows the improvement of runtime compared with extract
+success (✓) and divergence (×), where divergence indicates
+                                                                                            method, from which we use only one GPU to simulate
+extremely low-quality solutions. We report the total runtime
+                                                                                            resource-constrained scenario. The runtime of DSE method
+(TT) for each case, measured on GPU clusters using parallel
+                                                                                            is largely reduced compared with extract method with less
+execution. This runtime is acceptable for placement tasks and
+                                                                                            HPWL loss.
+can be further reduced by adding more GPUs. Fig. 8 presents
+the results of combining our discovered algorithms with the                                 C. Observations and Discussions
+AutoDMP parameter DSE method [40] on MMS benchmark.
+Our approach achieves better Rudy-RSMT Pareto frontiers                                     General Observations. Due to space constraints, we omit
+than AutoDMP alone, demonstrating that our algorithms are                                   some tables. Overall, we find that generating and evolving
+compatible with parameter-tuning methods and can potentially                                the initialization algorithm plays the most significant role in
+improve other objectives such as RSMT.                                                      improving performance with minimal impact on DREAMPlace
+                                                                                            runtime. The key insight is that macro position initialization
+Generalized Results Analysis. TABLE IV and TABLE V
+                                                                                            is critical, often leading significant improvements. Among
+show generalized results on MMS and ISPD2005 benchmarks,
+                                                                                            the three algorithm components, initializations have the highest
+where a generalized algorithm is applied to all cases. Our gen-
+                                                                                            generation success rate, followed by optimizers, with precon-
+eralized algorithm still achieves non-negligible improvements.
+                                                                                            ditioners performing slightly worse.
+Noted that we only test on our generated candidate algorithms
+without evolution parts, thus the algorithm candidates do not                               Discovered Algorithm Observations. Fig. 10 (a) and (b) illus-
+receive any HPWL feedback. However, although the general                                    trate two representative styles of discovered algorithms using
+results are not comparable with the case-by-case evolution                                  the adaptec1 and adaptec5 cases from the MMS benchmark.
+results, we still observe impressive generalized discovered                                 The x-axis represents the algorithm index. In Fig. 10 (a),
+algorithms as shown in Fig. 2. TABLE VI demonstrates the                                    we observe a ”pyramid-like” pattern, where groups of algo-
+selected results on MMS benchmark based on this generalized                                 rithms with similar performance cluster together, and fewer
+discovered algorithm. It’s clearly that the discovered algorithm                            algorithms achieve better HPWL as performance improves.
+achieves significant improvement across different cases. Note                               In contrast, Fig. 10 (b) shows an ”emergence” phenomenon,
+that this discovered initialization algorithm is not general                                where a single standout algorithm significantly outperforms
+for all cases and it also produce divergence performance                                    the rest, appearing almost randomly.
+in other cases. However, due to the large improvement, we                                   Inference Scaling Phenomenon. We also observe an inter-
+believe the discovered algorithms can provide new insights                                  esting scaling phenomenon regarding the inference scaling
+for researchers.                                                                            law. Fig. 10 (c) shows the relationship between performance
+Runtime Analysis and DSE results. We compare our to-                                        improvement and the number of generated algorithms on the
+tal runtime with both data-driven RL methods [64], [66],                                    ISPD2005 benchmark. We randomly select different sets of
+[66], WM (WireMask), MP (MaskPlace) and EP (Efficient-                                      generated algorithms multiple times and average the improve-
+Place), and the parameter-tuning method, AutoDMP [40] on                                    ments. Contrary to the conventional expectation of a linear
+ISPD2005 and MMS benchmarks. as shown in Fig. 9 (a) and                                     relationship, the curve shows a clear ”logarithmic” trend. We
+(b), under the same case-by-case searching setting. Our method                              will provide explorations in future work.
+is faster than both approaches. In terms of HPWL performance,
+we find that RL methods still lag behind analytical approaches,                                                       V. C ONCLUSION
+based on our self-implementation with open-source code. Our                                    In this work, we introduce a novel algorithm evolution
+approach also outperforms AutoDMP with a shorter runtime.                                   framework for global placement utilizing large language mod-
+   We also provide an algorithm-level DSE method in                                         els. The framework consists of two main components: an
+offline generation phase that creates diverse candidate algo-                     [30] ——, “Verilogeval: Evaluating large language models for verilog code
+rithms, and an evolutionary process that combines selection                            generation,” in ICCAD. IEEE, 2023.
+                                                                                  [31] S. Thakur et al., “Benchmarking large language models for automated
+strategies and genetic framework to improve chosen algo-                               verilog rtl code generation,” in DATE. IEEE, 2023.
+rithms. We also provide an algorithm-level DSE solution                           [32] Y. Fu et al., “Gpt4aigchip: Towards next-generation ai accelerator design
+targeting resource-constrained scenarios. The discovered al-                           automation via large language models,” in ICCAD. IEEE, 2023.
+                                                                                  [33] S. Liu et al., “Rtlcoder: Outperforming gpt-3.5 in design rtl generation
+gorithms achieve significant improvements on several bench-                            with our open-source dataset and lightweight solution,” in LAD. IEEE,
+marks and demonstrate good generalization ability as well. We                          2024.
+hope this work can provide new insights for this area.                            [34] D. Saha et al., “Llm for soc security: A paradigm shift,” IEEE Access,
+                                                                                       2024.
+                              R EFERENCES                                         [35] K. Chang et al., “Data is all you need: Finetuning llms for chip design
+                                                                                       via an automated design-data augmentation framework,” in DAC, 2024.
+ [1] J. A. Roy et al., “Capo: robust and scalable open-source min-cut
+                                                                                  [36] Y. Lai et al., “Analogcoder: Analog circuit design via training-free code
+     floorplacer,” in ISPD, 2005.
+                                                                                       generation,” arXiv, 2024.
+ [2] X. Yang, M. Sarrafzadeh et al., “Dragon2000: Standard-cell placement
+                                                                                  [37] B. Romera-Paredes et al., “Mathematical discoveries from program
+     tool for large industry circuits,” in ICCAD. IEEE, 2000.
+                                                                                       search with large language models,” Nature, vol. 625, no. 7995, 2024.
+ [3] J. A. Roy et al., “Min-cut floorplacement,” TCAD, vol. 25, no. 7, 2006.
+ [4] M.-C. Kim et al., “Complx: A competitive primal-dual lagrange opti-          [38] F. Liu et al., “A systematic survey on large language models for
+     mization for global placement,” in DAC, 2012.                                     algorithm design,” arXiv, 2024.
+ [5] ——, “Maple: Multilevel adaptive placement for mixed-size designs,”           [39] S. S. Seiden, “On the online bin packing problem,” JACM, 2002.
+     in ISPD, 2012.                                                               [40] A. Agnesina et al., “Autodmp: Automated dreamplace-based macro
+ [6] T. Lin, C. Chu et al., “Polar: Placement based on novel rough legalization        placement,” in ISPD, 2023.
+     and refinement,” in ICCAD. IEEE, 2013.                                       [41] C.-w. Sham et al., “Optimal cell flipping in placement and floorplan-
+ [7] T. Chan et al., “Multilevel generalized force-directed method for circuit         ning,” in DAC. IEEE, 2006.
+     placement,” in ISPD, 2005.                                                   [42] F. Liu et al., “Evolution of heuristics: Towards efficient automatic
+ [8] T.-C. Chen et al., “NTUplace3: An analytical placer for large-scale               algorithm design using large language model,” in ICML, 2024.
+     mixed-size designs with preplaced blocks and density constraints,”           [43] S. Yao et al., “Multi-objective evolution of heuristic using large language
+     vol. 27, no. 7, 2008.                                                             model,” arXiv, 2024.
+ [9] M.-K. Hsu et al., “NTUplace4h: A novel routability-driven placement          [44] Y. Yao et al., “Evolve cost-aware acquisition functions using large
+     algorithm for hierarchical mixed-size circuit designs,” vol. 33, no. 12,          language models,” in PPSN. Springer, 2024.
+     2014.                                                                        [45] J. Wei et al., “Chain-of-thought prompting elicits reasoning in large
+[10] J. Lu et al., “ePlace: Electrostatics-based placement using fast fourier          language models,” NeurIPS, vol. 35, 2022.
+     transform and Nesterov’s method,” vol. 20, no. 2, 2015.                      [46] C. Tsourakakis, “The k-clique densest subgraph problem,” in WWW,
+[11] C.-K. Cheng et al., “RePlace: Advancing solution quality and routability          2015.
+     validation in global placement,” vol. 38, no. 9, 2018.                       [47] J. Huang et al., “Large language models can self-improve,” arXiv, 2022.
+[12] Z. Zhu et al., “Generalized augmented lagrangian and its applications        [48] A. Slivkins et al., “Introduction to multi-armed bandits,” Foundations
+     to VLSI global placement,” 2018.                                                  and Trends® in Machine Learning, vol. 12, no. 1-2, 2019.
+[13] W. C. Naylor et al., “Non-linear optimization system and method for          [49] P. Auer, “Using confidence bounds for exploitation-exploration trade-
+     wire length and delay optimization for an automatic electric circuit              offs,” Journal of Machine Learning Research, vol. 3, no. Nov, 2002.
+     placer,” Oct. 9 2001, uS Patent 6,301,693.                                   [50] J. Zhao et al., “Comba: A comprehensive model-based analysis frame-
+[14] C. Li et al., “Recursive function smoothing of half-perimeter wirelength          work for high level synthesis of real applications,” in ICCAD. IEEE,
+     for analytical placement,” in ISQED. IEEE, 2007.                                  2017.
+[15] P. Spindler et al., “Kraftwerk2—a fast force-directed quadratic place-       [51] B. C. Schafer and Z. Wang, “High-level synthesis design space explo-
+     ment approach using an accurate net model,” TCAD, vol. 27, no. 8,                 ration: Past, present, and future,” TCAD, vol. 39, no. 10, 2019.
+     2008.                                                                        [52] C. Bai et al., “Boom-explorer: Risc-v boom microarchitecture design
+[16] M.-K. Hsu et al., “Tsv-aware analytical placement for 3d ic designs,”             space exploration framework,” in ICCAD. IEEE, 2021.
+     in DAC, 2011.                                                                [53] A. Sohrabizadeh and Others, “Autodse: Enabling software programmers
+[17] ——, “Tsv-aware analytical placement for 3-d ic designs based on a                 to design efficient fpga accelerators,” TODAES, vol. 27, no. 4, 2022.
+     novel weighted-average wirelength model,” TCAD, vol. 32, no. 4, 2013.        [54] J. Snoek et al., “Practical bayesian optimization of machine learning
+[18] F.-K. Sun et al., “Big: A bivariate gradient-based wirelength model for           algorithms,” NeurIPS, 2012.
+     analytical circuit placement,” in DAC, 2019.
+                                                                                  [55] W. Lyu et al., “Batch bayesian optimization via multi-objective acquisi-
+[19] P. Liao et al., “On a moreau envelope wirelength model for analytical
+                                                                                       tion ensemble for automated analog circuit design,” in ICML. PMLR,
+     global placement.” IEEE, 2023.
+                                                                                       2018.
+[20] J. Im and S. Kang, “Skyplace : A new mixed-size placement framework
+                                                                                  [56] C. Williams et al., “Gaussian processes for regression,” NeurIPS, vol. 8,
+     using modularlity-based clustering and sdp relaxation,” in DAC. IEEE,
+                                                                                       1995.
+     2024.
+[21] N. Viswanathan et al., “Fastplace 3.0: A fast multilevel quadratic           [57] J. Močkus, “On bayesian methods for seeking the extremum,” in IFIP.
+     placement algorithm with placement congestion control,” in ASPDAC.                Springer, 1975.
+     IEEE, 2007.                                                                  [58] J. Z. Yan et al., “Handling complexities in modern large-scale mixed-size
+[22] Y. Lin et al., “Dreamplace: Deep learning toolkit-enabled gpu acceler-            placement,” in DAC, 2009.
+     ation for modern vlsi placement,” in DAC, 2019.                              [59] G.-J. Nam et al., “The ispd2005 placement contest and benchmark suite,”
+[23] ——, “Dreamplace 2.0: Open-source gpu-accelerated global and detailed              in ISPD, 2005.
+     placement for large-scale vlsi designs,” in CSTIC. IEEE, 2020.               [60] S. Dolgov et al., “2019 cad contest: Lef/def based global routing,” in
+[24] J. Gu et al., “DREAMPlace 3.0: Multi-electrostatics based robust VLSI             ICCAD. IEEE, 2019.
+     placement with region constraints,” 2020.                                    [61] C.-K. Cheng et al., “Assessment of reinforcement learning for macro
+[25] P. Liao et al., “DREAMPlace 4.0: Timing-driven global placement with              placement,” 2023.
+     momentum-based net weighting.” IEEE, 2022.                                   [62] A. Mirhoseini et al., “A graph placement methodology for fast chip
+[26] Y. Chen et al., “Stronger mixed-size placement backbone considering               design,” Nature, vol. 594, no. 7862, 2021.
+     second-order information.” IEEE, 2023.                                       [63] R. Cheng and J. Yan, “On joint learning for solving placement and
+[27] M. R. Garey et al., “Some simplified np-complete problems,” in STOC,              routing in chip design,” NeurIPS, vol. 34, 2021.
+     1974.                                                                        [64] Y. Lai et al., “Maskplace: Fast chip placement via reinforced visual
+[28] J. Achiam et al., “Gpt-4 technical report,” arXiv, 2023.                          representation learning,” NeurIPS, vol. 35, 2022.
+[29] M. Liu et al., “Chipnemo: Domain-adapted llms for chip design,” arXiv,       [65] ——, “Chipformer: Transferable chip placement via offline decision
+     2023.                                                                             transformer,” in ICML. PMLR, 2023.
+[66] Y. Shi et al., “Macro placement by wire-mask-guided black-box opti-
+     mization,” NeurIPS, vol. 36, 2024.
+[67] Z. Geng et al., “Reinforcement learning within tree search for fast macro
+     placement,” in ICML, 2024.
+

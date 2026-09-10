@@ -1,0 +1,609 @@
+                                          StateTune: Transforming LLM-Assisted EDA Flow Tuning into a
+                                                          Stateful, Closed-Loop Process
+                                                      KunLong Li∗                               Shangshang Yao∗                   Su Zheng                        Lingli Wang†
+                                                      Fudan University                       Independent Researcher   Chinese University of Hong Kong              Fudan University
+                                                      Shanghai, China                           Shanghai, China            Hong Kong, China                        Shanghai, China
+                                                  klli24@m.fudan.edu.cn                   yaoshangshang96@outlook.com szheng22@cse.cuhk.edu.hk                  llwang@fudan.edu.cn
+
+                                         Abstract                                                                          algorithmic advances such as PTPT [7], REMOTune [25], Rank-
+                                         EDA flow parameter tuning is critical for quality-of-results (QoR),               Tuner [21], and FlowTuner [13] have demonstrated multi-objective
+                                         yet the parameter space is large, tightly coupled, and full evaluations           Bayesian optimization, trust-region search, preference-based tun-
+arXiv:2608.23601v1 [cs.AR] 19 Aug 2026
+
+
+
+
+                                         are prohibitively expensive. Prior LLM-assisted tuners mainly use                 ing, and cross-stage knowledge transfer. However, these methods
+                                         the LLM as an external proposer with transient working context;                   treat the EDA tool as a black box: the design knowledge uncovered
+                                         we instead present StateTune, which reformulates LLM-assisted                     during tuning—which parameter ranges trigger failures, which
+                                         EDA tuning as a closed-loop, state-carrying process. Its optimizer                interactions help, and why configurations succeed or fail—remains
+                                         state is a typed, evidence-gated persistent optimization memory                   implicit in the optimizer state and is discarded after each run, so
+                                         that is updated by every evaluation and shared between candidate                  subsequent iterations and new runs cannot benefit from earlier
+                                         generation and budget allocation. On top of this optimizer state,                 insights.
+                                         an expected hypervolume improvement (EHVI)-guided, runtime-                           Large language models (LLMs) have been adopted in EDA
+                                         aware promotion policy ranks quick-stage candidates by expected                   for tool interaction, documentation retrieval, and design-space
+                                         Pareto frontier gain per unit of runtime cost. Evaluated on a                     exploration [9, 20, 26]. For flow tuning specifically, CROP combined
+                                         Cadence industrial flow across six benchmark blocks (two tech-                    circuit-level retrieval-augmented generation (RAG) with LLM-
+                                         nology nodes × three designs), against five baselines including                   guided search [14] and ORFS-agent demonstrated iterative LLM-
+                                         LLM+retrieval-augmented generation (RAG) and preference-based                     based parameter optimization for OpenROAD [8], showing that
+                                         Bayesian optimization (BO) tuners, StateTune achieves the strongest               LLMs can leverage domain knowledge to generate stronger propos-
+                                         final hypervolume on all six benchmark blocks, showing a stable                   als than blind numerical search. However, these systems primarily
+                                         improvement in frontier quality across the full matrix; it also                   rely on transient search context assembled at inference time rather
+                                         matches or surpasses the strongest baselines on worst negative                    than a structured, evolving memory that distills experience into
+                                         slack (WNS), area, and power across the same set. Ablation shows                  reusable artifacts. Moreover, they focus exclusively on candidate
+                                         persistent memory is the largest contributor: removing it costs                   generation and leave the complementary promotion decision—which
+                                         58.5% of the hypervolume. Dedicated analyses of evidence-gating                   of several proposals deserves the scarce full-flow budget—to ad-hoc
+                                         sensitivity, memory poisoning, cross-design transfer, and three-                  filtering or unselective evaluation.
+                                         seed reproducibility (CV < 7% on five of six blocks) further validate                 StateTune takes a different route. Rather than treating the LLM
+                                         the memory design.                                                                as a smarter proposer bolted onto a standard tuning loop, we refor-
+                                                                                                                           mulate LLM-assisted EDA tuning as a closed-loop, state-carrying
+                                         Keywords                                                                          process whose optimizer state is an explicit, typed, evidence-gated
+                                                                                                                           persistent optimization memory updated by every evaluation
+                                         EDA flow tuning, large language models, persistent memory, multi-
+                                                                                                                           and shared between candidate generation and budget allocation
+                                         fidelity optimization, EHVI, physical design
+                                                                                                                           (Section 3.2). On top of this state, an expected hypervolume im-
+                                         1    Introduction                                                                 provement (EHVI)-guided, runtime-aware promotion policy
+                                                                                                                           ranks candidates by expected Pareto frontier gain per unit of run-
+                                         Modern physical-implementation flows expose many interacting                      time cost, directing the expensive budget toward the most promising
+                                         knobs across floorplanning, placement, clock-tree synthesis (CTS),                proposals. We evaluate StateTune on a Cadence Genus/Innovus
+                                         and routing. These knobs are tightly coupled: even modest changes                 industrial flow across ASAP7 and NanGate45 with benchmark
+                                         to utilization, timing effort, or density can materially alter timing,            blocks covering JPEG, AES, and IBEX, and compare against five
+                                         area, and power—or cause a run to fail. Because full register-                    baselines including two strong LLM/retrieval-based tuners. Our
+                                         transfer-level (RTL)-to-route evaluations take hours, a practitioner’s            code is open-sourced in our repository.
+                                         tuning budget is strictly limited. This makes EDA flow tuning                         The main contributions are:
+                                         a budgeted decision problem that must simultaneously address
+                                         three challenges: proposing good configurations, learning from
+                                         each evaluation, and deciding which candidates deserve the scarce               • A closed-loop reformulation of LLM-assisted EDA tuning
+                                         full-flow budget.                                                                 in which the optimizer state is a typed, evidence-gated persistent
+                                            Automated methods have made significant progress. MET-                         memory M𝑡 that jointly drives candidate generation and budget
+                                         RICS2.1 [10] standardized no-human-in-the-loop evaluation, and                    allocation. Evidence gating prevents knowledge poisoning [3];
+                                         ∗ Both authors contributed equally to this research.                              ablation shows this is the largest single contributor (HV −58.5%
+                                         † Corresponding author.                                                           when removed) (Section 3.2).
+                                                                                                                     1
+  ICCAD ’26, November 8–12, 2026, San Jose, CA, USA                                                                                                         Li et al.
+
+
+• EHVI-guided, runtime-aware promotion that ranks quick-stage                 Table 1: Capability comparison of EDA flow tuning methods.
+  candidates by expected Pareto frontier gain per unit of runtime             • = supported; ◦ = not supported; ⊙ = partial.
+  risk, directly reading from M𝑡 so that improvements to memory
+  propagate to budget allocation through a shared state object.                                    LLM              Memory               Multi- Multi- Cross-
+• Empirical validation on a 2×3 benchmark matrix (two tech-                   Method              search RAG         type        Gate     fid.   obj. design
+  nology nodes × three designs), with a six-way comparison against            PTPT [7]               ◦       ◦         –           ◦        ◦        •         ◦
+  BO (qEHVI), Optuna-TPE, Random, RankTuner [21], and CROP [14].              FlowTuner [13]         ◦       ◦         –           ◦       •𝑎        ◦         ◦
+  StateTune attains the best WNS, best power, and best hypervolume            RankTuner [21]         ◦       ◦         –           ◦        ◦        •         ◦
+  on all six benchmark blocks, together with the best or tied-best area                                             Prompt
+  on all six. Component-level evidence from five ablation variants,           CROP [14]              •      •𝑏        hist.        ◦        ◦        ◦         ◦
+  dedicated analyses of evidence-gating sensitivity and memory                                                      Prompt
+  poisoning, and a three-seed reproducibility study support these             ORFS-agent [8]         •      ◦         hist.        ◦        ◦       •𝑐         ◦
+  results.                                                                    AstroTune [19]        ⊙𝑑      •          –           ◦        •       •          ◦
+                                                                              RSR [24]               •      ⊙𝑓      Episodic       ◦        ◦       ◦          ◦
+
+  2     Related Work                                                          StateTune              •       •𝑒    Persistent      •        •        •         •
+                                                                              (Ours)
+  We review three lines of work that StateTune builds upon: multi-
+  objective optimization under budget constraints, structured mem-              𝑎 Stage transfer via jump-start/early-stop. 𝑏 Design-level retrieval from similar
+
+  ory for LLM agents, and automated EDA flow tuning.                             circuits. 𝑐 Weighted-sum / constrained multi-objective prompts. 𝑑 Retrieval
+                                                                                 augmented by LLM; BO handles search. 𝑒 Design- and run-level retrieval via
+                                                                                  RAG-EDA [15]. 𝑓 Retrieval of past reflection traces; no EDA-specific RAG.
+  2.1     Multi-Objective BO and Cost-Aware Search
+  Bayesian optimization (BO) models objectives via Gaussian process           observations before activation; the memory-poisoning experiment
+  (GP) surrogates and uses acquisition functions to guide search [16].        in Section 5.4 confirms that removing this gating causes incorrect
+  In multi-objective settings, qEHVI [5] quantifies the expected vol-         rules to accumulate and degrades HV by 43.4%. Second, the memory
+  ume gained by adding a new point to the Pareto frontier, providing          is shared between candidate generation and a downstream budget-
+  a principled criterion for improving the entire frontier rather than        allocation policy, so that an improvement to a rule or sensitivity
+  a single metric. When evaluations are expensive, multi-fidelity             pattern propagates to both proposal quality and promotion rank-
+  strategies can improve sample efficiency by exploiting cheaper              ing through a single state object—a coupling that RSR’s episodic
+  proxy evaluations before committing to full runs; FABOLAS and               reflection and A-MEM’s note indexing do not provide (Table 1).
+  BOHB demonstrated this for hyperparameter optimization [6, 12].
+  Optuna applies tree-structured Parzen estimators (TPE) to multi-
+  objective problems [1, 2]. StateTune adopts this budget-aware
+  perspective but embeds it inside an EDA-specific loop where quick-          2.3     EDA Flow Tuning and LLM-Assisted Search
+  stage memory, accumulated design knowledge, and runtime-aware               Automated EDA flow tuning has evolved from reusable infrastruc-
+  promotion interact tightly.                                                 ture to specialized algorithmic search. METRICS2.1 [10] established
+                                                                              a no-human-in-the-loop evaluation stack; PTPT [7] formulated
+  2.2     Structured Memory for LLM Agents                                    tuning as multi-task GP-based BO; REMOTune [25] scaled to high
+  A growing body of work shows that LLM agents benefit from                   dimensions via random embedding; RankTuner [21] introduced
+  structured memory beyond raw conversation history. Reflexion [17]           preference-based BO for noisy QoR; FlowTuner [13] transferred
+  introduced verbal reinforcement learning via trajectory-level reflec-       knowledge across stages. These methods advance numerical search
+  tion; A-MEM [22] organizes knowledge notes via Zettelkasten-style           but do not externalize the non-numerical knowledge—failure modes,
+  indexing; MemoryOS [11] designs a hierarchical short/mid/long-              parameter interactions, design heuristics—that emerges during
+  term memory; and CFGM [23] grounds memories at multiple                     tuning.
+  granularities for planning. RSR [24] decomposes agent memory                    On the LLM side, ChatEDA [20] demonstrated autonomous
+  into retrieval, scheduling, and reflection stages, demonstrating that       EDA tool interaction; CROP [14] combined circuit-level RAG with
+  episodic memory with a reflection loop improves task performance            LLM-guided tuning; ORFS-agent [8] showed iterative LLM-based
+  in sequential decision-making.                                              parameter optimization for OpenROAD. AstroTune [19] integrated
+     A key concern with persistent memory is quality: incorrect or            AST-based retrieval with stage-wise tournament BO, combining
+  outdated information can degrade later decisions. AgentPoison [3]           retrieval-augmented LLM proposals with a BO backbone; however,
+  formalizes this risk in the security context, and in optimization           its retrieval feeds only the proposal stage and does not parameterize
+  settings the same risk arises self-inflicted when early-stage LLM           a downstream budget-allocation policy. Recent surveys provide
+  diagnoses based on insufficient data produce incorrect rules.               broader coverage [9, 26]. These systems keep search context largely
+     StateTune differs from these general-purpose memory frame-               transient, and none externalizes a typed, evidence-gated optimizer
+  works in two structural respects. First, its memory is typed and            state that is shared between candidate generation and budget
+  evidence-gated: each artifact (hard rule, soft heuristic, sensitivity       allocation—the three structural gaps (typed state, evidence gating,
+  pattern, failure summary) has an explicit type and activation               shared promotion) that StateTune fills through a single persistent
+  condition, with hard rules requiring 𝑘=12 corroborating full-valid          memory object M𝑡 .
+                                                                          2
+StateTune: Transforming LLM-Assisted EDA Flow Tuning into a Stateful, Closed-Loop Process                         ICCAD ’26, November 8–12, 2026, San Jose, CA, USA
+
+
+
+
+Figure 1: Overall workflow of StateTune. The knowledge layer (left) builds and updates persistent optimization memory from
+design inputs and evaluation feedback via Prior Initialization and an Analysis Agent. The decision layer (center) generates
+candidate configurations through Knowledge-guided Search and ranks them via EHVI-based Promotion; an Evaluation Engine
+arbitrates the final selection. The execution layer (right) schedules multi-fidelity evaluations through a Scheduling Agent and
+returns QoR metrics. The persistent optimization memory connects all three layers.
+
+
+3     Method                                                                              The decision layer uses the memory to propose and filter
+This section describes the three layers of StateTune—knowledge,                        candidate configurations. A Knowledge-guided Search module
+decision, and execution—and details the persistent optimization                        queries the memory and selects among five search modes—explore,
+memory and EHVI-guided promotion that connect them.                                    exploit, diversify, repair, and promote—based on recent progress,
+                                                                                       frontier diversity, and failure patterns (detailed in Section 3.3).
+3.1     Problem Setting and Overview                                                   Chain-of-thought (CoT) reasoning distills the rich context into
+                                                                                       structured diagnoses, and a non-reasoning model formats final
+We consider a budgeted multi-objective tuning problem over a                           parameter vectors. An EHVI-based Promotion module then ranks
+parameter vector 𝑥 ∈ X. A full evaluation
+                                            𝑒 (𝑥) returns a QoR vector                the generated candidates by expected Pareto frontier gain per unit
+f (𝑥) = 𝑓WNS (𝑥), 𝑓area (𝑥), 𝑓power (𝑥) , where WNS denotes worst                      of runtime cost (Section 3.4), and an Evaluation Engine arbitrates
+negative slack, runtime 𝑐 (𝑥), and terminal status 𝛿 (𝑥) ∈ {0, 1}. The                 the final selection for full evaluation.
+tuning goal is to approximate the Pareto frontier                                         The execution layer manages multi-fidelity scheduling through
+                P ∗ = 𝑥 ∈ X :  𝑥 ′ s.t. f (𝑥 ′ ) ≻ f (𝑥)
+                     
+                                                                    (1)                a Scheduling Agent. Quick-stage evaluations—CTS in our exper-
+                                                                                       iments, though the cutoff is configurable—are cheap and run
+so as to maximize the dominated hypervolume HV(P, r) with                              continuously. Full-stage evaluations through routing are expensive
+respect to a fixed reference point r, subject to a total runtime                       and allocated via EHVI-guided promotion. Results and runtime
+                                                                                       measurements flow back to the knowledge layer, closing the loop.
+        Í
+budget 𝑖 𝑐 (𝑥𝑖 ) ≤ 𝐵. Because full evaluations are expensive, the
+system first executes a cheaper quick stage (cost 𝑐𝑞 ≪ 𝑐 𝑓 ) and                          The central design choice is that M𝑡 is persistent and reusable:
+promotes only selected candidates to the full stage. The quick-stage                   knowledge from early iterations directly shapes later proposals
+cutoff point is configurable; in our experiments we use CTS (clock-                    and promotion decisions. Three properties distinguish M𝑡 from
+tree synthesis) as the quick-stage endpoint, which provides richer                     prior optimizer states: it stores typed artifacts (rules, sensitivities,
+timing signal than placement alone (Section 4). StateTune tunes                        failure patterns) that a GP posterior or transient context cannot
+19 parameters spanning floorplanning, placement, pre-CTS/CTS,                          represent robustly; hard rules require 𝑘=12 corroborating full-valid
+and routing (Table 5). The optimizer state is a typed, evidence-                       observations before activation; and the same shared object param-
+gated persistent optimization memory M𝑡 carried across iterations,                     eterizes both candidate generation and EHVI-guided promotion.
+rather than a growing prompt transcript (detailed in Section 3.2).                     Ablation confirms that this explicit optimizer state is the largest
+   StateTune is organized into three interacting layers (Figure 1).                    single contributor to final hypervolume (Section 5.2).
+   The knowledge layer manages the persistent optimization
+memory. A Prior Initialization module initializes a design prior                       3.2    Persistent Optimization Memory
+from Synopsys Design Constraints (SDC), RTL characteristics, and                       The persistent optimization memory at iteration 𝑡 is
+RAG-retrieved tool documentation. As evaluations complete, an
+                                                                                                          M𝑡 = {𝑃𝑡 , 𝑅𝑡 , 𝐹𝑡 , 𝑆𝑡 , 𝐻𝑡 , Π𝑡 ,𝑇𝑡 },              (2)
+Analysis Agent periodically runs failure pattern analysis, parameter
+sensitivity analysis (including threshold-effect detection), and prior                 where 𝑃𝑡 is the design prior, 𝑅𝑡 contains reusable rules, 𝐹𝑡 is a failure
+refinement, feeding curated results back into memory.                                  summary, 𝑆𝑡 is a sensitivity summary, 𝐻𝑡 is the evaluation history,
+                                                                                  3
+ICCAD ’26, November 8–12, 2026, San Jose, CA, USA                                                                                                                            Li et al.
+
+
+                                                                                           Table 3: Knowledge artifacts automatically generated by
+                                                                                           StateTune.
+
+                                                                                            Type          Content                                              Evidence
+                                                                                            Hard rule     Ban CORE_UTIL=0.78 with CORE_MARGIN=0: cata-         Multiple failures
+                                                                                                          strophic WNS ( −32k) from placement congestion.
+                                                                                            Soft heur.    Increase CORE_UTIL & PLACE_MAX_DENSITY; keep         Sensitivity
+                                                                                                          CORE_MARGIN low. WNS corr. +0.24.
+                                                                                            Sensitivity   CTS_POST_OPT corr. − 0.19 with WNS; its heuristics   365 runs
+                                                                                                          degrade setup timing.
+                                                                                            Prior upd.    ASPECT_RATIO: 1.2→1.0 (square). Rectangular shapes   12 full-valid obs.
+                                                                                                          worse for bus-heavy datapath.
+
+
+
+                                                                                           3.3      Knowledge-Guided Search
+                                                                                           The knowledge-guided search module uses the persistent mem-
+Figure 2: Structure of the persistent optimization memory
+                                                                                           ory to generate context-aware candidate configurations. For each
+M𝑡 . Evaluation results, failure diagnoses, and sensitivity
+                                                                                           iteration, it selects among five search modes based on recent
+analyses feed into six components. The design prior 𝑃𝑡 con-
+                                                                                           progress, frontier diversity, and failure patterns: explore broadens
+ditions generation; reusable rules 𝑅𝑡 guide failure avoidance;
+                                                                                           coverage of the parameter space; exploit refines configurations near
+Pareto status Π𝑡 and the runtime model 𝑇𝑡 drive EHVI-based
+                                                                                           the current best; diversify increases Pareto frontier spread; repair
+promotion.
+                                                                                           targets known failure modes using the failure summary 𝐹𝑡 with
+                                                                                           corrective adjustments; and promote nominates strong quick-stage
+              Table 2: Persistent memory components.                                       candidates for full evaluation. Mode selection follows a heuristic
+                                                                                           priority: repair is triggered when the recent failure rate exceeds a
+ Component        Content                                       Role                       threshold; promote is selected when the promotion pool contains
+ Prior 𝑃𝑡         Parameter ranges, tool knowledge, design      Conditions proposals       sufficiently strong candidates; among the remaining modes, the
+                  characteristics                                                          system alternates based on frontier stagnation (favoring diversify)
+ Rules 𝑅𝑡         Evidence-gated hard rules & soft heuristics   Filters proposals
+ Failure 𝐹𝑡       Categorized failures with root-cause anal-    Guides repair              and convergence signals (favoring exploit). The proposal prompt is
+                  ysis
+ Sensitivity 𝑆𝑡   Parameter–QoR correlations & threshold        Prioritizes knobs
+                                                                                           conditioned on the parameter space, recent history, Pareto points,
+                  effects                                                                  the updated design prior, failure and sensitivity summaries, and
+ History 𝐻𝑡       All configs, QoR, terminal status             LLM context & GP fit
+ Pareto Π𝑡        Current non-dominated frontier                EHVI targets               stage-specific constraints.
+ Runtime 𝑇𝑡       𝑘 NN runtime predictions                      Promotion cost                Dual-model inference. StateTune uses CoT to organize RAG-
+                                                                                           retrieved documentation, evaluation histories, and parameter in-
+Π𝑡 is Pareto status, and 𝑇𝑡 is the runtime model. Table 2 describes                        teractions into structured failure and sensitivity diagnoses, while a
+each component.                                                                            non-reasoning model formats parsable candidate vectors. We use a
+   The prior 𝑃𝑡 is initialized from SDC specifications, RTL charac-                        strong open-weight reasoning model and a fast generation model
+teristics, and RAG-retrieved tool documentation, then periodically                         (Table 4) to balance analytical depth with output reliability. Ablation
+refined as evaluations accumulate so that it adapts to each design’s                       shows that removing CoT reduces HV by 31.5% (Section 5.2). LLM
+characteristics. The failure summary 𝐹𝑡 periodically categorizes                           calls are made only when the candidate buffer is depleted, not at
+failed runs by type and associated parameter combinations, inject-                         every iteration, keeping token consumption bounded.
+ing dominant patterns as compact text into the search prompt in                               Candidate buffer and frontier-driven refresh. Each LLM
+repair mode.                                                                               call produces multiple candidate configurations that are stored
+   Sensitivity analysis. The sensitivity summary 𝑆𝑡 combines                               in a buffer and consumed one-by-one in subsequent iterations.
+Spearman rank correlations (with a weighted impact score across                            To ensure that proposals reflect the latest optimization state, the
+WNS, area, power) and a threshold-effect detector that flags nonlin-                       buffer is flushed whenever a new Pareto-optimal point is discovered
+ear cliff effects invisible to correlation analysis alone. Both outputs                    or the hypervolume improves: all remaining buffered candidates
+are formatted as compact text and injected into the proposal prompt;                       are discarded, forcing the next iteration to issue a fresh LLM call
+concrete examples appear in Table 3.                                                       conditioned on the updated history and frontier. This mechanism
+   Evidence gating and memory quality control. LLM-emitted                                 prevents the system from wasting iterations on candidates gener-
+rules based on insufficient data can be incorrect; if stored directly,                     ated from stale context. Stage-aware conditioning. Quick-stage
+such errors accumulate and progressively degrade search quality—a                          proposals are biased toward placement-effective parameters, since
+self-inflicted variant of the memory-poisoning risk documented in                          routing knobs have little visible effect at the quick stage.
+LLM agent systems [3]. Evidence gating prevents this: hard rules                              Rule emission and statistical validation. The proposal mod-
+require at least 𝑘=12 corroborating full-valid evaluations before                          ule emits hard rules and soft heuristics stored in memory. Represen-
+activation (Section 5.3 and Figure 5 validate this threshold), the                         tative artifacts include banning parameter combinations repeatedly
+number of active hard rules is capped at 8, and a periodic trim                            associated with catastrophic congestion, promoting sensitivity-
+removes stale or contradicted entries. Soft heuristics act as overrid-                     backed density adjustments, and updating design priors when
+able directional preferences. The memory-poisoning experiment in                           repeated full-valid observations support a tighter setting. Evidence
+Section 5.4 confirms that removing gating degrades HV by 43.4%.                            gating (Section 3.2) prevents premature knowledge from entering
+                                                                                       4
+StateTune: Transforming LLM-Assisted EDA Flow Tuning into a Stateful, Closed-Loop Process                               ICCAD ’26, November 8–12, 2026, San Jose, CA, USA
+
+
+memory. Specifically, each candidate rule is validated post hoc                                   Table 4: Experimental setup and LLM overhead.
+against accumulated full-valid observations: the system partitions
+the observation set into rule-conforming and rule-violating groups                          Benchmarks & Flow
+and applies a one-sided Mann–Whitney 𝑈 test (𝛼 = 0.05) to                                   Flow                 Cadence Genus 21.17 / Innovus 21.18
+                                                                                            Benchmarks           JPEG / AES / IBEX on both ASAP7 [4] (7 nm) and NanGate45 [18]
+determine whether the conforming group exhibits statistically                                                    (45 nm)
+significantly better QoR. Only rules that pass this test and have been                      Objectives           Maximize WNS; minimize area & power
+                                                                                            Fidelities           Quick = CTS (configurable); Full = route
+corroborated by at least 𝑘 observations are promoted to active status.                      Parameters           19 across 4 stages (Table 5)
+Across the ASAP7 JPEG run, only 1 of 13 hard rules and 30 of 101                            Budget & Hardware
+soft heuristics were validated; 6 soft heuristics were contradicted.                        Main budget          192 thread · h† (4 threads × 48 h)
+This noise is precisely why evidence gating is necessary.                                   Ablation budget      48 thread · h (1 thread × 48 h)
+                                                                                            CPU                  Intel Xeon Plat. 8354H @ 3.10 GHz
+                                                                                            Models & Baselines
+3.4     EHVI-Guided, Runtime-Aware Promotion
+                                                                                            CoT model            Qwen3-235B-A22B-Thinking-2507
+LLM-based search generates candidates of varying quality, so                                Non-reasoning        DeepSeek-V3.2
+                                                                                            RAG framework        RAG-EDA [15]
+evaluating them indiscriminately wastes scarce full-evaluation                              Baselines            BO (qEHVI), Optuna-TPE, Random, RankTuner (ICCAD’24) [21],
+budget. StateTune therefore ranks candidates by expected Pareto                                                  CROP (ICCAD’25) [14]
+                                                                                            Ablations            w/o KA, w/o Persist., w/o EHVI, w/o RAG, w/o CoT
+frontier gain per unit of runtime cost and promotes only the most
+                                                                                            LLM Overhead
+promising ones.
+    To leverage the abundant quick-stage observations alongside                             CoT analysis         ∼15 s/call, 1 call/iter, <2% of wall time
+                                                                                            RAG + gen.           ∼5 s/call, 1–2 calls/iter, <1%
+scarce full-stage data, StateTune fits a multi-fidelity GP surrogate                        Quick EDA            ∼8 min, ∼85% of wall time
+                                                                                            Full EDA             ∼45 min, when promoted
+for each QoR objective. Quick-stage and full-stage histories are                            Total tokens         ∼6.0 M per 6-benchmark suite (74% prompt, 26% completion; 81%
+jointly modeled using a binary fidelity indicator (𝑧=0 for quick, 𝑧=1                                            DeepSeek-V3.2, 19% Qwen3-235B)
+
+for full); when insufficient full-stage data makes the multi-fidelity                       † One thread · hour denotes one EDA worker thread running for one hour; this
+
+fit unreliable, the system falls back to a standard single-fidelity                               measures physical-thread occupancy rather than full-CPU-core time.
+GP trained on full-stage data only. At scoring time, candidates are
+projected to the full-fidelity surface for each QoR objective 𝑓𝑘 (𝑥),                  where 𝜖 > 0 is a stabilizing constant. This score optimizes expected
+𝑘 = 1, . . . , 𝐾:                                                                      frontier gain per unit of runtime risk, directing the budget toward
+                     𝑓𝑘 (𝑥) ∼ GP 𝜇𝑘 (𝑥), 𝜎𝑘2 (𝑥) ,
+                                                
+                                                                   (3)                 cost-effective frontier improvements.
+                                                                                          Empirically, the EHVI-guided promotion concentrates full-
+where 𝜇𝑘 (𝑥) and 𝜎𝑘2 (𝑥) are the posterior mean and variance given                     evaluation budget on strong quick-stage candidates: across the
+𝐻𝑡 , and 𝐾 = 3 (WNS, area, power).                                                     reported benchmark set, the fraction of promoted candidates that
+   Given the current Pareto frontier Π𝑡 and reference point r, EHVI                    rank in the historical top-20 of quick-stage evaluations averages
+quantifies expected gain:                                                              0.96 ± 0.08 (𝑝 < 0.001 vs. the 0.5 null, paired 𝑡-test), confirming
+                                                          
+        EHVI(𝑥) = Ef (𝑥 ) HV(Π𝑡 ∪ {f (𝑥)}, r) − HV(Π𝑡 , r) ,     (4)                   that promotion functions as a quality filter. Ablation confirms this
+                                                                                       mechanism’s importance: removing it reduces the top-region hit
+following the qEHVI formulation [5].                                                   rate from 34.29% to 8.57% (Section 5.2).
+   Runtime cost model. Predicting full-stage runtime is chal-
+lenging because few full evaluations are available early on. GP-
+based runtime models require careful kernel selection and sufficient
+data for reliable posteriors. StateTune uses a 𝑘-nearest-neighbor                      4       Experimental Setup
+(𝑘NN) estimator over 𝐻𝑡 for runtime prediction, which is stable                        This section describes the benchmarks, baselines, and evaluation
+with small sample sizes, requires no hyperparameter tuning, and                        protocol.
+provides a natural uncertainty estimate via neighbor variance. Since                      All methods share the same execution stack, quick-to-full pro-
+promotion only needs to rank candidates correctly rather than                          tocol, and runtime accounting; only candidate proposal strategies
+predict absolute runtimes, 𝑘NN’s simplicity is well matched to the                     differ. LLM calls are made only when the candidate buffer is depleted
+task. The 𝑘NN model estimates runtime as:                                              (typically every 4–8 iterations), not at every iteration. Sensitivity
+                                          𝑘                                            and failure analyses are pre-computed into compact text before
+                                      1 ∑︁                                             prompt injection. Consequently, token growth is tied to buffer-refill
+                            𝑡ˆ(𝑥) =         𝑡 (𝑥𝑖 ),                        (5)
+                                      𝑘 𝑖=1                                            points rather than every evaluated trajectory. Relative to CROP-
+                                                                                       style retrieval-guided prompting, the main difference is where
+where 𝑥𝑖 are the 𝑘 nearest evaluated configurations. An uncertainty-
+                                                                                       experience is kept: StateTune accumulates validated summaries
+aware upper confidence bound is:
+                                                                                       in persistent memory and refreshes prompt context only at buffer-
+                        𝑡ˆucb (𝑥) = 𝑡ˆ(𝑥) + 𝛽 · 𝑠𝑡 (𝑥),                     (6)        refill points, instead of depending as heavily on reassembled online
+                                                                                       context throughout the search.
+where 𝑠𝑡 (𝑥) is the sample standard deviation and 𝛽 > 0 controls                          Since neither RankTuner [21] nor CROP [14] releases source
+cost pessimism. Promotion is ranked by:                                                code targeting our flow, we re-implemented both within our
+                                          EHVI(𝑥)                                      evaluation framework—RankTuner retaining its pairwise GP and
+                         score(𝑥) =                   ,                     (7)        Duel-Thompson sampling, CROP using the same RAG-EDA [15]
+                                        𝑡ˆucb (𝑥) + 𝜖
+                                                                                  5
+ICCAD ’26, November 8–12, 2026, San Jose, CA, USA                                                                                              Li et al.
+
+
+Table 5: Tuned parameters. C=continuous; Cat=categorical;                    advantage is consistent across the full benchmark matrix: +33.7%
+B=binary.                                                                    over Optuna-TPE on ASAP-JPEG, +3.3% over Optuna-TPE on ASAP-
+                                                                             AES, +1.2% over Optuna-TPE on ASAP-IBEX, +0.7% over Optuna-
+ Stg     Parameter                           Type   Range                    TPE on NAN-JPEG, +1.3% over BO (qEHVI) on NAN-AES, and
+         CORE_UTIL                           C      [0.55, 0.78]             +1.7% over BO (qEHVI) on NAN-IBEX. Thus, StateTune consistently
+ FP      ASPECT_RATIO                        C      [0.80, 1.20]
+         CORE_MARGIN                         Int    [0, 16]                  produces a stronger final Pareto frontier across the full matrix.
+         PLACE_CONG_EFFORT                   Cat    low/med/high
+                                                                                 Auxiliary evidence from GP hits. StateTune also leads GP
+         PLACE_TIMING_EFFORT                 Cat    med/high                 hits on ASAP-JPEG, ASAP-AES, NAN-JPEG, and NAN-AES, and
+         PLACE_UNIFORM_DENSITY               Cat    true/false
+ PL
+         PLACE_IO_PINS_AWARE                 Cat    true/false               ties the best GP-hit count on ASAP-IBEX. The GP-hit advantage
+         TD_PLACE                            B      {0, 1}                   on these five blocks can be traced to the persistent memory mecha-
+         PLACE_MAX_DENSITY                   C      [0.75, 0.95]
+                                                                             nism: accumulated failure patterns and sensitivity signals steer the
+         PRECTS_SETUP_OPT                    B      {0, 1}
+         PRECTS_HOLD_OPT                     B      {0, 1}                   search away from known-poor regions, concentrating evaluation
+         DRV_EFFORT                          Cat    low/med/high             budget near the Pareto frontier rather than re-exploring dominated
+ CTS
+         RUN_CTS                             B      {0, 1}
+         CTS_TARGET_SKEW                     C      [0.03, 0.15]             configurations. This separation is useful: on NAN-IBEX, BO attains
+         CTS_POST_OPT                        B      {0, 1}                   more GP hits, yet StateTune still delivers the best final HV and the
+         ROUTE_TIMING_DRIVEN                 Cat    true/false               best power, showing that frontier quality is not determined by hit
+         ROUTE_SI_DRIVEN                     Cat    true/false
+ RT
+         ROUTE_EFFORT                        Cat    low/med/high             count alone.
+         ROUTE_LAYER_EFFORT                  Cat    low/med/high
+                                                                                 LLM baselines do not automatically win. CROP—despite
+                                                                             using an LLM with RAG—remains behind StateTune on all six
+retrieval as StateTune—so that all methods share identical execution,        blocks, and even trails random search on ASAP-JPEG and NAN-
+promotion, and budget-accounting pipelines.                                  IBEX in final HV. Adding an LLM and retrieval to a tuning loop is
+    Quick-stage endpoint. The quick-stage cutoff is a configurable           not by itself sufficient. Without evidence gating, noisy LLM sug-
+parameter. We use CTS as the quick-stage endpoint rather than                gestions enter the search context unfiltered, progressively biasing
+placement alone, because CTS provides richer timing signals that             the proposal distribution; without a surrogate-guided promotion
+improve the fidelity of quick-stage QoR estimates and enable more            policy, the system cannot distinguish high-frontier-gain candidates
+effective promotion decisions.                                               from plausible-looking but dominated ones, wasting the scarce
+    Evaluation metrics. Best WNS, area, and power are the per-               full-evaluation budget. RankTuner (ICCAD’24) [21] also trails on
+objective extremes observed during the run. Final hypervolume                every block: its preference-based ranking struggles in this mixed
+(HV) is the dominated hypervolume of the Pareto frontier at run              continuous-categorical space with 19 parameters, the pairwise
+termination, computed with respect to a fixed reference point r that         GP scales poorly with dimensionality, and without cross-stage
+is dominated by all feasible evaluations; it serves as a comprehensive       knowledge transfer or persistent memory, each run starts from
+frontier metric [7]. The reference point is determined independently         scratch.
+for each comparison group (main comparison, ablation, and sensi-                 Reproducibility. To assess run-to-run stability, we repeat State-
+tivity studies), so absolute HV values are not directly comparable           Tune three times on every benchmark block under identical budgets.
+across tables. Global Pareto hits (GP Hits) counts the number of a           Table 7 reports the HV mean and standard deviation; Figure 4
+method’s full-valid evaluations that are non-dominated with respect          visualizes the anytime trajectory for ASAP7-AES. The coefficient of
+to the union of all methods’ evaluations on the same benchmark. In           variation (CV) remains below 7% on five of six blocks (e.g., 0.89% on
+the main comparison, we focus the narrative on WNS, area, power,             ASAP7-AES and 0.51% on NAN-JPEG), confirming reproducibility
+and HV; GP hits are used as auxiliary evidence, while time to first          across seeds. ASAP7-JPEG exhibits the highest CV (15.4%), but even
+global Pareto hit (First Hit) is retained in the ablation analysis.          its worst single-seed HV (≈ 4.5 × 105 ) still exceeds all baselines in
+                                                                             Table 6. In all six cases, the repeated-run mean matches or exceeds
+5      Results                                                               the single-run HV in Table 6, indicating that the main comparison
+This section reports the unified comparison across the benchmark             is not an outlier.
+matrix, the ablation study, and dedicated analyses of evidence-
+gating sensitivity and memory poisoning.                                     5.2    Ablation Study
+                                                                             Each ablation variant removes one component while keeping the
+5.1     Comparison Across the Working                                        rest intact (Table 8).
+        Benchmark Matrix                                                        w/o Persistence. Persistent memory propagates accumulated
+Table 6 reports the six benchmark blocks in the full matrix. We              failure patterns, constraints, and sensitivity signals across iterations.
+focus on aggregate trends across the full set rather than on any             Without it, HV drops to 4.19 M (−58.5%) with zero Pareto hits—
+single case.                                                                 despite retaining LLM, RAG, CoT, and EHVI. This confirms that
+   Best per-objective results and frontier quality. StateTune                persistent memory is the largest single contributor and a distinct
+attains the best WNS, best power, and best final HV on all six               design axis from LLM-based search.
+benchmark blocks. For area, it is the outright best method on ASAP-             w/o KA. The knowledge agent translates memory into context-
+JPEG, ASAP-IBEX, and NAN-AES, and ties the best value on ASAP-               aware proposals conditioned on failures, sensitivities, and the
+AES, NAN-JPEG, and NAN-IBEX. Most importantly, the final-HV                  design prior. Without it, HV falls to 4.57 M (−54.8%) and only two
+                                                                         6
+StateTune: Transforming LLM-Assisted EDA Flow Tuning into a Stateful, Closed-Loop Process                                     ICCAD ’26, November 8–12, 2026, San Jose, CA, USA
+
+
+Table 6: Results across the 2×3 benchmark matrix under the shared budget caps. Six methods are compared: BO (qEHVI),
+Optuna-TPE, Random, RankTuner (ICCAD’24) [21], CROP (ICCAD’25) [14], and StateTune. Bold = best per benchmark (per
+column).
+
+                                    ASAP Benchmarks                                                                                NAN Benchmarks
+Design        Method              WNS      Area        Power       GP Hits       HV         Design         Method              WNS         Area        Power       GP Hits             HV
+              Random            -26.1420   6042        29.9512          0     1.806e5                      Random            -0.0080      106638      111.9460            0         1.911e6
+              Optuna-TPE        -13.3730   5973        29.9231          2     3.412e5                      Optuna-TPE         0.0130      106204      111.3026            1         2.082e6
+              BO (qEHVI)        -26.1130   6025        29.7187          1     2.348e5                      BO (qEHVI)        -0.0050     106163       111.6088            0         2.064e6
+ASAP-JPEG                                                                                   NAN-JPEG
+              RankTuner         -29.5560   6256        33.7636          0     9.938e4                      RankTuner          0.0090      108508      126.8801            0         7.849e5
+              CROP              -10.8240   6924        33.5890          1     1.286e5                      CROP               0.0120      106224      111.6372            0         2.030e6
+              StateTune          -6.7520   5946       29.4496          12    4.564e5                       StateTune         0.0150      106163      111.2779            10        2.097e6
+              Random           -170.7360   1678         7.9457          0     3.178e6                      Random            -0.0230      22371        21.6310            1         3.887e3
+              Optuna-TPE       -174.7420   1670         7.7038          5     3.436e6                      Optuna-TPE        -0.0190      22379        21.5630            1         4.072e3
+              BO (qEHVI)       -201.8410   1670         7.7462          0     3.284e6                      BO (qEHVI)        -0.0180      22355        21.5925            4         4.120e3
+ASAP-AES                                                                                    NAN-AES
+              RankTuner        -175.3810   1672         7.9520          0     3.233e6                      RankTuner         -0.0650      22648        21.8425            0         2.357e3
+              CROP             -164.6620   1702         8.6772          0     2.633e6                      CROP              -0.0250      22433        21.6294            0         3.813e3
+              StateTune       -162.8580    1669        7.5967          10    3.548e6                       StateTune        -0.0120       22353       21.4920             9        4.316e3
+              Random           -353.5490   2063         6.5417          0     2.747e5                      Random             0.0240      29030        11.6956            0         1.288e3
+              Optuna-TPE       -258.6870   2052         6.2220          6     4.486e5                      Optuna-TPE         0.0370      28943        11.6197            0         1.515e3
+              BO (qEHVI)       -335.1390   2181         7.1288          0     1.061e5                      BO (qEHVI)         0.0590      28928        11.5741            9         1.780e3
+ASAP-IBEX                                                                                   NAN-IBEX
+              RankTuner        -274.0760   2061         6.2730          0     3.947e5                      RankTuner          0.0130      29068        11.7663            0         1.147e3
+              CROP             -270.8550   2063         6.5617          0     3.239e5                      CROP               0.0120      29377        11.5660            0         1.113e3
+              StateTune       -246.9210    2050        6.2107           6    4.539e5                       StateTune         0.0600       28928       11.5597             5        1.810e3
+
+
+
+
+Figure 3: Pareto frontier projections for the ASAP-JPEG case (−Area vs. WNS, −Area vs. −Power, WNS vs. −Power). StateTune
+(purple triangles) occupies the strongest region among the compared methods.
+
+Table 7: StateTune reproducibility over three independent                                   Table 8: Ablation on ASAP7 JPEG under 48 thread·h budget.
+runs.                                                                                       Variants ordered by degradation severity.
+
+                 ASAP7                                           NAN                                  Variant           Final HV (M)   HV Drop (%)   Pareto Hits   First Hit (h)
+
+ Benchmark      HV (𝜇 ± 𝜎 )      CV (%)    Benchmark         HV (𝜇 ± 𝜎 )     CV (%)                   Full system          10.10           —              6           10.29
+                                                                                                      w/o Persistence       4.19          58.5            0             –
+ JPEG         5.33𝑒5 ± 8.21𝑒4     15.4     JPEG           2.53𝑒6 ± 1.29𝑒4     0.51                    w/o KA                4.57          54.8            2           2.10
+                                                                                                      w/o RAG               5.44          46.1            0             –
+ AES          3.73𝑒6 ± 3.32𝑒4     0.89     AES            4.42𝑒3 ± 6.34𝑒1     1.43                    w/o CoT               6.92          31.5            1           29.62
+ IBEX         4.57𝑒5 ± 2.86𝑒4     6.27     IBEX           1.66𝑒3 ± 9.00𝑒1     5.42                    w/o EHVI              8.32          17.6            4           12.93
+
+
+Pareto hits remain. Together with the persistence ablation, this                               w/o CoT. CoT reasoning structures failure diagnosis and sen-
+confirms that both memory and LLM guidance are necessary—                                   sitivity assessment into analytical traces that inform proposals.
+neither alone suffices.                                                                     Without it, HV drops to 6.92 M (−31.5%), confirming that RAG
+   w/o RAG. RAG grounds proposals in EDA tool documenta-                                    supplies domain context but CoT supplies the reasoning machinery
+tion and design-specific best practices; without it, CoT, memory,                           to act on it.
+and EHVI remain intact but the LLM relies solely on parametric                                 w/o EHVI. EHVI-guided promotion ranks candidates by ex-
+knowledge. HV drops to 5.44 M (−46.1%) with zero Pareto hits,                               pected frontier gain per unit of runtime cost. Without it, the first
+confirming that general LLM knowledge is insufficient without                               global Pareto hit is delayed from 10.29 h to 12.93 h and HV falls to
+retrieval-augmented domain grounding.
+
+                                                                                        7
+ICCAD ’26, November 8–12, 2026, San Jose, CA, USA                                                                                           Li et al.
+
+
+                                                                             5.4    Memory Poisoning
+                                                                             To test whether ungated memory accumulates errors, we compare
+                                                                             Pure (default evidence gating) and Poisoned (all LLM-emitted rules
+                                                                             admitted without validation) on ASAP7 JPEG under a 48 thread·h
+                                                                             budget.
+                                                                                The Poisoned variant suffers substantial degradation: full-valid
+                                                                             rate drops from 5.42% to 2.31%, and the validated-rule rate falls
+                                                                             from 30.4% to 17.4% while the contradicted-rule rate rises from 0%
+                                                                             to 17.4%. These results confirm that persistent memory without
+                                                                             evidence gating accumulates incorrect rules and materially harms
+                                                                             search quality, validating the gating mechanism as a necessary
+                                                                             component rather than an optional filter.
+
+                                                                             5.5    Cross-Design Knowledge Transfer
+Figure 4: Anytime hypervolume trajectory for ASAP7-AES,                      Because the persistent memory stores typed, design-agnostic arti-
+averaged over three independent runs per method with                         facts (e.g., parameter constraints, sensitivity patterns, and failure
+shaded ±1 standard-deviation bands. StateTune (cyan) sepa-                   modes), it can be transferred across designs. We test this by ag-
+rates from all baselines early and maintains a clear advantage               gregating validated memory from the four non-JPEG benchmark
+throughout the run.                                                          blocks, ranking artifacts by a transfer-confidence score, and using
+                                                                             the retained top-𝑘 artifacts to initialize a new ASAP7-JPEG run
+                                                                             under the same 48 thread·h budget.
+                                                                                The effect is consistent across both seeds (Figure 5b). Transferred
+                                                                             runs enter the 6.10–6.12 × 109 HV band and remain there, whereas
+                                                                             no-transfer runs plateau lower at about 5.95×109 and 6.03×109 . The
+                                                                             transferred mean also reaches 6.0 × 109 earlier, at around 1.8–1.9
+                                                                             hours, while the no-transfer mean stays below that level until near
+                                                                             termination. By the end of the run, transfer improves mean HV
+                                                                             from about 5.99 × 109 to 6.12 × 109 , an absolute gain of roughly
+                                                                             1.3 × 108 . Overall, transferred memory improves both convergence
+                                                                             speed and final-HV stability across repeated runs.
+
+(a) Evidence-gating sensitivity.            (b) Cross-design transfer.       5.6    Limitations
+                                                                             The six-block matrix spans two technology nodes and
+Figure 5: Additional validation on ASAP7 JPEG under                          JPEG/AES/IBEX, showing consistent cross-case gains; broader
+48 thread·h. (a) Final HV and global Pareto hit rate peak at                 benchmarks and industrial SoC studies would further strengthen
+𝑘=12. (b) Transferred memory converges faster and reaches                    external validity. The flat memory structure could be extended to
+higher final HV than no transfer. Thin curves denote indi-                   hierarchical or graph-based organizations [11, 22], which may help
+vidual runs, thick curves denote means, and shaded bands                     when memory grows to thousands of rules across many designs.
+indicate ±1 standard deviation.
+8.32 M (−17.6%), confirming that unguided promotion wastes the               6     Conclusion
+scarce full-evaluation budget on dominated proposals.                        StateTune formulates LLM-assisted EDA flow tuning as a closed-
+   Overall, persistent memory is the primary contributor, while              loop, state-carrying process in which a typed, evidence-gated
+EHVI-guided promotion provides a complementary gain.                         persistent memory jointly supports candidate generation and
+                                                                             EHVI-guided promotion. Across six benchmark blocks and five
+                                                                             baselines, it achieves the best final hypervolume on every block.
+5.3     Sensitivity to Evidence-Gating Threshold 𝑘                           Ablation shows that persistent memory is the primary contributor
+The evidence-gating threshold 𝑘 controls how many corroborating              (−58.5% HV when removed), while EHVI promotion provides a
+full-valid observations are required before a hard rule becomes              secondary gain (−17.6%). Evidence gating, cross-design transfer,
+active. To experimentally validate the choice of 𝑘=12, we sweep              and reproducibility experiments further validate the proposed mem-
+𝑘 ∈ {4, 8, 12, 16, 24} on ASAP7 JPEG under the 48 thread·h ablation          ory design. Future work includes evaluation on larger industrial
+budget (Figure 5a).                                                          designs and richer memory organizations for scaling across more
+   HV rises steeply from 9.48 M at 𝑘=4 to a peak of 12.31 M at               benchmark families.
+𝑘=12 (Pareto hit rate 17.3%), then declines to 11.47 M at 𝑘=24. This
+non-monotonic pattern confirms that 𝑘=12 balances premature                  Acknowledgments
+activation of incorrect rules against delayed activation of useful           This work is supported by National Science and Technology Major
+rules.                                                                       Project (2021ZD0114701).
+                                                                         8
+StateTune: Transforming LLM-Assisted EDA Flow Tuning into a Stateful, Closed-Loop Process                                  ICCAD ’26, November 8–12, 2026, San Jose, CA, USA
+
+
+References                                                                                   [20] Haoyuan Wu, Zhuolun He, Xinyun Zhang, Xufeng Yao, Su Zheng, Haisheng
+ [1] Takuya Akiba, Shotaro Sano, Toshihiko Yanase, Takeru Ohta, and Masanori                      Zheng, and Bei Yu. 2024. ChatEDA: A Large Language Model Powered Au-
+     Koyama. 2019. Optuna: A Next-generation Hyperparameter Optimization                          tonomous Agent for EDA. IEEE Transactions on Computer-Aided Design of
+     Framework. In Proceedings of the 25th ACM SIGKDD International Conference on                 Integrated Circuits and Systems 43, 10 (2024), 3184–3197. doi:10.1109/TCAD.
+     Knowledge Discovery and Data Mining. 2623–2631. doi:10.1145/3292500.3330701                  2024.3383347
+ [2] James Bergstra, Rémi Bardenet, Yoshua Bengio, and Balázs Kégl. 2011. Algorithms         [21] Peng Xu, Su Zheng, Yuyang Ye, Chen Bai, Siyuan Xu, Hao Geng, Tsung-Yi Ho, and
+     for Hyper-Parameter Optimization. In Advances in Neural Information Processing               Bei Yu. 2024. RankTuner: When Design Tool Parameter Tuning Meets Preference
+     Systems 24 (NeurIPS 2011). 2546–2554.                                                        Bayesian Optimization. In Proceedings of the IEEE/ACM International Conference
+ [3] Zhaorun Chen, Zhen Xiang, Chaowei Xiao, Dawn Song, and Bo Li.                                on Computer-Aided Design (ICCAD). 122:1–122:7. doi:10.1145/3676536.3676782
+     2024.      AgentPoison: Red-teaming LLM Agents via Poisoning Mem-                       [22] Wujiang Xu, Zujie Liang, Kai Mei, Hang Gao, Juntao Tan, and Yongfeng Zhang.
+     ory or Knowledge Bases. In Advances in Neural Information Process-                           2025. A-MEM: Agentic Memory for LLM Agents. CoRR abs/2502.12110 (2025).
+     ing Systems.        https://proceedings.neurips.cc/paper_files/paper/2024/hash/              arXiv:2502.12110 https://arxiv.org/abs/2502.12110
+     eb113910e9c3f6242541c1652e30dfd6-Abstract-Conference.html                               [23] Wei Yang, Jinwei Xiao, Hongming Zhang, Qingyang Zhang, Yanna Wang, and
+ [4] Lawrence T. Clark, Vinay Vashishtha, Lucian Shifren, Aditya Gujja, Saurabh                   Bo Xu. 2025. Coarse-to-Fine Grounded Memory for LLM Agent Planning. In
+     Sinha, Brian Cline, Chandarasekaran Ramamurthy, and Greg Yeric. 2016. ASAP7:                 Proceedings of the 2025 Conference on Empirical Methods in Natural Language
+     A 7-nm finFET Predictive Process Design Kit. Microelectronics Journal 53 (2016),             Processing (EMNLP). Association for Computational Linguistics, 13029–13056.
+     105–115.                                                                                     doi:10.18653/v1/2025.emnlp-main.659
+ [5] Samuel Daulton, Maximilian Balandat, and Eytan Bakshy. 2020. Differentiable             [24] Ruiqi Zhao, Yiqun Liu, Liang Pang, Xiao Zhang, and Min Zhang. 2025. Retrieve,
+     Expected Hypervolume Improvement for Parallel Multi-Objective Bayesian                       Schedule, Reflect: LLM Agents with Adaptive Memory Management. CoRR
+     Optimization. In Advances in Neural Information Processing Systems 33 (NeurIPS               abs/2503.09476 (2025). arXiv:2503.09476 https://arxiv.org/abs/2503.09476
+     2020). 9851–9864.                                                                       [25] Su Zheng, Hao Geng, Chen Bai, Bei Yu, and Martin D. F. Wong. 2023. Boosting
+ [6] Stefan Falkner, Aaron Klein, and Frank Hutter. 2018. BOHB: Robust and Efficient              VLSI Design Flow Parameter Tuning with Random Embedding and Multi-
+     Hyperparameter Optimization at Scale. In Proceedings of the 35th International               objective Trust-region Bayesian Optimization. ACM Transactions on Design
+     Conference on Machine Learning (ICML). 1436–1445.                                            Automation of Electronic Systems 28, 5 (2023), 74:1–74:23. doi:10.1145/3597931
+ [7] Hao Geng, Tinghuan Chen, Yuzhe Ma, Binwu Zhu, and Bei Yu. 2023. PTPT: Phys-             [26] Ruizhe Zhong, Xingbo Du, Shixiong Kai, Zhentao Tang, Siyuan Xu, Hui-Ling
+     ical Design Tool Parameter Tuning via Multi-Objective Bayesian Optimization.                 Zhen, Jianye Hao, Qiang Xu, Mingxuan Yuan, and Junchi Yan. 2024. LLM4EDA:
+     IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems                Emerging Progress in Large Language Models for Electronic Design Automation.
+     42, 1 (2023), 178–189. doi:10.1109/TCAD.2022.3167858                                         CoRR abs/2401.12224 (2024). arXiv:2401.12224 doi:10.48550/ARXIV.2401.12224
+ [8] Amur Ghose, Andrew B. Kahng, Sayak Kundu, and Zhiang Wang. 2025. ORFS-
+     agent: Tool-Using Agents for Chip Design Optimization. In Proceedings of the 7th
+     ACM/IEEE Symposium on Machine Learning for CAD (MLCAD). 1–13.
+ [9] Zhuolun He, Yuan Pu, Haoyuan Wu, Tairu Qiu, and Bei Yu. 2025. Large Language
+     Models for EDA: Future or Mirage? ACM Transactions on Design Automation of
+     Electronic Systems 30, 6 (2025), 90:1–90:53. doi:10.1145/3736167
+[10] Jinwook Jung, Andrew B. Kahng, Seungwon Kim, and Ravi Varadarajan. 2021.
+     METRICS2.1 and Flow Tuning in the IEEE CEDA Robust Design Flow and
+     OpenROAD ICCAD Special Session Paper. In Proceedings of the IEEE/ACM
+     International Conference on Computer-Aided Design (ICCAD). 1–9. doi:10.1109/
+     ICCAD51958.2021.9643541
+[11] Jiazheng Kang, Mingming Ji, Zhe Zhao, and Ting Bai. 2025. Memory OS of AI
+     Agent. In Proceedings of the 2025 Conference on Empirical Methods in Natural
+     Language Processing (EMNLP). Association for Computational Linguistics, 25961–
+     25970. doi:10.18653/v1/2025.emnlp-main.1318
+[12] Aaron Klein, Stefan Falkner, Simon Bartels, Philipp Hennig, and Frank Hutter.
+     2017. Fast Bayesian Optimization of Machine Learning Hyperparameters on
+     Large Datasets. In Proceedings of the 20th International Conference on Artificial
+     Intelligence and Statistics (AISTATS). 528–536.
+[13] Rongjian Liang, Jinwook Jung, Hua Xiang, Lakshmi N. Reddy, Alexey Lvov, Jiang
+     Hu, and Gi-Joon Nam. 2021. FlowTuner: A Multi-Stage EDA Flow Tuner Exploit-
+     ing Parameter Knowledge Transfer. In 2021 IEEE/ACM International Conference
+     On Computer Aided Design (ICCAD). IEEE, 1–9. doi:10.1109/ICCAD51958.2021.
+     9643564
+[14] Jingyu Pan, Isaac Jacobson, Zheng Zhao, Tung-Chieh Chen, Guanglei Zhou, Chen-
+     Chia Chang, Vineet Rashingkar, and Yiran Chen. 2025. CROP: Circuit Retrieval
+     and Optimization with Parameter Guidance using LLMs. CoRR abs/2507.02128
+     (2025). arXiv:2507.02128 https://arxiv.org/abs/2507.02128
+[15] Yuan Pu, Zhuolun He, Yuqi Jiang, Tairu Qiu, Haoyuan Wu, Qi Sun, Cheng
+     Zhuo, and Bei Yu. 2025. Customized Retrieval Augmented Generation and
+     Benchmarking for EDA Tool Documentation QA. IEEE Transactions on Computer-
+     Aided Design of Integrated Circuits and Systems 44, 12 (2025), 4615–4628. doi:10.
+     1109/TCAD.2025.3568776
+[16] Bobak Shahriari, Kevin Swersky, Ziyu Wang, Ryan P. Adams, and Nando de
+     Freitas. 2016. Taking the Human Out of the Loop: A Review of Bayesian
+     Optimization. Proc. IEEE 104, 1 (2016), 148–175. doi:10.1109/JPROC.2015.2494218
+[17] Noah Shinn, Federico Cassano, Ashwin Gopinath, Karthik Narasimhan, and
+     Shunyu Yao. 2023. Reflexion: Language Agents with Verbal Reinforcement
+     Learning. In Advances in Neural Information Processing Systems, Vol. 36. Curran
+     Associates, Inc., 8634–8652. https://proceedings.neurips.cc/paper_files/paper/
+     2023/file/1b44b878bb782e6954cd888628510e90-Paper-Conference.pdf
+[18] James E. Stine, Ivan Castellanos, Michael Wood, Jeff Henson, Fred Love, W. Rhett
+     Davis, Paul D. Franzon, Michael Bucher, Sudarshan Basavarajaiah, Julie Oh, and
+     Raphael Jennings. 2007. FreePDK: An Open-Source Variation-Aware Design Kit.
+     In Proc. IEEE Int. Conf. Microelectronic Systems Education (MSE). 173–174.
+[19] Runzhi Wang, Jingyu Pan, Yiran Chen, and Jiang Hu. 2026. AstroTune: AST-
+     Assisted LLM Retrieval for Cross-Stage Design Flow Parameter Tuner. In Pro-
+     ceedings of the 2026 International Symposium on Physical Design (ISPD). ACM,
+     144–152. doi:10.1145/3764386.3779579
+
+                                                                                         9
+

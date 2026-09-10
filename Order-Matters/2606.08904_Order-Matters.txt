@@ -1,0 +1,2341 @@
+                                          Order Matters: Unveiling the Hidden Impact of Macro Placement Sequences
+                                                             via Proxy-Guided LLM Evolution
+
+
+                                                                        Shibing Mo 1 2 Jing Liu * 1 2 Jianchu Xu 1 Ruilin Wu 2
+
+
+                                                                Abstract                                   1. Introduction
+                                                                                                           Macro placement stands as a cornerstone in modern chip
+                                             Macro placement is a fundamental step in mod-                 design, fundamentally dictating the quality, performance,
+arXiv:2606.08904v1 [cs.AI] 8 Jun 2026
+
+
+
+
+                                             ern chip physical design, playing a crucial role              and manufacturability of the final design (MacMillen et al.,
+                                             in determining the solution quality of high-                  2000; Kim & Markov, 2012). Formally, this is a large-scale
+                                             dimensional combinatorial optimization problems.              combinatorial optimization problem that requires determin-
+                                             Despite recent advancements in machine learning               ing the physical positions of macros within a fixed chip
+                                             for spatial coordinate determination, the tempo-              canvas without any overlap (Wang et al., 2009). The task
+                                             ral dimension of placement sequencing remains                 is characterized by high-dimensional constraints and ex-
+                                             largely governed by static heuristics. In this work,          treme sensitivity to boundary conditions. Despite recent
+                                             we demonstrate that the placement sequence is                 advances in machine learning that have accelerated this
+                                             not merely a preprocessing step but a decisive                process (Mirhoseini et al., 2021; Lin et al., 2019), macro
+                                             factor in optimization, where suboptimal early                placement remains a formidable challenge and an underex-
+                                             decisions trigger irreversible domino effects that            plored frontier in electronic design automation due to the
+                                             constrain the solution space. To harness this un-             immense design space (Majumdar et al., 2024).
+                                             explored dimension, we propose OrderPlace, a                  Recent machine learning methods have provided new per-
+                                             proxy-guided LLM evolution framework for au-                  spectives for tackling this challenge, evolving from construc-
+                                             tomatically discovering macro placement order                 tive approaches (Shi et al., 2023; Deng et al., 2025) to rein-
+                                             strategies. Instead of relying on manually crafted            forcement learning (RL) agents (Lai et al., 2022; Geng et al.,
+                                             heuristics such as area- or connectivity-based or-            2024) and transformer-based architectures (Lai et al., 2023).
+                                             dering, OrderPlace explores a broader space of                Interestingly, these frameworks essentially operate as se-
+                                             code-level policies, ranging from static scoring              quential decision processes. For instance, WireMask-BBO
+                                             metrics to dynamic physics-inspired mechanisms.               (Shi et al., 2023) initializes the placement order based on the
+                                             To mitigate the prohibitive cost of evaluating se-            total area of macros within shared nets, while MaskPlace
+                                             quences, we introduce a lightweight proxy evalu-              (Lai et al., 2022) employs a heuristic of large/dense first,
+                                             ation mechanism that efficiently filters candidates           small/sparse later. This reveals a prevalent bias: these meth-
+                                             using a deterministic greedy probe. Experimental              ods predominantly focus on the spatial optimization ques-
+                                             results on the standard ISPD 2005 benchmarks                  tion of ‘Where to place?’ while treating the temporal ques-
+                                             demonstrate that OrderPlace discovers novel or-               tion of ‘Who goes first?’ as a fixed prior or random permuta-
+                                             dering strategies. Compared with WireMask-EA                  tion. Consequently, the potential of the placement sequence
+                                             and the state-of-the-art method EGPlace, Order-               itself remains a dormant, unoptimized dimension.
+                                             Place reduces wirelength by 34.04% and 14.08%,
+                                             respectively.                                                 In a sequential placement process, early decisions define
+                                                                                                           the feasible boundary conditions for all subsequent macros.
+                                                                                                           A single suboptimal placement early in the sequence can
+                                                                                    1                      trigger a domino effect (Van Leeuwen, 2010), irreversibly
+                                           * indicates the corresponding author.      the School of
+                                                                                  2
+                                        Artifcial Intelligence, Xidian University the Guangzhou            constraining the solution space and leading to poor local op-
+                                        Institute of Technology, Xidian University.       Correspon-       tima (Ross & Bagnell, 2010; Kahng et al., 2011). To address
+                                        dence to: Shibing Mo <msb@stu.xidian.edu.cn>, Jing Liu             this sequential dependency, a potential research direction
+                                        <neouma@mail.xidian.edu.cn>.                                       explored by (Majumdar et al., 2024) involves retroactive
+                                                                                                           repair agents—models learned to identify and fix previous
+                                        Proceedings of the 43 rd International Conference on Machine
+                                        Learning, Seoul, South Korea. PMLR 306, 2026. Copyright 2026       placement errors. Similarly, (Deng et al., 2025) employs
+                                        by the author(s).                                                  heuristics to identify and relocate poorly placed macros,
+
+                                                                                                       1
+                                                          OrderPlace
+
+while (Geng et al., 2024) utilizes tree search to mitigate lo-       are identical. MaskPlace (Lai et al., 2022) and EGPlace
+cal optima. However, training an agent capable of effectively        (Deng et al., 2025) refine this by prioritizing connectivity
+backtracking and repairing arbitrary mistakes requires im-           degree (dense-first) and then size, while ChiPFormer (Lai
+practical exploration and sample complexity for real-world           et al., 2023) adopts a similar large-first, high-degree-first
+applications (Majumdar et al., 2024). Rather than learning           prior to training its decision transformer. Some approaches
+how to repair bad sequences, it is a more elegant and effi-          derive static scores to guide order. WireMask-BBO (Shi
+cient approach to learn how to avoid them by optimizing the          et al., 2023) sorts macro placement order based on the total
+input sequence itself.                                               area of macros within connected nets, and LaMPlace (Geng
+                                                                     et al., 2025) calculates a static importance score for each
+Despite its critical importance, exploring the impact of se-
+                                                                     macro. Recent works like Re2 MaP (Shi et al., 2025a) and
+quencing is notoriously difficult for two reasons. First, the
+                                                                     ReMaP (Shi et al., 2025b) introduce more complex priors,
+signal of ordering is often indirect and masked by the pow-
+                                                                     such as clustering macros into groups based on corner pref-
+erful refinement capabilities of complex iterative placement
+                                                                     erences or ordering based on dataflow intensity (placing
+method. Second, evaluating the quality of a single sequence
+                                                                     weak-flow macros at the periphery first), yet these remain
+typically requires running a full placement cycle, which is
+                                                                     fixed rule-based systems. Methods like DeepPR (Cheng
+computationally prohibitive for search-based optimization.
+                                                                     & Yan, 2021) and MaskRegulate (Xue et al., 2024) typi-
+To overcome these barriers and unlock the optimization               cally process macros in the raw netlist order or rely on the
+potential of placement sequencing, this paper proposes a             RL agent to implicitly learn a sequence, without explicitly
+novel framework named OrderPlace, which utilizes a low-              optimizing the input order as a hyperparameter; similarly,
+uncertainty greedy placement strategy as a sensitive probe           PRNet (Cheng et al., 2022) lacks an explicit sequencing
+to magnify the sensitivity of the final placement to the input       strategy, defaulting to netlist order. Existing works (Liu
+order. To address the computational cost, OrderPlace intro-          et al., 2008) predominantly treat placement sequencing as a
+duces a proxy evaluation mechanism. By evaluating macro              static preprocessing step governed by fixed heuristics, over-
+placement sequences on a simplified proxy task, candidate            looking its potential as a dynamic, learnable optimization
+sequences can be efficiently filtered without incurring the          dimension. For more related work about macro placement
+cost of full-scale optimization. Furthermore, the framework          methods, please refer to Appendix A.
+leverages LLMs to evolve code-level ordering strategies,
+discovering generalizable sorting algorithms—ranging from            3. Preliminaries
+static heuristics to dynamic, physics-inspired rules. In sum-
+mary, OrderPlace distinguishes itself from previous works            Macro Placement Instance. A macro placement instance
+through the following key features:                                  is formally defined as a tuple I = (M, E, G), where:
+
+   • Perspective Shift. We theoretically and empirically                • M = {m1 , m2 , . . . , ml } is a set of l macros, where
+     demonstrate that the placement sequence is a critical,               each macro mi has dimensions (wi , hi ), area Ari =
+     yet overlooked, dimension of optimization.                           wi × hi , and degree (number of connected nets) of
+   • Methodological Innovation. We propose the first                      macro mi is di .
+     LLM-driven evolutionary framework specifically de-
+     signed for macro placement sequencing. By integrating              • E = {e1 , e2 , . . . , ek } is a set of k nets (hyperedges),
+     proxy evaluation, we solve the challenge of expensive                where each net ej ⊆ M connects a subset of macros.
+     feedback loops in floorplanning optimization.                        N (mi ) is the set of nets that mi involves. N (mi , mj )
+                                                                          is the set of nets involves both mi and mj .
+   • State-of-the-art (SOTA) Performance. Our method
+     discovers novel dynamic sorting policies that, when                • G is a discrete placement grid of size g × g.
+     combined with a greedy solver, achieve SOTA results
+     on public benchmarks.
+                                                                     Greedy Placement Algorithm. Given a placement place-
+                                                                     ing sequence Π = (π1 , π2 , . . . , πl ) which is a permutation
+2. Related Work                                                      of M , the greedy placement algorithm A places macros
+                                                                     sequentially as follows:
+Macro Placement Sequencing Strategies. Although macro
+placement has been extensively studied, strategies for their
+placement order rely on static heuristic methods or fixed               • Initialize: Placed set P0 = ∅, Net bounding boxes
+prior processing. GraphPlacement (Mirhoseini et al., 2021)                B = ∅.
+and EfficientPlace (Geng et al., 2024) utilize a larger-first
+principle, resorting to topological sorting only when sizes             • Iterate: For t = 1 to l:
+
+                                                                 2
+                                                                      OrderPlace
+
+                                                  Only One Time
+                                                                                                                               Population Quality
+Initial Placement Order Strategies                                                                                             Evaluator
+
+                                                                                                Placement                 Random initialization
+                                                                                                Order Strategies
+Static                 Dynamics
+
+Initial Feature
+                                                                                                Static/Dynamics
+         w,h,Area,degree,Net-Area-Sum,Net                                                       Initial/New
+          Including Pair Nodes, Node in the
+             Same Nets, Conncet Graph...                               LLMs
+                                                                                                           Parallel                   Parallel
+Placements                          Wire-mask-guided
+                                    Greedy Procedure                                                     Population   Proxy Metrics：Average
+                                                                    User Prompt
+                                                                                                         Quality      HPWL, Std, Best HPWL,
+                                                       Loop End
+                                                                                                         Evaluator    Worst HPWL, Running Time,
+                                                                                                                      Illegal Placements Ratio
+                                                                                        Top-K
+                                                                                                        + Proxy
+                                                                                                          Metrics
+                                                                  Elite Individuals
+
+                                                       (a)                                                                        (b)
+Figure 1. Overview of OrderPlace. Part (a) illustrates the overall execution flow of OrderPlace, while part (b) presents the detailed
+procedure of the Population Quality Evaluator module.
+
+
+         (a) Select Position: Determine the optimal position                     minimal wirelength. In a worst-case ordering (e.g., inter-
+             pt = (xt , yt ) for the current macro πt that mini-                 leaved), macros are placed without connectivity guidance in
+             mizes the incremental wirelength cost:                              the early phases, leading to maximum spatial spread. When
+                                                                                 intermediate macros are finally placed, they must bridge
+                     pt =     argmin         ∆HPWL(πt , p, B)          (1)       these distant components, causing the total wirelength to
+                            p∈Valid(Pt−1 )
+                                                                                 scale quadratically rather than linearly. (See Appendix B.1
+         (b) Update Placement: Pt = Pt−1 ∪ {(πt , pt )}.                         for the detailed proof).
+         (c) Update Each Net Bounding Boxes: Recompute                           Analysis of Star Topology.
+             B for all nets connected to πt .
+                                                                                 Theorem 2. For a star topology with a central hub and
+   • Return: The final placement mapping Pl .                                    l − 1 spokes placed on a g × g grid, the expected HPWL of
+                                                                                 the hub-last ordering is Θ(g) times worse than the hub-first
+Half-Perimeter Wire Length (HPWL) (Chen et al., 2006).                           ordering.
+For a given placement P , the total HPWL is defined as:
+                      X h                                                        Proof Sketch. If the central hub is placed first, all subsequent
+                                                                                 spokes cluster tightly around it. Conversely, if the hub is
+                                                 
+       HPWL(P ) =              max xi − min xi
+                                     mi ∈ej        mi ∈ej
+                            ej ∈E                                                placed last, the spokes—lacking mutual connections—are
+                                                                       (2)
+                                                             i                  distributed randomly across the grid. The hub must then
+                                  + max yi − min yi                              connect to these dispersed spokes, making the total wire-
+                                     mi ∈ej        mi ∈ej
+                                                                                 length proportional to the grid dimension g. (See Appendix
+4. Impact of Ordering on Placement Quality                                       B.2 for the detailed proof).
+                                                                                 Summary. The analyses above demonstrate that for greedy
+This section formally demonstrates that the sequence in
+                                                                                 placement algorithms, suboptimal ordering leads to asymp-
+which macros are processed significantly impacts the solu-
+                                                                                 totic degradation. specifically an Ω(l) degradation for chain
+tion quality of greedy algorithm A. We analyze this utilizing
+                                                                                 topologies and an Θ(g) degradation for star topologies.
+chain and star topologies, which are foundational substruc-
+tures in very large scale integration (VLSI) netlists.
+                                                                                 5. Methodology
+Analysis of Chain Topology.
+                                                                                 To better explore the optimization potential of placement
+Theorem 1. For a set of macros connected in a linear chain
+                                                                                 order for macro placement, we propose an LLM-guided
+topology, the ratio of HPWL between the worst-case and
+                                                                                 evolutionary search framework for automatic design macro
+best-case ordering is Ω(l).
+                                                                                 placement order strategies. Our approach consists of three
+Proof Sketch. In an optimal ordering (e.g., sequential), each                    main components: (1) initial placement order strategies, (2)
+macro is placed adjacent to its predecessor, resulting in
+
+                                                                             3
+                                                                 OrderPlace
+
+Table 1. The initial macro placement order strategies. | · | denotes the size of the set. A → B represents sorting first by A, then by B. Ct
+represents the placement information that has been completed at time step t.
+
+ Strategy Function                                                         Description
+ Static Ordering Strategies
+                                                                           AreaDesc: Prioritize placing larger macros to secure advanta-
+ ϕarea (mi ) = −Ari
+                                                                           geous positions before canvas fragmentation occurs.
+                                                                           DegreeDesc: Placing highly connected macros at the forefront
+ ϕdegree (mi ) = −di                                                       enables subsequent macros to achieve optimal positioning relative
+                                                                           to critical nodes.
+ ϕarea-degree (mi ) = (−Ari , −di )                                        Area → Degree
+ ϕdegree-area (mi ) = (−di , −Ari )                                        Degree → Area
+                      P       P
+ ϕnet-area (mi ) = − mi ∈ej ej ⊆mj Arj                                     –
+
+ Dynamic Ordering Strategies
+
+                          P                                                Spring Potential: Modeling nets as springs connecting macros,
+ ϕspring (mi , Ct ) = −      mj ∈Pt κij |{e ∈ E : {mi , mj } ⊂ e}|         this strategy minimizes potential energy, where κij is proportional
+                                                                           to connection strength.
+                         P                                                 Field Potential: Placed macros generate an attractive field that
+ ϕfield (mi , Ct ) = −    mj ∈Pt α|{e ∈ E : {mi , mj } ⊂ e}| − βdi         influences unplaced macros, where α = 10, β = 5.
+                                  det(t)
+                                                                           Entropy-based: Prioritizes macros that maximize information
+                                 ci                                                                                      det(t)
+ ϕentropy (mi , Ct ) = −di ·    undet(t)                                   gain by reducing placement uncertainty (ci           : determined,
+                               ci          +1                               undet(t)
+                                                                           ci         : undetermined connections).
+                                                                           Hamiltonian: Inspired by classical mechanics, modeling the
+                          κ
+ ϕham (mi , Ct ) = |V alid(P t ,mi )|
+                                      + ϕspring (mi , Ct )                 placement process as a physical system with total energy (κ =
+                                                                           1000).
+
+
+
+LLM-driven strategy evolution, and (3) wire-mask-guided                    macros in terms of geometry, topology, and the placement
+greedy placement. Figure 1 illustrates the overall frame-                  process, providing a diverse and informative initial strategy
+work.                                                                      space for evolutionary search and LLM reasoning.
+
+5.1. Initial Placement Order Strategies                                    5.2. Design of Placement Order Strategies Driven by
+                                                                                LLMs
+For LLM-based evolutionary automatic algorithm design,
+a well-initialized population enables LLMs to better un-                   Initial Feature. The macro’s width, length, area, the total
+derstand task preferences and optimization objectives (Mo                  area of macros contained in the involved nets, as well as the
+et al., 2025). To this end, we manually design a set of macro              netlist’s topological information such as nodes and edges,
+placement order strategies. Formally, we define a placement                are all encapsulated in standardized data structures and made
+order strategy as a priority function:                                     accessible to code generated by LLMs through well-defined
+                                                                           interfaces.
+                          ϕ : M × C → Rt                         (3)
+                                                                           LLMs. OrderPlace supports multiple LLMs backends
+where Rt = M \ Pt is set of remaining (unplaced) macros,                   through a unified adapter interface, including OpenAI GPT-
+assigning a priority score to each macro based on its intrinsic            4 (Achiam et al., 2023), Deepseek-V3 (Liu et al., 2024a),
+features and the current placement context C. The place-                   and local models via Ollama (Marcondes et al., 2025). The
+ment order is then determined by sorting macros according                  LLM is configured with temperature τ = 0.7 to balance ex-
+to their priority scores in ascending order.                               ploration and exploitation in strategy generation (Liu et al.,
+                                                                           2024b). For each generation, we query the LLM Z times
+As shown in Table 1, based on how priorities are computed,                 to produce a batch of candidate strategies, with each query
+these strategies are categorized into two classes: static strate-          potentially yielding novel combinations or variations of ex-
+gies, which compute priorities solely from macro-level ge-                 isting approaches.
+ometric and topological features, and dynamic strategies,
+which adapt priorities according to the evolving placement                 Besides, all strategies are presented in the form of code.
+state, often inspired by physical dynamics simulations. Col-               LLM-guided strategy generation employs a two-part prompt
+lectively, these strategies capture diverse characteristics of             structure consisting of a system prompt and a user prompt.
+
+                                                                       4
+                                                         OrderPlace
+
+  • System Prompt. Establishes the LLM’s role as a VLSI             Population Evolution. The evolutionary process maintains
+    placement expert, providing (i) problem background on           a population P≀ of strategies across Ge generations. At each
+    macro ordering impact; (ii) specifications for static and       generation ge:
+    dynamic strategy types; (iii) PlacementContext
+    API reference; and (iv) output format requirements.                • Invalid placement ratio exceeding 50% will be imme-
+                                                                         diately eliminated.
+  • User Prompt. Dynamically constructed per generation,
+    containing (i) evaluation results of top-K strategies              • Select the top-K strategies from P≀(ge) based on fitness
+    with scores and source code; (ii) identification of the              scores.
+    current best strategy; and (iii) guidance for analyzing
+    success factors and exploring novel combinations.                  • Use the selected strategies as context for LLM prompts,
+                                                                         generating Z new candidate strategies.
+For completeness, we provide the full prompt templates in              • Evaluate all new strategies using the parallel population
+Appendix C.                                                              quality evaluator.
+Population Quality Evaluator. Macro placement is an
+                                                                       • Merge new strategies into the population:
+NP-hard problem, and no deterministic method can directly
+obtain optimal placement results (Mirhoseini et al., 2021).                              P≀(ge+1) = P≀(ge) ∪ Z                 (5)
+Typically, a lengthy optimization process is required to
+achieve satisfactory solutions. Evaluating each placement
+                                                                       • Persist the population state to enable checkpoint recov-
+sequence strategy through complete optimization would
+                                                                         ery.
+incur prohibitive computational costs. To address this chal-
+lenge, OrderPlace employs a lightweight proxy evaluation
+mechanism consisting of three stages:                               After Ge generations of LLM-guided evolution, the top-K ′
+                                                                    strategies undergo fine-tuning via EA optimization guided
+                                                                    by the wire-mask-guided greedy procedure in section 5.3.
+  • Syntax Validation. The generated code is parsed to
+                                                                    This process yielded the final optimized placement results.
+    verify syntactic correctness and detect potential compi-
+    lation errors.
+                                                                    5.3. Wire-mask-guided Greedy Procedure
+  • Functional Testing. The strategy is executed on a small         Similar to Wiremask-EA (Shi et al., 2023), given a place-
+    subset of macros to verify that it produces valid numer-        ment sequence generated by our evolved strategies, Order-
+    ical outputs without runtime exceptions.                        Place employs a wire-mask-guided greedy procedure for
+  • Parallel Monte Carlo Evaluation. Specifically, for              the actual macro placement. This procedure leverages pre-
+    each macro placement sequence strategy, we execute              computed wirelength masks to efficiently evaluate candidate
+    a wire-mask-guided greedy placement process once                positions.
+    for each of the V initial placements (generated using           Wire Mask Construction. For each macro m to be placed,
+    different random seeds), thereby producing V valid              constructing a wire mask Wm ∈ Rg×g over the discretized
+    placement solutions. This evaluation is parallelized            canvas, where each cell (i, j) stores the estimated HPWL
+    across W worker processes to accelerate throughput.             contribution if macro m is placed at that location:
+    A timeout mechanism (T timeout seconds per strategy)
+    is employed to terminate potentially inefficient or non-                                    X
+    terminating strategies.                                                     Wm (i, j) =             HPWLe (i, j)           (6)
+                                                                                              e∈N (m)
+
+The fitness score for each strategy is computed as the mean
+                                                                    where HPWLe (i, j) is the half-perimeter wirelength of net
+HPWL over successful evaluations:
+                                                                    e when macro m is placed at position (i, j), considering the
+                         1 X                                        positions of already-placed macros connected to net e.
+         fitness(Π) =            HPWL(Π, seedi )          (4)
+                        |V ′ | ′                                    Greedy Placement. For each macro in the sequence order:
+                            i∈V
+
+where V ′ denotes the set of valid runs excluding timeouts             • Compute the wire mask considering currently placed
+and errors. Additionally, we record proxy metrics including              macros.
+standard deviation, best/worst HPWL, running time, and
+invalid placement ratio to provide comprehensive strategy              • Generate a validity mask V alid(Pt , m) indicating le-
+characterization.                                                        gal positions (no overlaps, within region constraints).
+
+                                                                5
+                                                                      OrderPlace
+
+Table 2. HPWL (×105 ) Achieved by Different Macro Placement Methods on the ISPD2005 Dataset. The results of baseline methods
+are taken from EGPlace (Deng et al., 2025) and BBOPlace-Bench (Xue et al., 2025). All results, except those of the deterministic method
+NTUPlace3, are averaged over 5 runs with different random seeds and reported as mean ± std. Symbols ‘+’, ‘–’, and ‘≈’ indicate the
+number of circuits where the method performs significantly better than, worse than, or comparable to OrderPlace, based on the Wilcoxon
+rank-sum test at a 0.05 significance level. The best results are marked in bold.
+
+  Method                 adaptec1         adaptec2         adaptec3         adaptec4        bigblue1        bigblue3      +/ − / ≈   Avg. Rank
+  SP-SA              18.84 ± 4.62       117.36 ± 8.73    115.48 ± 7.56    120.03 ± 4.25    5.12 ± 1.43   164.70 ± 19.55    0/6/0        8.67
+  NTUPlace3              26.62              321.17           328.44           462.93          22.85          455.53        0/6/0       11.17
+  RePlace            16.19 ± 2.10      153.26 ± 29.01   111.21 ± 11.69    37.64 ± 1.05     2.45 ± 0.06   119.84 ± 34.43    0/6/0        6.83
+  DreamPlace         15.81 ± 1.64      140.79 ± 26.73   121.94 ± 25.05    37.41 ± 0.87     2.44 ± 0.06   107.19 ± 29.91    0/6/0        6.33
+  GraphPlace         30.10 ± 2.98      351.71 ± 38.20   358.18 ± 13.95   151.42 ± 9.72    10.58 ± 1.29   357.48 ± 47.83    0/6/0       10.83
+  DeepPR             19.91 ± 2.13       203.51 ± 6.27    347.16 ± 4.32   311.86 ± 56.74   23.33 ± 3.65   430.48 ± 12.18    0/6/0       11.00
+  MaskPlace           7.62 ± 0.67        75.16 ± 4.97   100.24 ± 13.54     87.99 ± 3.25   3.04 ± 0.06     90.04 ± 4.83     0/6/0        6.17
+  Chipformer          6.62 ± 0.05        67.10 ± 5.46     76.70 ± 1.15    68.80 ± 1.59    2.95 ± 0.04     72.92 ± 2.56     0/6/0       5.17
+  EfficientPlace      5.94 ± 0.04        46.79 ± 1.60     56.35 ± 0.99    58.47 ± 1.61    2.14 ± 0.01     58.38 ± 0.54     0/6/0       2.67
+  WireMask-EA         6.15 ± 0.05        64.38 ± 4.43     58.18 ± 1.04    59.52 ± 1.71    2.15 ± 0.01     59.85 ± 3.39     0/6/0       3.67
+  EGPlace             5.72 ± 0.01       37.69 ± 1.08     60.13 ± 1.83     56.08 ± 0.43     2.20 ± 0.01    52.41 ± 8.16     1/5/0        2.50
+  OrderPlace          5.75 ± 0.06        30.72 ± 1.47     54.82 ± 0.38     49.88 ± 0.28    2.00 ± 0.00    36.72 ± 0.44                  1.17
+
+
+
+
+                   (a)                                  (b)                                (c)                                (d)
+
+
+
+
+                   (e)                                  (f)                                (g)                                (h)
+Figure 2. Comparison of HPWL Trend Over the Runtime(s). In these trajectories, OrderPlace(StrategyN umber) denotes the placement
+process utilizing the N umber-th best ordering strategy identified by our framework. For each dataset, we select the top 4 strategies and
+perform parallel macro placement optimization, resulting in a total of 24 strategies. For specific strategy details, refer to Appendix F.
+
+
+   • Select the position minimizing the masked wirelength:                      the ISPD 2005 benchmark suite (Nam et al., 2005). The
+                                                                                ISPD 2005 suite contains eight chip designs; details of
+            (î, ĵ) = arg min Wm (i, j) · V alid(Pt , m)             (7)       these circuits are provided in Appendix D. We compare
+                               (i,j)
+                                                                                OrderPlace against leading placement methods, including
+   • Place the macro and update the canvas state.                               the simulated-annealing based SP-SA (Murata et al., 2002);
+                                                                                analytic and gradient-based placers NTUPlace3 (Chen et al.,
+                                                                                2008), RePlace (Cheng et al., 2018), DreamPlace (Lin
+This greedy procedure ensures that each macro is placed
+                                                                                et al., 2019); RL approaches GraphPlace (Mirhoseini et al.,
+at a locally optimal position given the current canvas state,
+                                                                                2021), DeepPR (Cheng & Yan, 2021), MaskPlace (Lai et al.,
+while the evolved sequence strategy determines the global
+                                                                                2022), Chipformer (Lai et al., 2023), and EfficientPlace
+ordering that influences the overall placement quality.
+                                                                                (Geng et al., 2024); and hybrid-optimization WireMask-
+                                                                                EA (Shi et al., 2023), EGPlace (Deng et al., 2025). All
+6. Experiments                                                                  experiments of OrderPlace are conducted on a machine
+                                                                                equipped with eight NVIDIA RTX A6000 GPUs and four
+Benchmarks and Settings. Following prior macro place-
+                                                                                Intel(R) Xeon(R) Platinum 8374C CPUs running at 2.70
+ment methods (Shi et al., 2023; Deng et al., 2025; Geng
+                                                                                GHz. Both the population quality evaluator and the final
+et al., 2024), we validate the effectiveness of OrderPlace on
+
+                                                                            6
+                                                                              OrderPlace
+
+Table 3. Summary of Mathematical Components in LLM-                                   Overview of Discovered Strategies. Our experimental
+Generated Strategies, where ρ = |Pt |/|M | is placement progress
+ratio, ue = |e| − |e ∩ Pt | − 1 is macros in net e excluding cur-
+                                                                                      results reveal several key findings:
+rent candidate. V ar and scale are the variance and normalization
+functions, respectively.                                                                 • Dominance of LLM-generated strategies: Out of
+                                                                                           32 top-4 positions across all datasets, 24 (75%) are
+ Component                 Typical Form                           Frequency
+                                                                                           occupied by LLM-generated strategies, while only 8
+                               |N (mi , mj )|α ,√α ∈ [1.0, 1.5]
+                           P
+ Connection Strength                                              100% (24/24)
+ Degree Factor            di , ln(di + 1), or di                  100% (24/24)             positions are held by built-in heuristics.
+ Phase-Adaptive Weights    weight(ρ)    piecewise function        87.5% (21/24)
+                                                                                         • Dynamic strategies prevail: All 8 top-1 positions are
+                              p
+ Net Criticality           1/ |e| or exp(−|e|/k)                  87.5% (21/24)
+                            det    undet
+ Entropy Reduction        c√ /f (c       )                        75% (18/24)              held by LLM-generated dynamic strategies that adapt
+ Area Factor                 Ari or ln(Ari + 1)                   75% (18/24)
+ Net Closure Bonus                 √ if ue = 0
+                           High reward                            62.5% (15/24)            their behavior based on placement progress.
+ Spatial Compactness       1/(1 + Var/scale)                      50% (12/24)
+                                                                                         • No static strategies in top positions: None of the top-
+                                                                                           1 strategies across any dataset employ static ordering,
+                                                                                           demonstrating the importance of adaptive decision-
+wire-mask-guided greedy procedure evaluate order strate-                                   making.
+gies in parallel using eight threads. The LLM-driven or-
+der strategy generation is run for 4 iterations by default,                           Taxonomy of Discovered Strategy Patterns. As shown in
+with the LLM generating Z = 4 candidate strategies in                                 Table 3, through analysis of the 24 LLM-generated strate-
+parallel per iteration. Further experimental details are                              gies, we identify some recurring design components that
+available in Appendix D. The source code and all macro                                emerge across different datasets. Next, several patterns
+placement order strategies are publicly available at https:                           formed by these components are analyzed.
+//github.com/Explorermomo/OrderPlace.
+                                                                                      Pattern 1: Gravitational/Field Models. These strategies
+6.1. Macro Placement Results                                                          model placed macros as mass points generating attractive
+                                                                                      fields. The gravitational force on an unplaced macro mi is
+We evaluate the macro placement performance on the stan-                              computed as:
+dard ISPD2005 benchmarks, with detailed HPWL compar-                                                      X
+isons summarized in Table 2. OrderPlace demonstrates                                          Sg (mi ) =        |N (mi , mj )|α · ψ(mi , mj ) (8)
+superior placement quality, achieving the best (lowest)                                                  mj ∈Pt
+HPWL values on 7 out of 8 circuits—adaptec2∼4, and
+bigblue1∼4—and securing the top average rank of 1.17                                  where α ∈ [1.0, 1.5] controls the superlinear scaling of con-
+among all twelve competing methods (the result of bigblue2                                  pstrength, and ψ(·) represents optional mass factors
+                                                                                      nection
+and bigblue4 cases is provided in Appendix E). In a direct                            (e.g., Ari · Arj for area-weighted gravity).
+comparison with the strongest baseline, EGPlace, Order-                               Pattern 2: Entropy Reduction Models. Inspired by informa-
+Place performs significantly better on 7 circuits based on the                        tion theory, these strategies prioritize macros that maximize
+Wilcoxon rank-sum test at a 0.05 significance level. Beyond                           information gain by reducing placement uncertainty:
+achieving superior final solution quality, OrderPlace exhibits
+remarkable computational efficiency; as illustrated in Figure                                                             cdet
+                                                                                                                           i
+                                                                                                   Sentropy (mi ) =                · f2 (di )    (9)
+2, our method converges significantly faster than EGPlace,                                                            f1 (cundet
+                                                                                                                           i     )
+which is renowned for its rapid convergence capabilities.
+Notably, OrderPlace(Strategy1) consistently demonstrates                              where cdet
+                                                                                              i and ci
+                                                                                                       undet
+                                                                                                             denote determined
+                                                                                                                      √         and undetermined
+the steepest descent in HPWL, navigating the solution space                           connections, f1 (·) is typically · + 1 or (· + 1), and f2 (di )
+to reach lower convergence points much earlier than both                              is a degree-dependent factor.
+EGPlace and WireMask-EA across all benchmarks (Figure                                 Pattern 3: Net Closure Prioritization. These strategies ex-
+2a-h). This confirms that proactive optimization of the place-                        plicitly prioritize completing nearly-finished nets:
+ment sequence not only unlocks better local optima but also                                            
+fundamentally accelerates the greedy solver’s convergence                                              High Bonus · f (e) if |e \ Pt | = 1
+toward high-quality global solutions.                                                   Sclosure (e) =  |e∩Pt | β                         (10)
+                                                                                                       
+                                                                                                            |e|     · f (e)    otherwise
+6.2. Analysis of LLM-Generated Strategies                                                                               p
+                                                                                      where f (e) = exp(−|e|/k) or 1/ |e| represents net crit-
+We analyze the placement sequence strategies discovered                               icality, High Bonus denotes a fixed reward obtained upon
+through our LLM-guided evolutionary search framework                                  the completion of macro placement in the current net e, and
+across eight ISPD benchmark circuits. Table 8 in Ap-                                  β ≥ 2 provides superlinear scaling for high completion
+pendix F summarizes the top-4 strategies for each dataset.                            ratios.
+
+                                                                                  7
+                                                                               OrderPlace
+
+Table 4. Comparison on HPWL(×105 ) and Congestion Results. We standardize the RUDY value of OrderPlace(Strategy1) to 1.00. The
+best results are marked in bold.
+
+      Benchmarks             adaptec1         adaptec2          adaptec3           adaptec4         bigblue1       bigblue2       bigblue3       bigblue4
+        Metrics            HPWL Cong.       HPWL Cong.        HPWL Cong.         HPWL Cong.       HPWL Cong.     HPWL Cong.     HPWL Cong.     HPWL Cong.
+    WireMask-EA             5.89   2.02      52.63    2.07     54.72    1.41     57.38     1.28    2.10   1.64   11.06   1.28   62.69   1.02   76.12   1.39
+       EGPlace              5.68   1,61      37.99    1.64     63.05    1.41     56.09     1.27    2.23   1.62   10.49   1.26   50.50   1.65   58.96   0.75
+ OrderPlace (Strategy4)     5.80   1.59      33.54    0.95     55.55    1.45     53.46     1.40    2.00   1.02   9.54    1.19   52.25   1.00   71.02   1.00
+ OrderPlace (Strategy3)     5.77   1.83      33.33    1.04     54.36    1.44     51.88     1.36    1.99   1.01   9.07    1.15   46.52   0.98   64.69   1.02
+ OrderPlace (Strategy2)     5.70   1.71      30.63    1.15     52.81    1.15     48.38     1.17    1.97   1.38   8.78    1.09   35.22   1.02   61.82   1.02
+ OrderPlace (Strategy1)     5.68   1.00      28.66    1.00     52.85    1.00     48.31     1.00    2.00   1.00   7.38    1.00   35.24   1.00   60.57   1.00
+
+
+Table 5. Comparisons of HPWL (×107 ) on mixed-size placement task. The results of the comparison methods are taken from the
+BBOPlace-Bench (Xue et al., 2025) and EGPlace (Deng et al., 2025) paper The best results are highlighted in bold.
+
+  Method                                   adaptec1           adaptec2           adaptec3          adaptec4        bigblue1        bigblue3     Avg. Rank
+  DreamPlace                               9.62 ± 0.78       12.45 ± 3.31       17.18 ± 0.51      40.04 ± 3.87   8.30 ± 0.06    38.22 ± 1.48       4.33
+  MaskPlace + DreamPlace                  10.86 ± 0.18       12.98 ± 0.58       26.14 ± 0.07      26.14 ± 0.07   10.64 ± 0.01   54.98 ± 1.06       5.83
+  WireMask-EA + DreamPlace                 8.93 ± 0.01        9.20 ± 0.05       21.72 ± 0.01      20.51 ± 0.01   10.35 ± 0.02   42.52 ± 0.11       4.25
+  EfficientPlace + DreamPlace              7.20 ± 0.12        9.20 ± 0.61       16.49 ± 1.07      14.70 ± 0.25   8.67 ± 0.10    28.48 ± 0.96       2.25
+  EGPlace + DreamPlace                     7.53 ± 0.11        9.06 ± 0.36       14.15 ± 0.19      15.69 ± 0.09   8.99 ± 0.06    29.08 ± 0.23       2.33
+  OrderPlace + DreamPlace                  8.11± 0.06        11.92 ± 0.44       14.87 ± 0.36      14.28 ± 0.27   8.29 ± 0.07    27.96 ± 0.13       2.00
+
+
+
+Case Study on the OrderPlace-Strategy1 of Adaptec1.                                      macros. The Spnet quantifies the placement progress of par-
+                                                                                         tially placed nets through a bell-shaped weighting scheme,
+The OrderPlace-Strategy1 (gravity entropy) of
+                                                                                         encouraging balanced advancement without premature con-
+adaptec1 combines gravitational attraction from placed
+                                                                                         vergence. Finally, the Scnet provides explicit rewards for
+macros with information-theoretic metrics for net closure.
+                                                                                         nets that are fully completed or close to completion, thereby
+Initial Placement (Pt = ∅).                                                              promoting net closure and improving global connectivity
+                          p                                                              during the placement process.
+               ϕ(mi ) = − di · Ari · 1000                                   (11)
+                                                                                         Overall, these results further confirm that adaptive, multi-
+This prioritizes macros with high combined degree-area                                   factor strategies are critical for effective macro placement,
+product, establishing a well-connected foundation.                                       with additional details and examples provided in Ap-
+Dynamic Placement.                                                                       pendix F.
+                
+                                                                                         6.3. Additional Results
+ ϕ(mi , Ct ) = − 0.3 · Sgrvity i + 0.2 · Spnet i
+                                                                         (12)           Congestion Results. The observed results of Table 4 align
+                                                         p
+                           + 0.4 · Scneti + 0.1 ·            di · Ari                    with the findings of WireMask-EA (Shi et al., 2023)—lower
+                                                                                         HPWL may help reduce congestion. This correlation is
+where                                                                                    particularly evident in the bigblue4 benchmark, where EG-
+                X                                                                       Place achieves both the lowest HPWL and the minimum
+ 
+ 
+  S grvity i =        |N (mi , mj )|1.5                                                 congestion. Overall, OrderPlace (Strategy 1) demonstrates
+ 
+ 
+               mj ∈Pt                                                                   the most consistent routability, securing the optimal stan-
+ 
+ 
+ 
+                  X        |e ∩ Pt |         |e ∩ Pt |                                  dardized congestion score of 1.00 in six out of the eight
+ 
+    S pnet i =          4·            · (1 −           )                                benchmarks.
+                                |e|              |e|
+ 
+ 
+ 
+                    e∈N (mi ):
+                     |e∩Pt |>0                                              (13)         Mixed-size Placement Results. We adopted the same two-
+                 X                                                                      stage global placement framework as EfficientPlace (Geng
+    Scneti =                   10 ln(|e| + 1)
+  
+  
+  
+  
+                                                                                        et al., 2024) and EGPlace (Deng et al., 2025). As shown in
+             e∈N (m   ):u   =0
+  
+                   i     e
+  
+  
+                    X                                                                   Table 5, compared with EGPlace and EfficientPlacement,
+             +                   5 ln(|e| + 1)
+  
+  
+  
+                                                                                        OrderPlace achieves a leading performance on half of the
+  
+                          e∈N (mi ):ue ≤2                                                six benchmarks and attains the best average ranking. In
+                                                                                         particular, the comparison with Wiremask-EA demonstrates
+The overall scoring function is composed of three comple-
+                                                                                         that the placement order of macros is also an important
+mentary components. The Sgrvity captures the attraction
+                                                                                         feature dimension. More experimental results can be found
+induced by already placed macros, using a superlinear scal-
+                                                                                         in Appendix G.
+ing to emphasize the influence of larger or more connected
+
+                                                                                   8
+                                                        OrderPlace
+
+7. Conclusion and Future Work                                        scale mixed-size designs with preplaced blocks and den-
+                                                                     sity constraints. IEEE Transactions on Computer-Aided
+This work presents the first systematic evidence that place-         Design of Integrated Circuits and Systems, 27(7):1228–
+ment sequencing, traditionally overlooked as a static pre-           1240, 2008.
+processing step, serves as a critical determinant in place-
+ment optimization. We propose OrderPlace, an LLM-driven            Cheng, C.-K., Kahng, A. B., Kang, I., and Wang, L. Re-
+framework that automates ordering strategy discovery via             Place: Advancing solution quality and routability val-
+proxy evaluation. Extensive experimental results demon-              idation in global placement. IEEE Transactions on
+strate that the strategies discovered by OrderPlace effec-           Computer-Aided Design of Integrated Circuits and Sys-
+tively mitigate suboptimality in sequence-decision-based             tems, 38(9):1717–1730, 2018.
+placement, particularly during early-stage design.
+                                                                   Cheng, R. and Yan, J. On joint learning for solving place-
+Future Work and Limitation. This study is limited to eval-           ment and routing in chip design. Advances in Neural
+uating the impact of placement order on mask-guided greedy           Information Processing Systems, 34:16508–16519, 2021.
+methods. The interaction with stochastic, learning-based
+methods remains unexplored. Future work will explore how           Cheng, R., Lyu, X., Li, Y., Ye, J., Hao, J., and Yan, J.
+placement ordering enhances deep learning-driven methods.            The policy-gradient placement and generative routing
+                                                                     neural networks for chip design. Advances in Neural
+                                                                     Information Processing Systems, 35:26350–26362, 2022.
+Acknowledgments
+                                                                   Cohoon, J. P. and Paris, W. D. Genetic placement. IEEE
+This work was supported in part by the National Natural
+                                                                     Transactions on Computer-Aided Design of Integrated
+Science Foundation of China under Grant 62471371, and
+                                                                     Circuits and Systems, 6(6):956–964, 1987.
+in part by the Fundamental Research Funds for the Central
+Universities under Grant YJSJ26008.                                Deng, J., Li, Z., Zhang, J., and Gao, J. EGPlace: An efficient
+                                                                     macro placement method via evolutionary search with
+Impact Statement                                                     greedy repositioning guided mutation. In Proceedings of
+                                                                     the International Conference on Machine Learning, pp.
+This paper presents work whose goal is to advance the field         13237–13255, 2025.
+of machine learning. There are many potential societal
+consequences of our work, none of which we feel must be            Geng, Z., Wang, J., Liu, Z., Xu, S., Tang, Z., Yuan, M., Hao,
+specifically highlighted here.                                       J., Zhang, Y., and Wu, F. Reinforcement learning within
+                                                                     tree search for fast macro placement. In Proceedings
+We provide the following information to ensure the repro-            of the International Conference on Machine Learning,
+ducibility of our proposed OrderPlace. Implementation                2024.
+details are given in Appendix D. All strategy details are
+provided in Appendix F.                                            Geng, Z., Wang, J., Liu, Z., Xu, S., Tang, Z., Kai, S., Yuan,
+                                                                     M., Hao, J., and Wu, F. LaMPlace: Learning to optimize
+References                                                           cross-stage metrics in macro placement. In The Thirteenth
+                                                                     International Conference on Learning Representations,
+Achiam, J., Adler, S., Agarwal, S., Ahmad, L., Akkaya, I.,           2025.
+  Aleman, F. L., Almeida, D., Altenschmidt, J., Altman, S.,
+  Anadkat, S., et al. GPT-4 technical report. arXiv preprint       Kahng, A. B., Lienig, J., Markov, I. L., and Hu, J. VLSI
+  arXiv:2303.08774, 2023.                                            Physical Design: from Graph Partitioning to Timing Clo-
+                                                                     sure, volume 312. Springer, 2011.
+Alagoz, O., Hsu, H., Schaefer, A. J., and Roberts, M. S.
+  Markov decision processes: a tool for sequential decision        Kim, M.-C. and Markov, I. L. ComPLx: A competitive
+  making under uncertainty. Medical Decision Making, 30              primal-dual lagrange optimization for global placement.
+  (4):474–483, 2010.                                                 In Proceedings of the 49th Annual Design Automation
+                                                                     Conference, pp. 747–752, 2012.
+Chen, T.-C., Jiang, Z.-W., Hsu, T.-C., Chen, H.-C., and
+  Chang, Y.-W. A high-quality mixed-size analytical placer         Lai, Y., Mu, Y., and Luo, P. MaskPlace: Fast chip placement
+  considering preplaced blocks and density constraints. In           via reinforced visual representation learning. Advances
+  Proceedings of the 2006 IEEE/ACM International Con-                in Neural Information Processing Systems, 35:24019–
+  ference on Computer-Aided Design, pp. 187–192, 2006.               24030, 2022.
+
+Chen, T.-C., Jiang, Z.-W., Hsu, T.-C., Chen, H.-C., and            Lai, Y., Liu, J., Tang, Z., Wang, B., Hao, J., and Luo, P. Chip-
+  Chang, Y.-W. NTUPlace3: An analytical placer for large-            former: Transferable chip placement via offline decision
+
+                                                               9
+                                                        OrderPlace
+
+  transformer. In Proceedings of the International Confer-          Murata, H., Fujiyoshi, K., Nakatake, S., and Kajitani, Y.
+  ence on Machine Learning, pp. 18346–18364, 2023.                   VLSI module placement based on rectangle-packing by
+                                                                     the sequence-pair. IEEE Transactions on Computer-
+Lin, Y., Dhar, S., Li, W., Ren, H., Khailany, B., and Pan,
+                                                                     Aided Design of Integrated Circuits and Systems, 15(12):
+  D. Z. DreamPlace: Deep learning toolkit-enabled GPU
+                                                                     1518–1524, 2002.
+  acceleration for modern vlsi placement. In Proceedings
+  of the 56th Annual Design Automation Conference 2019,             Nam, G.-J., Alpert, C. J., Villarrubia, P., Winter, B., and
+  pp. 1–6, 2019.                                                     Yildiz, M. The ISPD2005 placement contest and bench-
+Liu, A., Feng, B., Xue, B., Wang, B., Wu, B., Lu, C., Zhao,           mark suite. In Proceedings of the 2005 International
+  C., Deng, C., Zhang, C., Ruan, C., et al. Deepseek-                 Symposium on Physical Design, pp. 216–220, 2005.
+  v3 technical report. arXiv preprint arXiv:2412.19437,             Ross, S. and Bagnell, D. Efficient reductions for imitation
+  2024a.                                                              learning. In Proceedings of the thirteenth International
+Liu, F., Tong, X., Yuan, M., Lin, X., Luo, F., Wang, Z.,              Conference on Artificial Intelligence and Statistics, pp.
+  Lu, Z., and Zhang, Q. Evolution of heuristics: towards              661–668, 2010.
+  efficient automatic algorithm design using large language         Shi, Y., Xue, K., Lei, S., and Qian, C. Macro placement by
+  model. In Proceedings of the International Conference               wire-mask-guided black-box optimization. Advances in
+  on Machine Learning, pp. 32201–32223, 2024b.                        Neural Information Processing Systems, 36:6825–6843,
+Liu, J., Zhong, W., Jiao, L., and Li, X. Moving block                 2023.
+  sequence and organizational evolutionary algorithm for
+                                                                    Shi, Y., Lin, X., Wang, Z., Xu, S., Kai, S., Lai, Y., Gao, C.,
+  general floorplanning with arbitrarily shaped rectilinear
+                                                                      Xue, K., Yuan, M., Qian, C., et al. Re2 MaP: Macro place-
+  blocks. IEEE Transactions on Evolutionary Computation,
+                                                                      ment by recursively prototyping and packing tree-based
+  12(5):630–646, 2008.
+                                                                      relocating. arXiv preprint arXiv:2511.08054, 2025a.
+Lu, J., Zhuang, H., Chen, P., Chang, H., Chang, C.-C.,
+  Wong, Y.-C., Sha, L., Huang, D., Luo, Y., Teng, C.-               Shi, Y., Lin, X., Xu, S., Kai, S., Xue, K., Yuan, M., Qian, C.,
+  C., et al. ePlace-MS: Electrostatics-based placement                and Zhou, Z.-H. ReMaP: Macro placement by recursively
+  for mixed-size circuits. IEEE Transactions on Computer-             prototyping and periphery-guided relocating. In 2025
+  Aided Design of Integrated Circuits and Systems, 34(5):             62nd ACM/IEEE Design Automation Conference (DAC),
+  685–698, 2015.                                                      pp. 1–7, 2025b.
+
+MacMillen, D., Camposano, R., Hill, D., and Williams, T. W.         Van Leeuwen, J. The domino effect. American Journal of
+ An industrial view of electronic design automation. IEEE             Physics, 78(7):721–727, 2010.
+ Transactions on Computer-aided Design of Integrated
+                                                                    Wang, L.-T., Chang, Y.-W., and Cheng, K.-T. T. Electronic
+ Circuits and Systems, 19(12):1428–1448, 2000.
+                                                                     design automation: synthesis, verification, and test. Mor-
+Majumdar, S., Mallappa, U., and Mostafa, H. AI alone isn’t           gan Kaufmann, 2009.
+ ready for chip design: A combination of classical search
+                                                                    Xue, K., Chen, R.-T., Lin, X., Shi, Y., Kai, S., Xu, S.,
+ and machine learning may be the way forward. IEEE
+                                                                      and Qian, C. Reinforcement learning policy as macro
+ Spectrum, 61(12):38–43, 2024.
+                                                                      regulator rather than macro placer. Advances in Neu-
+Marcondes, F. S., Gala, A., Magalhães, R., Perez de Britto,          ral Information Processing Systems, 37:140565–140588,
+ F., Durães, D., and Novais, P. Using ollama. In Natural             2024.
+ Language Analytics with Generative Large-Language
+ Models: A Practical Approach with Ollama and Open-                 Xue, K., Chen, R.-T., Tan, R.-X., Lin, X., Shi, Y., Xu, S.,
+ Source LLMs, pp. 23–35. Springer, 2025.                             Yuan, M., and Qian, C. BBOPlace-Bench: Benchmark-
+                                                                      ing black-box optimization for chip placement. arXiv
+Mirhoseini, A., Goldie, A., Yazgan, M., Jiang, J. W.,                 preprint arXiv:2510.23472, 2025.
+ Songhori, E., Wang, S., Lee, Y.-J., Johnson, E., Pathak,
+ O., Nova, A., et al. A graph placement methodology for
+ fast chip design. Nature, 594(7862):207–212, 2021.
+Mo, S., Wu, K., Gao, Q., Teng, X., and Liu, J. AutoS-
+ GNN: automatic propagation mechanism discovery for
+ spectral graph neural networks. In Proceedings of the
+ AAAI Conference on Artificial Intelligence, volume 39,
+ pp. 19493–19502, 2025.
+
+                                                               10
+                                                         OrderPlace
+
+A. More Related Work
+Macro Placement Methods. Existing macro placement methodologies can be broadly categorized into analytical, RL-based,
+and constructive approaches. Analytical methods, such as ePlace (Lu et al., 2015) and DreamPlace (Lin et al., 2019),
+formulate placement as a continuous optimization problem, leveraging gradient descent to minimize wirelength and density
+penalties. While efficient, these methods often struggle with the discrete nature of macro non-overlap constraints and
+non-differentiable objectives. RL-based methods, pioneered by AlphaChip (Mirhoseini et al., 2021) and followed by
+MaskPlace (Lai et al., 2022) and ChiPFormer (Lai et al., 2023), model placement as a sequential decision process (Alagoz
+et al., 2010). While effective, they often require substantial computational resources for training and can suffer from sample
+inefficiency. Constructive and Hybrid methods, such as WireMask-EA (Shi et al., 2023), combine global search algorithms
+(e.g., Evolutionary Algorithms(Cohoon & Paris, 1987)) with deterministic greedy solvers. WireMask-EA specifically
+utilizes a wiremask-guided greedy insertion strategy to rapidly generate valid placements. Unlike analytical methods that
+optimize all coordinates simultaneously, or RL methods that entangle position and order in complex policies, OrderPlace
+specifically employs the deterministic greedy strategy as a sensitive probe to rigorously isolate and quantify the impact of
+input sequencing, unclouded by the stochastic noise of gradient descent or annealing processes.
+
+B. Deferred Proofs
+B.1. Proof of Theorem 1 (Chain Topology)
+Theorem 1. For a set of macros connected in a linear chain topology, the ratio of HPWL between the worst-case and
+best-case ordering is Ω(l).
+Proof. Consider a set of l macros M connected by nets E = {(mi , mi+1 ) | 1 ≤ i < l}.
+
+  1. Best-Case Ordering: Let Π∗ = (m1 , m2 , . . . , ml ). The algorithm A places m1 at an initial position. For every
+     subsequent step t > 1, macro mt is connected to the previously placed mt−1 via a 2-pin net. To minimize ∆HPWL, A
+     places mt adjacent to mt−1 . Consequently, the Manhattan distance for each net is exactly 1.
+
+                                                                      l−1
+                                                                      X
+                                                HPWL(A(Π∗ )) =              1=l−1                                        (14)
+                                                                      i=1
+
+
+
+  2. Worst-Case Ordering: Let Πworst = (m1 , m3 , . . . , m2⌈l/2⌉−1 , m2 , m4 , . . . ). In the first phase, A places all odd-
+     indexed macros. Since there are no edges between mi and mj where both i, j are odd, these macros share no active
+     connections during this phase. Lacking connectivity guidance, a greedy heuristic (or random tie-breaking) may
+     maximize spatial spread, placing macros at extrema of the grid (e.g., corners or boundaries).
+     In the second phase, A places the even-indexed macros. Each m2i connects to m2i−1 and m2i+1 . If the odd macros are
+             √ such that the distance between m2i−1 and m2i+1 is proportional to the grid dimension g (where usually g ∝ l
+     dispersed
+     or g ∝ l), the forced placement of m2i results in a wirelength proportional to the distance between its neighbors. In a
+     pathological case where the odd macros are maximally separated, the total wirelength approaches Ω(l2 ) (assuming
+     g ≈ l).
+
+The variation ratio is derived as:
+                                          maxΠ HPWL(A(Π))   Ω(l2 )
+                                                          =        = Ω(l)                                                (15)
+                                          minΠ HPWL(A(Π))   O(l)
+
+Thus, poor ordering can degrade quality linearly with respect to the problem size.
+
+B.2. Proof of Theorem 2 (Star Topology)
+Theorem 2. For a star topology with a central hub and l − 1 spokes placed on a g × g grid, the expected HPWL of the
+hub-last ordering is Θ(g) times worse than the hub-first ordering.
+Proof. Let M consist of a hub H and spokes S = {s1 , . . . , sl−1 }, with nets E = {(H, si ) | 1 ≤ i < l}.
+
+                                                             11
+                                                          OrderPlace
+
+ 1. Hub-First Ordering: Π1 = (H, s1 , . . . , sl−1 ). A places H first (e.g., at the center ( g2 , g2 )). Subsequently, each spoke
+    si has an active connection to H. The greedy choice places each si adjacent to H.
+
+                                                     HPWL(A(Π1 )) ≈ l − 1                                                    (16)
+
+ 2. Hub-Last Ordering: Π2 = (s1 , . . . , sl−1 , H). During the placement of spokes, there are no mutual connections
+    between any si , sj . The algorithm receives no guidance (∆HPWL = 0). Assuming a uniform distribution for
+    tie-breaking over the grid domain [0, g], the spokes are effectively randomly distributed.
+     The expected position of any spoke is E[xi ] = g/2. When H is finally placed, it connects to all spokes. Even if H is
+     placed at the centroid to minimize total displacement, the expected HPWL is dominated by the spread of the spokes.
+     Approximating the discrete sum with a continuous integral, the expected Manhattan distance between the hub and a
+     random spoke is:
+                                                                             Z g
+                                                                                       g 1         g
+                           E[|xH − xi | + |yH − yi |] ≈ 2 · E[|X − g/2|] = 2     x−         dx =                      (17)
+                                                                              0        2  g        2
+
+     Summing over l − 1 connections (approximating l − 1 ≈ l for large l):
+                                                                                g
+                                                    E[HPWL(A(Π2 ))] ≈ l ·                                                    (18)
+                                                                                2
+
+The degradation ratio is:
+                                            E[HPWL(A(Π2 ))]   l · (g/2)   g
+                                                            ≈           =                                                    (19)
+                                             HPWL(A(Π1 ))          l      2
+This confirms that ordering impacts solution quality by a factor proportional to the grid dimension g.
+
+C. Complete Prompt Templates
+This appendix provides the complete prompt templates used in our LLM-guided evolutionary search framework. The
+prompts are designed to guide the LLM in generating novel macro placement sequence strategies.
+
+C.1. System Prompt
+The system prompt establishes the LLM’s role and provides comprehensive technical context:
+
+                                               Listing 1. System Prompt Template
+You are an expert in VLSI macro placement optimization. Your task is to evolve and improve macro placement ordering
+     strategies through creative mutations and combinations.
+
+## Background
+In macro placement, the ORDER in which macros are placed significantly affects the final HPWL (Half-Perimeter Wire
+     Length). We use a greedy placer that places one macro at a time.
+
+## Strategy Types
+There are TWO types of ordering strategies:
+
+### 1. Static Strategy (is_static = True)
+- Generates a complete ordering at once based on macro attributes
+- Implements ‘generate_order(self, ctx)‘ method that returns a sorted list of node IDs
+- Example: Sort all macros by area, degree, or combined metrics
+
+### 2. Dynamic Strategy (is_static = False)
+- Selects the next macro to place based on current placement state
+- Implements ‘compute_priority(self, node_id, ctx)‘ and ‘select_next(self, ctx)‘ methods
+- Can adapt to placement progress (e.g., connectivity to already placed macros)
+
+## Available APIs
+
+### ctx: PlacementContext
+- ‘ctx.get_node_attr(node_id, ’area’, default=0)‘ - Get macro area
+- ‘ctx.get_node_attr(node_id, ’degree’, default=0)‘ - Get connectivity degree
+- ‘ctx.get_node_attr(node_id, ’x’, default=0)‘ - Get macro width
+- ‘ctx.get_node_attr(node_id, ’y’, default=0)‘ - Get macro height
+- ‘ctx.node_info‘ - Dict of all macro info {node_id: {area, degree, x, y, ...}}
+
+
+                                                               12
+                                                    OrderPlace
+
+- ‘ctx.remaining_macros‘ - Set of unplaced macro IDs
+- ‘ctx.placed_macros‘ - Dict of placed macros {node_id: {loc_x, loc_y, ...}}
+- ‘ctx.get_shared_nets(node_a, node_b)‘ - Get list of shared nets between two macros
+- ‘ctx.node_nets.get(node_id, [])‘ - Get list of nets connected to a macro
+- ‘ctx.net_info‘ - Dict of net info {net_id: {nodes: {...}}}
+- ‘ctx.hpwl_info‘ - Current bounding boxes for each net
+- ‘ctx.grid_num‘, ‘ctx.grid_size‘ - Grid parameters
+
+### Base Classes
+- Static strategies inherit from ‘OrderGenerator‘
+- Dynamic strategies inherit from ‘DynamicOrderGenerator‘
+
+### Available imports
+- math (math.sqrt, math.log, math.exp, math.ceil, etc.)
+- random
+- numpy as np
+
+## Requirements
+- Return a COMPLETE class definition
+- For static: set ‘is_static = True‘ and implement ‘generate_order()‘
+- For dynamic: set ‘is_static = False‘ and implement ‘compute_priority()‘ + ‘select_next()‘
+- Use <CODE_SNIPPET></CODE_SNIPPET> to wrap the class code
+- Be creative and try novel combinations!
+
+
+
+
+C.2. User Prompt
+The user prompt is dynamically constructed at each generation, providing dataset-specific context and top-performing
+strategies:
+
+                                           Listing 2. User Prompt Template
+Based on the evaluation results for dataset ’{dataset}’, here are the TOP {top_k} performing strategies:
+
+{top_strategies}
+
+The BEST strategy achieved min_hpwl={best_min}, mean_hpwl={best_mean}
+
+Your task: Generate a NEW strategy class that could potentially outperform these.
+Consider:
+1. What made the best strategies successful?
+2. Are there unexplored combinations of factors?
+3. Could dynamic adaptation (based on placement progress) help?
+4. Would a static or dynamic approach work better?
+
+Respond with a COMPLETE Python class definition:
+
+For STATIC strategy:
+<CODE_SNIPPET>
+class NewStrategy(OrderGenerator):
+    name = "new_strategy"
+    description = "Description of your strategy"
+    is_static = True
+
+    def generate_order(self, ctx: PlacementContext) -> List[str]:
+        nodes = list(ctx.remaining_macros) if ctx.remaining_macros else list(ctx.node_info.keys())
+        # Your sorting logic here
+        return sorted(nodes, key=lambda x: your_key_function(x), reverse=True)
+</CODE_SNIPPET>
+
+For DYNAMIC strategy:
+<CODE_SNIPPET>
+class NewStrategy(DynamicOrderGenerator):
+    name = "new_strategy"
+    description = "Description of your strategy"
+    is_static = False
+
+    def compute_priority(self, node_id: str, ctx: PlacementContext) -> float:
+        # Your priority logic here (lower = higher priority)
+        return score
+
+    def select_next(self, ctx: PlacementContext) -> Optional[str]:
+        if not ctx.remaining_macros:
+            return None
+        return min(ctx.remaining_macros, key=lambda x: self.compute_priority(x, ctx))
+</CODE_SNIPPET>
+
+
+
+
+                                                          13
+                                                      OrderPlace
+
+C.3. Top Strategies Format
+The {top strategies} placeholder in the user prompt is populated with detailed information about each top-performing
+strategy:
+
+                                            Listing 3. Top Strategies Format
+### Strategy 1: {strategy_name}
+- min_hpwl: {min_hpwl}
+- mean_hpwl: {mean_hpwl}
+- valid_ratio: {valid_ratio}
+- Description: {description}
+- Code:
+‘‘‘python
+{source_code}
+‘‘‘
+
+### Strategy 2: {strategy_name}
+...
+
+
+
+
+C.4. Example: Populated User Prompt
+The following shows an example of a fully populated user prompt during evolution:
+
+                                        Listing 4. Example Populated User Prompt
+Based on the evaluation results for dataset ’adaptec1’, here are the TOP 3 performing strategies:
+
+### Strategy 1: net_area_desc
+- min_hpwl: 8,234,567
+- mean_hpwl: 8,456,789
+- valid_ratio: 100.0%
+- Description: Sort macros by degree*area in descending order
+- Code:
+‘‘‘python
+def generate_order(self, ctx: PlacementContext) -> List[str]:
+    nodes = list(ctx.node_info.keys())
+    return sorted(nodes,
+        key=lambda x: ctx.get_node_attr(x, ’degree’, 0) * ctx.get_node_attr(x, ’area’, 0),
+        reverse=True)
+‘‘‘
+
+### Strategy 2: spring_potential
+- min_hpwl: 8,345,678
+- mean_hpwl: 8,567,890
+- valid_ratio: 98.5%
+- Description: Dynamic strategy using spring potential model
+- Code:
+‘‘‘python
+def compute_priority(self, node_id: str, ctx: PlacementContext) -> float:
+    if not ctx.placed_macros:
+        return -ctx.get_node_attr(node_id, ’degree’, 0)
+    connectivity = sum(len(ctx.get_shared_nets(node_id, pid))
+                       for pid in ctx.placed_macros)
+    return -(connectivity * 10 + ctx.get_node_attr(node_id, ’degree’, 0))
+‘‘‘
+
+### Strategy 3: area_desc
+- min_hpwl: 8,456,789
+- mean_hpwl: 8,678,901
+- valid_ratio: 100.0%
+- Description: Sort macros by area in descending order (largest first)
+- Code:
+‘‘‘python
+def generate_order(self, ctx: PlacementContext) -> List[str]:
+    nodes = list(ctx.node_info.keys())
+    return sorted(nodes, key=lambda x: ctx.get_node_attr(x, ’area’, 0), reverse=True)
+‘‘‘
+
+The BEST strategy achieved min_hpwl=8,234,567, mean_hpwl=8,456,789
+
+Your task: Generate a NEW strategy class that could potentially outperform these.
+...
+
+
+
+
+                                                          14
+                                                           OrderPlace
+
+D. Dataset & Experimental Details
+Table 6 provides detailed statistics of the eight circuits from the ISPD 2005 benchmark, which are used as our test dataset.
+The “Place Number” column specifies the number of macros selected for placement in our study. For bigblue2 and bigblue4,
+due to the large number of macros, we follow the setting of EGPlace (Deng et al., 2025) and select 1024 macros for a fair
+comparison.
+                                         Table 6. Statistics of public benchmark circuits.
+
+     Circuit      Macros     Place Number      Hard Macros        Standard Cells      Nets       Pins       Area Util (%)
+     adaptec1     543        543               63                 210904              221142     944063     55.62
+     adaptec2     566        566               159                254457              266009     1069482    74.46
+     adaptec3     723        723               201                450927              466758     1875039    61.51
+     adaptec4     1329       1329              92                 494716              515951     1912420    48.62
+     bigblue1     560        560               32                 277604              284479     1144691    31.58
+     bigblue2     23084      1024              52                 534782              577235     2122282    32.43
+     bigblue3     1293       1293              138                1095519             1123170    3833218    66.81
+     bigblue4     8170       1024              52                 2169183             2229886    8900078    35.68
+
+More Details of Experimental Setting.
+For the Population Quality Evaluator, the evaluation time for each ordering strategy is limited to 1800 seconds, and the
+number of Monte Carlo samples is set to 50 by default. We choose claude-sonnet-4.5 as the LLM. In each user prompt, the
+top-4 elite strategies are provided to the LLM, which helps guide it to generate ordering strategies that better match the
+preferences of the dataset. After the LLM-based strategy design loop is completed, the top-4 ordering strategies are again
+selected and executed in parallel using the Wire-mask-guided Greedy Procedure. The placement with the minimum HPWL
+among them is taken as the final placement result. For the specification of the discrete placement grid, we use a resolution of
+224×224 by default.
+For each run of OrderPlace, the time limit is set to 1000 minutes. Meanwhile, for a fair comparison, we run the official
+codebases of EGPlace and EfficientPlace and report their best results achieved within the same 1000-minutes time limit.
+
+E. Results on the “bigblue2” and “bigblue4” Circuits
+In this section, we provide a detailed analysis of the performance on ”bigblue2” and ”bigblue4,” which represent significantly
+more challenging optimization landscapes due to their high density and large macro counts (1,024 selected modules). As
+presented in Table 7, OrderPlace demonstrates robust scalability compared to existing SOTA methods.
+
+Table 7. HPWL (×105 ) obtained from 5 macro placement methods on “bigblue2” and “bigblue4” circuits. We select 1,024 modules
+(Deng et al., 2025) as macros for “bigblue2” and “bigblue4”. The best results are marked in bold.
+
+ Benchmark         MaskPlace          Chipformer        WireMask-EA          EfficientPlace       EGPlace       OrderPlace
+ bigblue2         18.64 ± 0.63       14.06 ± 0.47        11.63 ± 0.24         12.20 ± 0.29      10.67 ± 0.66   7.78 ± 0.27
+ bigblue4        117.96 ± 5.62      120.66 ± 8.03        84.71 ± 3.94         86.86 ± 3.41      63.90 ± 2.30   62.56 ± 1.87
+
+
+F. Complete Macro Placement Order Strategy Formulations
+This appendix provides the complete mathematical formulations for all placement sequence strategies discovered through
+our LLM-guided evolutionary search framework. We organize strategies by dataset and include both LLM-generated and
+built-in strategies for completeness. Table 8 summarizes the top-4 strategies for each dataset.
+
+F.1. Notation and Preliminaries
+We first establish the notation used throughout this appendix:
+
+   • I = (M, E, G): Macro placment Instance.
+
+                                                                15
+                                                            OrderPlace
+
+                                        Table 8. Complete Summary of All Top-4 Strategies
+
+            Dataset     Rank     Strategy                           Source     Key Mechanism
+                        1        gravity entropy                    LLM        Gravity-entropy hybrid
+                        2        field potential                    Built-in   Field attraction model
+            adaptec1
+                        3        hamiltonian                        Built-in   Energy minimization
+                        4        degree area desc                   Built-in   Lexicographic sorting
+                        1        adaptive cluster entropy           LLM        3-phase adaptive (cluster→entropy)
+                        2        adaptive entropy                   LLM        Phase-adaptive entropy with criticality
+            adaptec2
+                        3        entropy                            Built-in   Information gain maximization
+                        4        critical path entropy              LLM        Cascade effect + momentum
+                        1        resonance clustering               LLM        Harmonic resonance + wavefront
+                        2        quantum clustering                 LLM        Quantum affinity with bell-curve partial
+            adaptec3
+                        3        adaptive clustering                LLM        Immediate vs. future balance
+                        4        magnetic criticality               LLM        Magnetic field + net criticality
+                        1        spatial entropy gravity            LLM        4-phase spatial-aware + boost
+                        2        field potential                    Built-in   Field attraction model
+            adaptec4
+                        3        entropy                            Built-in   Information gain maximization
+                        4        adaptive spatial entropy           LLM        Spatial clustering + cluster bonus
+                        1        gravitational cluster              LLM        Temperature decay + constraint urgency
+                        2        adaptive gravity                   LLM        Cluster density variance-based
+            bigblue1
+                        3        spring potential                   Built-in   Spring potential model
+                        4        hamiltonian                        Built-in   Energy minimization
+                        1        adaptive gravity                   LLM        Net-quality weighted (1/|e|)
+                        2        field potential                    Built-in   Field attraction model
+            bigblue2
+                        3        gravitational clustering           LLM        HPWL collapse potential
+                        4        adaptive clustering                LLM        Spatial compactness
+                        1        adaptive clustering                LLM        Net criticality + spatial tightness
+                        2        gravity well                       LLM        3-phase degree weight (3→8→20)
+            bigblue3
+                        3        field potential                    Built-in   Field attraction model
+                        4        connectivity aware dynamic         LLM        Normalized by |Pt |
+                        1        net closure                        LLM        Aggressive closure (e−|e|/10 , re2 )
+                        2        spatial entropy                    LLM        Distance normalization
+            bigblue4
+                        3        chain formation                    LLM        3-phase chain building
+                        4        adaptive entropy lookahead         LLM        4-phase + cascade lookahead
+
+
+• M = {m1 , ..., ml }: Set of all macros to be placed.
+
+• E = {e1 , ..., ek }: Set of k nets.
+
+• Pt ⊆ M : Set of macros already placed at step t
+
+• Bt : Each net bounding box at step t.
+
+• Rt = M \ Pt : Set of remaining (unplaced) macros
+
+• N (mi ): Set of nets connected to macro mi
+
+• N (mi , mj ): Set of nets shared between macros mi and mj
+
+• di : Degree (number of connected nets) of macro mi
+
+• Ari : Area of macro mi
+
+• (wi , hi ): Width and height of macro mi
+
+• (xi , yi ): Location of mi
+
+• Π = (π1 , π2 , . . . , πl ): Macro placeing sequence.
+
+                                                               16
+                                                           OrderPlace
+
+  • ρ = |Pt |/|M |: Placement progress ratio
+
+  • |e|: Size (number of nodes) of net e
+
+  • re = |e ∩ Pt |/|e|: Completion ratio of net e
+
+  • ue = |e| − |e ∩ Pt | − 1: Number of unplaced nodes in net e excluding current candidate
+
+  • cdet
+           P
+     i =     e∈N (mi ) |e ∩ Pt |: Determined connections
+
+  • cundet
+            P
+     i     = e∈N (mi ) (|e ∩ Rt | − 1): Undetermined connections (excluding mi )
+
+  • g: Grid size; gn : Number of grids
+
+  • RecentK (Pt ): Last K placed macros
+
+The priority function ϕ(mi , Ct ) determines placement order, where lower values indicate higher priority (placed earlier).
+The next macro to place is:
+                                              m∗ = argminmi ∈Rt ϕ(mi , Ct )                                           (20)
+
+F.2. Adaptec1 Strategies
+gravity entropy (Rank 1, LLM-Generated)
+Description: Hybrid gravity-entropy model combining gravitational attraction from placed macros with information gain
+metrics.
+Initial Placement (Pt = ∅):                                  p
+                                                 ϕ(mi ) =        di · Ari · 1000                                      (21)
+
+Dynamic Placement:
+                                                                                           p         
+                      ϕ(mi , Ct ) = − 0.3 · Sgrvity i + 0.4 · Scneti + 0.2 · Spnet i + 0.1 · di · Ari                 (22)
+
+
+Component Definitions:
+
+ 1. Gravity Score — Attraction from placed macros:
+                                                               X
+                                                Sgrvity i =            |N (mi , mj )|1.5                              (23)
+                                                              mj ∈Pt
+
+
+ 2. Net Closure Score — Reward for completing/nearly completing nets:
+                                        X                             X
+                          Scneti =               10 ln(|e| + 1) +                                5 ln(|e| + 1)        (24)
+                                         e∈N (mi ):ue =0                      e∈N (mi ):ue ≤2
+
+
+ 3. Partial Net Score — Progress on partially placed nets:
+                                                               X
+                                            Spnet i =                         re (1 − re ) · 4                        (25)
+                                                        e∈N (mi ):|e∩Pt |>0
+
+
+field potential (Rank 2, Built-in)
+Description: Field potential model where placed macros generate attractive field.
+Same as field potential in Table 1.
+hamiltonian (Rank 3, Built-in)
+
+                                                               17
+                                                              OrderPlace
+
+Description: Energy minimization model inspired by Hamiltonian mechanics.
+Same as hamiltonian in Table 1.
+degree area desc (Rank 4, Built-in)
+Description: Static lexicographic ordering by degree then area.
+Same as degree area desc in Table 1.
+
+F.3. Adaptec2 Strategies
+adaptive cluster entropy (Rank 1, LLM-Generated)
+Description: Three-phase adaptive clustering with entropy reduction, prioritizing critical net reduction and local clustering
+strength.
+Initial Placement:
+                                             ϕ(mi ) = −(di · 100 + Ari · 0.001)                                         (26)
+
+Dynamic Placement:
+                                                                                                               
+                      ϕ(mi , Ct ) = − α(ρ) · Scritical i + β(ρ) · Scluster i + σ(ρ) · Sentropy i + γ(ρ) · di            (27)
+
+Phase-Adaptive Weights:
+                                          
+                                          (3.0, 5.0, 2.0, 1.0)
+                                                                         if ρ < 0.3 (Early)
+                            (α, β, σ, γ) = (4.0, 3.0, 4.0, 0.5)           if 0.3 ≤ ρ < 0.7 (Middle)                     (28)
+                                          
+                                            (5.0, 2.0, 6.0, 0.2)          if ρ ≥ 0.7 (Late)
+                                          
+
+
+Component Definitions:
+
+  1. Critical Net Score — Weighted by net size (smaller nets more critical):
+                                                                 X              |e ∩ Pt |   10
+                                          Scritical i =                                   ·                             (29)
+                                                                                 |e| − 1 |e| − 1
+                                                          e∈N (mi ):|e∩Pt |>0
+
+
+  2. Cluster Strength — Quadratic scaling of shared connections:
+                                                                   X
+                                           Scluster i =                             |N (mi , mj )|2                     (30)
+                                                          mj ∈Pt :|N (mi ,mj )|>0
+
+
+  3. Entropy Reduction Score:
+                                                                     cdet
+                                                                      i
+                                                     Sentropy i = p undet    · di                                       (31)
+                                                                   ci     +1
+
+adaptive entropy (Rank 2, LLM-Generated)
+Description: Enhanced entropy with net criticality and adaptive phase weighting.
+Initial Placement:
+                                             ϕ(mi ) = −(di · 100 + Ari · 0.001)                                         (32)
+
+Dynamic Placement:
+                               ϕ(mi , Ct ) = − (α(ρ) · Sconn i + β(ρ) · Scritical i − γ(ρ) · Sdiff i )                  (33)
+
+                                                                   18
+                                                             OrderPlace
+
+Phase-Adaptive Weights:
+                                               
+                                               (1.0, 0.3, 0.5)
+                                                                            if ρ < 0.3
+                                    (α, β, γ) = (0.8, 0.8, 0.3)              if 0.3 ≤ ρ < 0.7                    (34)
+                                               
+                                                 (0.6, 1.5, 0.1)             if ρ ≥ 0.7
+                                               
+
+
+Component Definitions:
+
+                                                             cdet
+                                                               i
+                                          Sconn i =                 · di                                         (35)
+                                                          cundet
+                                                           i     +1
+                                                                 X
+                                        Scritical i =                        (3 − ue ) · 20                      (36)
+                                                          e∈N (mi ):0<ue ≤2
+
+                                              Sdiff i = Ari · 0.0001 · (1 + 2ρ)                                  (37)
+
+entropy (Rank 3, Built-in)
+Description: Information gain maximization through entropy reduction.
+Same as entropy in Table 1.
+critical path entropy (Rank 4, LLM-Generated)
+Description: Critical path entropy prioritizing macros that maximize constraint resolution momentum with cascading
+information gain.
+Initial Placement:
+                                ϕ(mi ) = − d2i · 10 + Ari · 0.001 − | ln(wi /hi )| · 50
+                                                                                                      
+                                                                                                                 (38)
+
+Dynamic Placement (Six Components):
+
+ 1. Determined Score:
+                                                                X      (|e ∩ Pt |)2
+                                          Sdet i =                        p         · 10                         (39)
+                                                     e∈N (m ):|e∩P |>0
+                                                                             |e|
+                                                                i        t
+
+
+
+ 2. Critical Net Score:                                                  X
+                                              Scrit i =                               re2 · 20                   (40)
+                                                          e∈N (mi ):0<|e∩Pt |<|e|−1
+
+
+ 3. Cascade Potential:                                       X                                    p
+                               Scascade i =                                    |N (mi , mj )| ·       dj · 0.5   (41)
+                                              mj ∈Rt \{mi }:|N (mi ,mj )|>0
+
+
+ 4. Momentum (nets nearly complete):
+                                                                    X
+                                              Smom i =                         (3 − ue ) · 15                    (42)
+                                                           e∈N (mi ):0<ue ≤2
+
+
+ 5. Connectivity Strength:
+                                                               X
+                                       Sconn i =                              e0.3|N (mi ,mj )| · 2              (43)
+                                                    mj ∈Pt :|N (mi ,mj )|>0
+
+
+ 6. Degree Urgency:
+                                                Sdeg i = di · ln(di + 2) · (1 + 0.5ρ)                            (44)
+
+                                                                    19
+                                                              OrderPlace
+
+Freedom Penalty:
+                                               F = 0.5 ln(|Valid(Pt , mi )| + 1)                                     (45)
+
+Phase-Adaptive Combination:
+              
+                                                                          undet
+              −(3.5Sdet i + 2.0Scascade i + 1.5Sconn i + 1.0Sdeg i − 0.3ci )
+              
+              
+                                                                                                      ρ < 0.25
+              
+ ϕ(mi , Ct ) = −(2.5Sdet i + 4.0Scrit i + 3.0Smom i + 2.0Sconn i + 1.0Scascade i − 0.5cundet
+                                                                                       i     − 0.3F ) 0.25 ≤ ρ < 0.6 (46)
+              
+              
+              
+                −(4.5Scrit i + 4.0Smom i + 3.0Sconn i + 1.5Sdet i − F + 0.5Sdeg i )                   ρ ≥ 0.6
+              
+
+
+F.4. Adaptec3 Strategies
+resonance clustering (Rank 1, LLM-Generated)
+Description: Harmonic resonance model where macros resonate with placed clusters through harmonic connectivity patterns,
+with adaptive frequency tuning and net tension minimization.
+Initial Placement:
+                                             ϕ(mi ) = −(di · 120 + Ari · 0.0008)                                     (47)
+
+Dynamic Placement (Seven Components):
+
+                      ϕ(mi , Ct ) = − (1.2SRi + 1.8SCi + 1.3STi + 1.1SWi + SDi + Ari∗ ) + SIi                        (48)
+
+Component Definitions:
+
+ 1. Resonance Amplitude:                            X
+                                  SRi =                             |N (mi , mj )|1.4 · (1 + 4ρ0.8 ) · 10            (49)
+                                          mj ∈Pt :|N (mi ,mj )|>0
+
+ 2. Harmonic Clustering Bonus:
+
+                            Ccluster = n1.3
+                                        conn · 18 · (1 + ρ),      nconn = |{mj ∈ Pt : |N (mi , mj )| > 0}|           (50)
+
+ 3. Critical Net Closure:                                       X
+                                                SCi =                        70 · (1 + 1.5ρ)                         (51)
+                                                           e∈N (mi ):ue =0
+
+ 4. Net Tension (high completion nets):
+                                               X                                      X
+                                 STi =                       re3 · 35 · |e| +                       re2 · 20 · |e|   (52)
+                                         e∈N (mi ):re >0.7                      e∈N (mi ):re ≥0.4
+
+
+ 5. Wavefront Coherence (last 8 placed macros):
+                                       X
+                           SWi =                |N (mi , mj )|1.2 · 12 + 1[nwave ≥ 3] · nwave · 25                   (53)
+                                      mj ∈Recent8 (Pt )
+
+    where nwave = |{mj ∈ Recent8 (Pt ) : |N (mi , mj )| > 0}|.
+ 6. Degree Factor (exponential decay):
+                                                          SDi = di · 6 · exp(−2ρ)                                    (54)
+
+ 7. Area Factor (three-phase):                    √
+                                                  √Ari · 0.004
+                                                                               ρ < 0.25
+                                          SAri∗ =    Ari · 0.001                0.25 ≤ ρ < 0.75                      (55)
+                                                   √
+                                                  
+                                                    − Ari · 0.003               ρ ≥ 0.75
+
+                                                                   20
+                                                                     OrderPlace
+
+ 8. Isolation Penalty:
+                                                     SIi = 1[nconn = 0 ∧ ρ > 0.4] · 100 · ρ2                                     (56)
+
+quantum clustering (Rank 2, LLM-Generated)
+Description: Quantum-inspired clustering with probabilistic affinity fields that strengthen with placement, prioritizing net
+closure and spatial coherence.
+Initial Placement:
+                                                                                                                             
+                     ϕ(mi , Ct ) = − Saffinity i + 1.5Sclosure i + Spartial i + Srecent i + SDi + SAri∗ + Sdensity i             (57)
+
+Component Definitions:
+
+ 1. Quantum Affinity:                                       X
+                                   Saffinity i =                               |N (mi , mj )|1.3 · 12 · (1 + 3ρ0.7 )             (58)
+                                                   mj ∈Pt :|N (mi ,mj )|>0
+
+
+ 2. Net Closure Bonus:                                                      X
+                                                      Sclosure i =                       50 · (1 + ρ)                            (59)
+                                                                      e∈N (mi ):ue =0
+
+ 3. Partial Net Bonus (Bell curve at 65% completion):
+
+                                                                                  (re − 0.65)2
+                                                             X                                         
+                                      Spartial i =                          exp −                           · 25 · |e|           (60)
+                                                                                      0.08
+                                                     e∈N (mi ):|e∩Pt |>0
+
+
+ 4. Recent Connection Bonus (last 5 placed):
+                                                                         X
+                                                     Srecent i =                       |N (mi , mj )| · 8                        (61)
+                                                                   mj ∈Recent5 (Pt )
+
+
+ 5. Degree Factor:
+                                                             SDi = di · 5 · (1 − 0.7ρ)                                           (62)
+
+ 6. Area Factor:                                          √
+                                                           Ari · 0.003
+                                                                                         ρ < 0.3
+                                                   SAri∗ = 0                              0.3 ≤ ρ < 0.7                          (63)
+                                                           √
+                                                          
+                                                            − Ari · 0.002                 ρ ≥ 0.7
+
+ 7. Density Bonus/Penalty:                                  (
+                                                             nconn · 15 · (1 + ρ)               nconn > 0
+                                               Sdensity i =                                                                      (64)
+                                                             −50 · ρ2                           nconn = 0
+
+where nconn = |{mj ∈ Pt : |N (mi , mj )| > 0}|.
+adaptive clustering (Rank 3, LLM-Generated)
+Description: Multi-scale connectivity balancing immediate placement benefit with future cluster cohesion.
+Initial Placement:
+                                                    ϕ(mi ) = −(di · 100 + Ari · 0.001)                                           (65)
+
+Dynamic Placement:                                                                                                       
+                              ϕ(mi , Ct ) = − α(ρ) · Simmi + β(ρ) · Sfuture i + γ(ρ) · di + SIpenalty i                          (66)
+
+                                                                          21
+                                                                OrderPlace
+
+Phase-Adaptive Weights:                            
+                                                   (0.6, 0.3, 0.1)
+                                                                               ρ < 0.4
+                                        (α, β, γ) = (0.8, 0.1, 0.1)             0.4 ≤ ρ < 0.7                            (67)
+                                                   
+                                                     (0.9, 0.0, 0.1)            ρ ≥ 0.7
+                                                   
+
+Component Definitions:
+                                                        X
+                                          Simmi =               |N (mi , mj )| · 15                                      (68)
+                                                       mj ∈Pt
+                                                          X               X
+                                         Sfuture i =                                    5                                (69)
+                                                       e∈N (mi ) mj ∈e∩Rt ,mj ̸=mi
+                                                                                  
+                                                              Simmi
+                                        SIpenalty i = 1             + nunplaced < 2 · (−50)                              (70)
+                                                               15
+                     P
+where numplaced =      e∈N (mi ) |e ∩ Rt \ {mi }|.
+
+magnetic criticality (Rank 4, LLM-Generated)
+Description: Magnetic field model where placed macros create magnetic field, prioritizing macros that resolve critical nets.
+Initial Placement:
+                                                          ϕ(mi ) = −di · 1000                                            (71)
+
+Dynamic Placement:
+                                           ϕ(mi , Ct ) = SFm i + Scrit i + Sdi + SAi                                     (72)
+
+Component Definitions:
+                                                               X
+                                    SFm i = −                                |N (mi , mj )|2 · 15                        (73)
+                                                   mj ∈Pt :|N (mi ,mj )|>0
+                                                              X
+                                     Scrit i = −                         re2 · 50                                        (74)
+                                                   e∈N (mi ):0<ue ≤3
+
+                                      Sdi = −di · 3 · (1 − 0.7ρ)                                                         (75)
+                                            (
+                                              −Ari · 5 × 10−5 ρ < 0.5
+                                      SAi =                                                                              (76)
+                                              Ari · 3 × 10−5     ρ ≥ 0.5
+
+F.5. Adaptec4 Strategies
+spatial entropy gravity (Rank 1, LLM-Generated)
+Description: Entropy-driven with spatial gravity pull and net tension awareness, featuring four-phase adaptive prioritization.
+Initial Placement:                                                          p
+                                                       ϕ(mi ) = −(di ·          Ari )                                    (77)
+
+Dynamic Placement:
+                                                                  p                   
+                      ϕ(mi , Ct ) = − α1 Sei + α2 SGi + α3 STi + α4 di + α5 ln(Ari + 1) · boost                          (78)
+
+Four-Phase Weights:                                     
+                                                        
+                                                         (1.0, 0.3, 0.5, 2.0, 0.5)         ρ < 0.25
+                                                        
+                                                        (2.0, 1.5, 1.0, 1.0, 0.3)          0.25 ≤ ρ < 0.5
+                            (α1 , α2 , α3 , α4 , α5 ) =                                                                  (79)
+                                                        
+                                                        
+                                                         (1.5, 3.0, 2.0, 0.5, 0.1)         0.5 ≤ ρ < 0.75
+                                                          (1.0, 4.0, 3.0, 0.3, 0.05)        ρ ≥ 0.75
+                                                        
+
+Component Definitions:
+
+                                                                    22
+                                                                 OrderPlace
+
+  1. Entropy Score:                                                ( |e∩P |
+                                                                             t
+                                                     X                   √
+                                                                          ue +1
+                                                                                          ue > 0
+                                  Sei =                                                                           (80)
+                                           e∈N (mi ):|e∩Pt |>0
+                                                                         |e ∩ Pt | · 2    ue = 0 (net complete)
+
+  2. Spatial Gravity (with net criticality):
+                                                                     X
+                                                SGi =                                 |e ∩ Pt | · κ(e)            (81)
+                                                            e∈N (mi ):|e∩Pt |>0
+
+
+  3. Net Tension:                                              
+                                                               20 · κ(e)
+                                                                                        re ≥ 0.8
+                                                       X      10 · κ(e)                re ≥ 0.6
+                                               STi =                                                              (82)
+                                                               5 · κ(e)                 re ≥ 0.4
+                                                     e∈N (mi ) 
+                                                               
+                                                                2 · κ(e)                 |e ∩ Pt | ≥ 2
+                                                               
+
+
+where κ(e) = √1 .
+                 |e|
+
+Boost Factor:                                                
+                                                             1.56
+                                                                               Sei > 10
+                                                      boost = 1.2               Sei > 5                           (83)
+                                                             
+                                                              1.0               otherwise
+                                                             
+
+field potential (Rank 2, Built-in)
+Same as field potential in Table 1.
+entropy (Rank 3, Built-in)
+Same as entropy in Table 1.
+adaptive spatial entropy (Rank 4, LLM-Generated)
+Description: Enhanced entropy with spatial clustering and net criticality awareness.
+Initial Placement:                                                                p
+                                                         ϕ(mi ) = −(di ·              Ari )                       (84)
+
+Dynamic Placement (Three-Phase):
+                                                             √
+                                       −Sei · di · (1 + 0.1 Ari )
+                                                                                     ρ < 0.3
+                          ϕ(mi , Ct ) = −Sei · (di + 10Sspatial i ) · (1 + 0.5ncrit ) 0.3 ≤ ρ < 0.7               (85)
+                                       
+                                        −Sei · (20Sspatial i + 0.5di ) · (1 + ncrit ) ρ ≥ 0.7
+                                       
+
+where ncrit = |{e ∈ N (mi ) : |e ∩ Pt | ≥ 2 ∧ |e| ≥ 3}|.
+Component Definitions:
+                                                              cdet
+                                                     (
+                                                               i
+                                                       ln(cundet +|e|)
+                                                                            cundet
+                                                                             i     >0
+                                          Sei =             i                                                     (86)
+                                                       2 · cdet
+                                                             i              cundet
+                                                                             i     =0
+                                                             X                          |e ∩ Pt |
+                                      Sspatial i =                                                                (87)
+                                                                               |e ∩ Pt | + |e ∩ Rt | + 1
+                                                     e∈N (mi ):|e∩Pt |>0
+
+
+Cluster Bonus:
+                                   ϕfinal (mi , Ct ) = ϕ(mi , Ct ) · (1 + 0.1 · cdet
+                                                                                 i )            if cdet
+                                                                                                    i ≥3          (88)
+
+                                                                          23
+                                                            OrderPlace
+
+F.6. BigBlue1 Strategies
+gravitational cluster (Rank 1, LLM-Generated)
+Description: Gravitational model with adaptive clustering where strong nets create gravity wells, prioritizing constrained
+macros.
+Initial Placement:                                                       p
+                                                     ϕ(mi ) = −(di ·         Ari )                                    (89)
+
+Dynamic Placement:
+Temperature (simulated annealing):
+                                                         STi = exp(−3ρ)                                               (90)
+
+Gravitational Force:                                             X
+                                      SFi = 100 ·                              |N (mi , mj )|1.5                      (91)
+                                                     mj ∈Pt :|N (mi ,mj )|>0
+
+
+Cluster Benefit:                             (
+                                              nplaced · 50 − nunplaced · 10 0.3 ≤ ρ < 0.7
+                                Scluster i =                                                                          (92)
+                                              nplaced · 30                  ρ ≥ 0.7
+               P                                           P
+where nplaced = e∈N (mi ) |e ∩ Pt \ {mi }| , nunplaced = e∈N (mi ) |e ∩ Rt \ {mi }|.
+Constraint Urgency:
+
+                                  1000
+                       SUi =                ,    f = max (1, (gn − ⌈wi /g⌉)(gn − ⌈hi /g⌉) − 0.5|Pt |)                 (93)
+                               f (Pt , mi )
+
+Phase-Adaptive Combination:
+                                          
+                                          −SFi
+                                                                            ρ < 0.3
+                             ϕ(mi , Ct ) = −(SFi + Scluster i )              0.3 ≤ ρ < 0.7                            (94)
+                                          
+                                            −(SFi + Scluster i + SUi · STi ) ρ ≥ 0.7
+                                          
+
+
+adaptive gravity (Rank 2, LLM-Generated)
+Description: Adaptive gravity model where placed macros exert gravitational pull weighted by connectivity and cluster
+density.
+Initial Placement:
+                                                ϕ(mi ) = −(di · 100 + Ari · 0.001)                                    (95)
+
+Dynamic Placement (No Connections):
+
+                           ϕ(mi ) = −(di · 10 + Ari · 0.0001)           if no connected placed macros                 (96)
+
+Dynamic Placement (With Connections):
+
+                                           ϕ(mi , Ct ) = SFi + Sdi + Scluster i + SUi                                 (97)
+
+Gravitational Force:
+                                                      X               |N (mi , mj )| · dj
+                                       SFi = −                                                                        (98)
+                                                                 (1/(|N (mi , mj )| + 0.1))2
+                                                   (mi ,mj )∈e
+
+
+                                                                   24
+                                                                 OrderPlace
+
+Other Components:
+
+                                            Sdi = −di · 5     (Degree Bonus)                                                       (99)
+                                                             100
+                                        Scluster i = −                   (Cluster Density)                                        (100)
+                                                       Var(weight) + 1
+                                            SUi = −npartial · ρ · 50 (Urgency Factor)                                             (101)
+                         P                                 P
+where weight = [−                  |N (m1 , mj )|, −                 |N (m2 , mj )|, . . .] are connection weights to placed macros, and
+                     (m1 ,mj )∈e                       (m2 ,mj )∈e
+npartial = |{e ∈ N (mi ) : 0 < |e ∩ Pt | < |e| − 1}|.
+spring potential (Rank 3, Built-in)
+Description: Spring potential model where connections act as springs.
+Same as spring potential in Table 1.
+hamiltonian (Rank 4, Built-in)
+Same as hamiltonian in Table 1.
+
+F.7. BigBlue2 Strategies
+adaptive gravity (Rank 1, LLM-Generated)
+Description: Gravitational model where macros attract each other through shared nets, with adaptive strength based on
+placement density.
+Initial Placement:                                                           p
+                                                        ϕ(mi ) = −(di ·           Ari )                                           (102)
+
+Dynamic Placement (No Connections):
+
+                                              ϕ(mi ) = 1 × 109           (very low priority)                                      (103)
+
+Dynamic Placement:
+                                                  ϕ(mi , Ct ) = −(SFi + Scomplete i )                                             (104)
+
+Gravitational Force:                          X                                   p
+                           SFi =                               |N (mi , mj )| ·    Ari · Aj · Qnet · (1 + 2ρ)                     (105)
+                                     mj ∈Pt :|N (mi ,mj )|>0
+
+
+Net Quality (smaller nets are higher quality):
+                                                                        X           1
+                                                         Qnet =                                                                   (106)
+                                                                                   |e|
+                                                                   e∈N (mi ,mj )
+
+
+Completion Bonus:
+                                                                   X
+                                       Scomplete i =                                re · |e ∩ Pt | · 50                           (107)
+                                                       e∈N (mi ):|e∩Pt |>1,|e|>2
+
+
+field potential (Rank 2, Built-in)
+Same as field potential in Table 1.
+gravitational clustering (Rank 3, LLM-Generated)
+Description: Gravitational model with HPWL awareness.
+
+                                                                      25
+                                                              OrderPlace
+
+Initial Placement (|Pt | < 3):
+                                                       ϕ(mi ) = −(di · Ari )                                                 (108)
+
+Dynamic Placement:                                                                           
+                                        ϕ(mi , Ct ) = − 15SFi + 8Scollapse i + 2di                                           (109)
+
+Component Definitions:
+                                                               X
+                                           SFi =                                |N (mi , mj )|1.5                            (110)
+                                                      mj ∈Pt :|N (mi ,mj )|>0
+                                                                X
+                                      Scollapse i =                              |e ∩ Pt | · 2                               (111)
+                                                      e∈N (mi ):e∈B,|e∩Pt |>0
+
+
+adaptive clustering (Rank 4, LLM-Generated)
+Description: Adaptive clustering prioritizing macros that form tight spatial clusters.
+Initial Placement:
+                                                        ϕ(mi ) = −di · 1000                                                  (112)
+
+Dynamic Placement:
+                                          ϕ(mi , Ct ) = −(Scluster i + Sei + di · 10)                                        (113)
+
+Cluster Score:
+                                              Scluster i = nshared i · compactness · 100                                     (114)
+                                                                                                          √        1
+where nshared i indicates how many nets simultaneously contain the macro mi , and compactness =                               .
+                                                                                                        1+    Var(x)+Var(y)/g
+
+Entropy Score:
+                                                              cdet
+                                                         (
+                                                               i
+                                                           cundet +1
+                                                                     · 50   cundet
+                                                                             i     >0
+                                                Sei =       i                                                                (115)
+                                                            det
+                                                           ci · 50          cundet
+                                                                             i     =0
+
+F.8. BigBlue3 Strategies
+adaptive clustering (Rank 1, LLM-Generated)
+Description: Dynamic strategy prioritizing macros that form tight clusters with placed macros, weighted by net criticality.
+Initial Placement:
+                                                ϕ(mi ) = −(di · Ari + di · 1000)                                             (116)
+
+Dynamic Placement:
+                                                ϕ(mi , Ct ) = −Sconn i − di · Sd (ρ)                                         (117)
+
+Connectivity Score:
+                                                      X               |e ∩ Pt |
+                                  Sconn i =                                     · (1 + 2re ) · 100                           (118)
+                                                                    ln(|e| + 2)
+                                              e∈N (mi ):|e∩Pt |>0
+
+
+Spatial Tightness Boost:
+                                                                                                1
+                  Sconn i ∗= (1 + cluster tightness),        cluster tightness =        p                                    (119)
+                                                                                     1 + Var(x) + Var(y)/1000
+
+Degree Weight:                                                   (
+                                                                     2   ρ < 0.5
+                                                      Sd (ρ) =                                                               (120)
+                                                                     5   ρ ≥ 0.5
+
+                                                                    26
+                                                            OrderPlace
+
+gravity well (Rank 2, LLM-Generated)
+Description: Gravity well model guiding compact placement.
+Initial Placement:
+                                               ϕ(mi ) = −(di · Ari + d2i · 10)                          (121)
+
+Dynamic Placement:
+                                 ϕ(mi , Ct ) = − (SFi · 100 + di · Sd (ρ) + 0.5 ln(Ari + 1))            (122)
+
+Net Weight:
+                                                                 1
+                                               Snet (e) = p               · (1 + 3re )                  (123)
+                                                               |e| + 1
+
+Gravity with Compactness:                                      
+                                                  X
+                                       SFi =            Snet (e) · (1 + 2 · compactness)              (124)
+                                                mj ∈e
+
+
+Compactness:
+                                                                              1
+                                       compactness =           p                                        (125)
+                                                          1+       Var(x) + Var(y)/10000
+
+Degree Weight:                                         
+                                                       3
+                                                                    ρ < 0.3
+                                               Sd (ρ) = 8            0.3 ≤ ρ < 0.7                      (126)
+                                                       
+                                                         20          ρ ≥ 0.7
+                                                       
+
+
+field potential (Rank 3, Built-in)
+Same as field potential in Table 1.
+connectivity aware dynamic (Rank 4, LLM-Generated)
+Description: Normalized connectivity scoring avoiding late-stage bias.
+Initial Placement:
+                                               ϕ(mi ) = −di · 100 − Ari · 0.01                          (127)
+
+Dynamic Placement:
+                                                        Sconn i
+                                      ϕ(mi , Ct ) = −           · 1000 − di · 10 − Ari · 0.01           (128)
+                                                         |Pt |
+
+where:                                                           X
+                                                  Sconn i =               |e ∩ Pt |                     (129)
+                                                              e∈N (mi )
+
+
+Key Feature: Division by |Pt | normalizes the connectivity score to prevent bias toward later stages.
+
+F.9. BigBlue4 Strategies
+net closure (Rank 1, LLM-Generated)
+Description: Aggressive net closure prioritization for critical nets with high placed/total ratio.
+Initial Placement:                                                        p
+                                                   ϕ(mi ) = −(di ·            Ari )                     (130)
+
+                                                                 27
+                                                                  OrderPlace
+
+Dynamic Placement (No Connections):
+                                                             ϕ(mi ) = 1 × 109                                    (131)
+
+Dynamic Placement:
+                                             ϕ(mi , Ct ) = − (2Sclosure i + Sconn i + 3Sei )                     (132)
+
+Net Closure Score:                                           (
+                                                   X          10 · e−|e|/10                 ue = 0 (last node)
+                              Sclosure i =                                                                       (133)
+                                           e∈N (m ):|e∩P |>0
+                                                              re2 · e−|e|/10 · 3            otherwise
+                                                   i        t
+
+
+
+Connectivity Strength:                                            X
+                                            Sconn i =                             |N (mi , mj )| · κ̄            (134)
+                                                        mj ∈Pt :|N (mi ,mj )|>0
+
+where κ̄ is the average net criticality.
+Entropy Reduction:
+                                                                           cdet
+                                                                             i
+                                                                Sei =    undet
+                                                                                                                 (135)
+                                                                        ci     +1
+
+spatial entropy (Rank 2, LLM-Generated)
+Description: Enhanced entropy with spatial clustering.
+Initial Placement:
+                                                           ϕ(mi ) = −(di · Ari )                                 (136)
+
+Dynamic Placement (No Connections):
+                                                             ϕ(mi ) = 1 × 109                                    (137)
+
+Dynamic Placement:
+                                           ϕ(mi , Ct ) = −w · Sconn i + 0.3 · disnorm − 5Sei                     (138)
+
+Weighted Connectivity:
+                                                        X                                            1
+                                  Sconn i =                          |e ∩ Pt | · f (e),     f (e) = p            (139)
+                                               e∈N (mi ):|e∩Pt |>0
+                                                                                                      |e|
+
+Normalized Distance:
+                                                                                ¯
+                                                                               dis
+                                                           disnorm = √                                           (140)
+                                                                             2 · gn · g
+       ¯ is the average distance from connected placed macros to grid center.
+where dis
+Entropy Score:
+                                                                         |e ∩ Pt |
+                                                                Sei =                                            (141)
+                                                                        cundet
+                                                                         i     +1
+
+chain formation (Rank 3, LLM-Generated)
+Description: Chain formation strategy prioritizing connectivity chains between placed and unplaced macros.
+Initial Placement:                                                              p
+                                                         ϕ(mi ) = −(di ·            Ari )                        (142)
+
+Dynamic Placement (No Connections):
+                                                             ϕ(mi ) = 1 × 109                                    (143)
+
+                                                                        28
+                                                             OrderPlace
+
+Dynamic Placement:
+                                         ϕ(mi , Ct ) = −(Schain i + Scrit i + ln(di + 1))                            (144)
+
+Placed/Unplaced Connectivity:
+                                                               X
+                                            Splaced =                         |e ∩ Pt | · κ(e)                       (145)
+                                                        e∈N (mi ):|e∩Pt |>0
+                                                          X
+                                          Sunplaced =               |e ∩ Rt \ {mi }| · κ(e)                          (146)
+                                                        e∈N (mi )
+
+where κ(e) = exp{−|e|/5} is net criticality.
+Chain Score (Phase-Adaptive):
+                                                     
+                                                     (1 + 0.8 · Sunplaced )
+                                                                                   ρ < 0.3
+                                 Schain i = Splaced · (1 + 0.5 · Sunplaced )        0.3 ≤ ρ < 0.7                    (147)
+                                                     
+                                                      (1 + 0.2 · Sunplaced )        ρ ≥ 0.7
+                                                     
+
+
+Critical Bonus:
+                                            Scrit i = (Siplaced + 0.5 · Siunplaced ) · 2                             (148)
+where Siplaced = e∈N (mi ):|e∩Pt |>0 κ(e), and Siunplaced = e∈N (mi ):|e∩Rt \{mi }|>0 κ(e).
+                P                                             P
+
+adaptive entropy lookahead (Rank 4, LLM-Generated)
+Description: Adaptive entropy with lookahead maximizing information gain while predicting cascading placement effects.
+Initial Placement:
+                                                 ϕ(mi ) = −(di · ln(Ari + 1))                                        (149)
+
+Dynamic Placement (No Connections):
+                                                         ϕ(mi ) = 1 × 109                                            (150)
+
+Dynamic Placement:
+                                ϕ(mi , Ct ) = − (αSei + βScrit i + γSlook i + σ ln(di + 1))                          (151)
+
+Four-Phase Weights:                              
+                                                 
+                                                 (3.0, 2.0, 1.5, 1.0)           ρ < 0.25
+                                                 
+                                                 (2.5, 2.5, 1.2, 1.2)           0.25 ≤ ρ < 0.5
+                                  (α, β, γ, σ) =                                                                     (152)
+                                                 
+                                                 
+                                                 (2.0, 3.0, 0.8, 1.5)           0.5 ≤ ρ < 0.75
+                                                  (1.5, 3.5, 0.5, 2.0)           ρ ≥ 0.75
+                                                 
+
+
+Entropy Reduction:                                        det
+                                                          √ci ·κ          cundet >0
+                                                             cundet +1      i
+                                                Sei =         i                                                      (153)
+                                                         cdet · κ · 2     cundet =0
+                                                           i                i
+
+where κ = exp{−|e|/5} is net criticality.
+Critical Bonus:
+                                           Scrit i = (Siplaced + 0.5 · Siunplaced ) · 2                               (154)
+       placed  P                                   unplaced  P
+where Si      = e∈N (mi ):|e∩Pt |>0 κ(e), and Si            = e∈N (mi ):|e∩Rt \{mi }|>0 κ(e), and κ(e) = exp{−|e|/5}.
+Lookahead Score (Cascade Effect):
+                                           X             X
+                             Slook i =                                exp{−|e|/5} · ln(dj + 1) · 0.3                 (155)
+                                         e∈N (mi ) mj ∈e∩Rt \{mi }
+
+
+                                                                    29
+                                                               OrderPlace
+
+F.10. Dataset-Specific Strategy Insights
+Our analysis reveals that different circuit characteristics favor different strategy emphases:
+
+Adaptec circuits tend to favor entropy-based strategies with strong net closure components. The best-
+performing strategies (gravity entropy, adaptive cluster entropy, resonance clustering,
+spatial entropy gravity) all incorporate explicit entropy reduction terms.
+
+BigBlue circuits show stronger preference for gravitational/clustering models. The winning strategies
+(gravitational cluster, adaptive gravity, adaptive clustering, net closure) emphasize spatial
+clustering and connectivity strength over pure information-theoretic measures.
+This suggests that the optimal strategy design depends on circuit topology characteristics such as net size distribution, macro
+count, and connectivity patterns.
+
+G. More Results
+G.1. Population Quality Evaluator Analysis.
+To validate the fidelity of our Population Quality Evaluator, we conducted a ”reductio ad absurdum” experiment on the
+adaptec1, adaptec3 and bigblue3 dataset. While our framework typically only executes the full optimization for
+the top-4 strategies ranked by the evaluator, here we performed full placement optimization for all generated strategies to
+verify if the evaluator’s ranking aligns with the ground truth performance.
+Indicator Selection. The Population Quality Evaluator generates several statistical metrics for the initial population. We
+identify the Mean Potential Score (calculated according to formula 4.) as the most representative indicator. As shown in
+Table 9, the Mean Potential Score exhibits a strong positive correlation with the final converged HPWL. A lower mean score
+indicates that the strategy consistently produces high-quality initial solutions that are situated in favorable regions of the
+solution space, thereby facilitating faster and better convergence.
+Correlation Analysis. The comparison results are presented in Table 9. The evaluator successfully identified
+dynamics field potential as the top-ranking strategy (Rank 1), achieving the lowest Mean Potential Score of
+7.60 × 105 . Crucially, the ground truth results confirm this prediction: dynamics field potential ultimately
+achieved the best final HPWL of 5.80 × 105 .
+Furthermore, the evaluator effectively filtered out inferior strategies. For instance, the random strategy, which was
+ranked last by the evaluator (Mean Score 22.4 × 105 ), indeed produced the worst final performance. Although
+there are minor ranking permutations among the middle-tier strategies (e.g., between degree area desc and
+dynamics spring potential), the evaluator accurately distinguishes the ”elite tier” from the rest. This validates
+that selecting the top-ranked strategies based on the Mean Potential Score is a reliable proxy for final placement quality,
+significantly reducing the computational overhead by avoiding full runs on unpromising candidates.
+
+Table 9. Validation of the Population Quality Evaluator on adaptec1. The ”Proxy Metric” is the Mean Potential Score from the
+evaluator (lower is better), and ”Ground Truth” is the final converged HPWL. The evaluator correctly predicts the best-performing strategy.
+
+                                             Proxy Evaluation (Prediction)           Full Optimization (Ground Truth)
+            Strategy
+                                                                  5
+                                             Mean Score (×10 )             Rank      Final HPWL (×105 )             Rank
+            dynamics field potential                  7.60                  1                 5.80                     1
+            degree area desc                           7.75                 2                 5.83                     2
+            degree desc                               7.81                  3                 5.87                     4
+            net area desc                             7.85                  4                 5.90                     5
+            dynamics spring potential                 8.08                  5                 5.83                     3
+            area desc                                 8.50                  6                 6.26                     6
+            random                                    22.43                 7                > 10.0                    7
+
+In addition, we have also validated the proxy evaluator on larger-scale benchmarks (adaptec3 and bigblue3). As
+
+                                                                      30
+                                                                 OrderPlace
+
+shown below tables, the proxy metric remains strongly correlated with final HPWL, correctly identifying the top strategy in
+both cases.
+
+Table 10. Validation of the Population Quality Evaluator on adaptec3. The ”Proxy Metric” is the Mean Potential Score from the
+evaluator (lower is better), and ”Ground Truth” is the final converged HPWL. The evaluator correctly predicts the best-performing strategy.
+
+                                        Proxy Evaluation (Prediction)           Full Optimization (Ground Truth)
+                 Strategy
+                                                             5
+                                        Mean Score (×10 )            Rank       Final HPWL (×105 )             Rank
+                 spring potential               82.18                    3               53.70                    1
+                 hamiltonian                    89.79                    5               56.35                    2
+                 field potential                70.68                    1               58.38                    3
+                 entropy                        73.62                    2               58.99                    4
+                 net area desc                  10.23                    6               59.72                    5
+                 degree area desc               88.83                    4               62.52                    6
+                 area degree desc              103.31                    7               63.52                    7
+
+
+Table 11. Validation of the Population Quality Evaluator on bigblue3. The ”Proxy Metric” is the Mean Potential Score from the
+evaluator (lower is better), and ”Ground Truth” is the final converged HPWL. The evaluator correctly predicts the best-performing strategy.
+
+                                        Proxy Evaluation (Prediction)           Full Optimization (Ground Truth)
+                 Strategy
+                                                             5
+                                        Mean Score (×10 )            Rank       Final HPWL (×105 )             Rank
+                 field potential               102.73                    1               49.72                    1
+                 gradient force                115.28                    2               60.25                    2
+                 degree desc                   149.14                    4               66.58                    3
+                 net area desc                 176.30                    5               67.60                    4
+                 degree area desc              138.24                    3               72.05                    5
+                 area degree desc              200.51                    6              111.04                    6
+                 area desc                     220.05                    7              121.71                    7
+
+
+G.2. Parameter Sensitivity Analysis and Ablation Studies.
+G.2.1. T HE NUMBER OF PARAMETER T OP -K
+For each user prompt, the Top-K elite strategies are provided to the LLM, which helps guide it to generate ranking strategies
+that better align with the dataset preferences. We analyze the impact of parameter K, and the results are shown in Figure 3.
+Neither excessively large nor excessively small values of K yield good performance; the best results are achieved when K=3,
+where the LLM generates the most effective initial strategies.
+
+G.2.2. E FFECT OF P RIOR K NOWLEDGE IN U SER P ROMPTS
+In addition, we conduct an ablation study in which the manually designed initial macro placement order strategies are
+removed (the user prompt is omitted). We observe that, without these priors, the number of newly generated effective
+strategies by the LLM ranges from 1 to 3, whereas it increases to 6–8 when the priors are included. This result demonstrates
+that such prior knowledge plays a crucial role in optimizing the LLM’s preference alignment.
+
+G.2.3. M ULTI -LLM ROBUSTNESS AND C ONVERGENCE A NALYSIS
+To further investigate the robustness of the proposed strategy generation framework with respect to the choice of LLM
+backend, we conduct a case study on the Adaptec3 benchmark using three representative LLMs, namely Claude Sonnet
+4.5, GPT-4o, and DeepSeek-V3.2. In this experiment, the number of evolutionary generations is extended to 6 in order
+to analyze the convergence behavior of the search process. The convergence curves of the best proxy HPWL, the elite
+population update rates, and the composition of the elite strategies are shown in Figure 4. In addition, the final placement
+quality on different benchmarks is summarized in Table 12.
+
+                                                                    31
+                                                           OrderPlace
+
+
+
+
+                                  Figure 3. Experimental Analysis Results for Parameter Top-K.
+
+
+                             Table 12. Ablation results of OrderPlace using different LLM backends.
+
+                                            Claude Sonnet 4.5      DeepSeek-V3.2       GPT-4o
+                                adaptec1            5.75                  5.76            5.87
+                                adaptec3           57.98                 58.15           58.66
+
+
+
+The results show that different LLMs tend to discover qualitatively different placement-order strategies. For example, Claude
+Sonnet 4.5 more frequently identifies strategies related to clustering and adaptive gravity, while GPT-4o and DeepSeek-V3.2
+discover more strategies associated with field potential, entropy, spring potential, and hybrid potential. This observation
+indicates that the search process is not trivially dominated by a single fixed strategy pattern, and that different LLMs
+can explore diverse regions of the strategy space. Meanwhile, more capable LLMs generally exhibit stronger preference
+understanding and generate effective strategies earlier, leading to faster convergence and higher elite population update rates
+in the early generations.
+Despite the differences in generated strategies and convergence speed, the final best HPWL values achieved by different
+LLMs remain comparable, as shown in Table 12. This suggests that OrderPlace is not overly sensitive to a specific LLM
+backend. Instead, multiple distinct strategy-generation trajectories can reach competitive placement quality. Furthermore, the
+convergence curves show that the best proxy HPWL improves rapidly in the first few generations and then becomes stable
+after approximately four generations. Extending the search to six generations brings only marginal additional improvement,
+indicating that the search has largely converged under the current setting. These results further demonstrate that macro
+placement order is a rich and actionable optimization dimension, and that the proposed LLM-guided search framework is
+robust across different LLM backends.
+
+H. Cost, Efficiency, and Scalability
+Although OrderPlace introduces LLM-guided evolutionary search, its overall cost remains practical because the LLM is
+only used to generate candidate placement-order strategies, while strategy evaluation is performed by an efficient proxy
+mechanism. To quantify the overhead of the complete evolution process, we analyze the LLM API calls, greedy probing
+time, and end-to-end runtime across different LLM backends and benchmarks. The detailed results are reported in Tables 13,
+14, and 15.
+
+                                                              32
+                                                                                    OrderPlace
+
+                           adaptive_cluster_gravity   adaptive_cluster_gravity    adaptive_cluster_gravity    adaptive_cluster_gravity    adaptive_cluster_gravity       adaptive_cluster_gravity
+                             gravitational_cluster      gravitational_cluster       gravitational_cluster       gravitational_cluster       gravitational_cluster          gravitational_cluster
+
+           Claude             adaptive_gravity           adaptive_gravity            adaptive_gravity             adaptive_gravity            adaptive_gravity              adaptive_gravity
+                                field_potential        net_criticality_gravity     net_criticality_gravity       predictive_tension          predictive_tension             predictive_tension
+                                   entropy                 field_potential             field_potential         net_criticality_gravity     net_criticality_gravity      net_criticality_lookahead
+
+                           weighted_field_entropy     weighted_field_entropy      weighted_field_entropy      weighted_field_entropy      weighted_field_entropy       hybrid_entropy_spatial_field
+                                field_potential            field_potential             field_potential             field_potential              field_potential          weighted_field_entropy
+                                                                                                                                         spatial_weighted_field_entr
+            Gpt4o                  entropy                    entropy                     entropy                     entropy                         opy                     field_potential
+                               spring_potential           spring_potential           spring_potential            spring_potential                 entropy              spatial_weighted_field_entr
+                                                                                                                                                                                    opy
+                               net_area_desc              net_area_desc          combined_proximity_entro    combined_proximity_entro         spring_potential                   entropy
+                                                                                           py                          py
+                                field_potential            field_potential             field_potential         adaptive_field_entropy      adaptive_field_entropy        adaptive_field_entropy
+                                   entropy                    entropy                  spatial_cluster             field_potential             field_potential                field_potential
+      Deepseek V3.2            spring_potential           spring_potential                entropy                  spatial_cluster             spatial_cluster                spatial_cluster
+                              adaptive_hybrid            hybrid_potential             spring_potential                entropy                     entropy                        entropy
+                                 hamiltonian             gradient_density            hybrid_potential             spring_potential            spring_potential               spring_potential
+
+
+
+
+Figure 4. Below subfigure is the convergence curve of the best proxy HPWL as the generation number increases, where the bar chart
+represents the elite population update rate for each generation. Above subfigure is the composition of the elite population for each
+generation, with red representing the strategies found by the LLM and blue representing the initial strategies.
+
+
+As shown in Table 13, the number of LLM calls is small and fixed in our setting. For each benchmark and LLM backend,
+the evolution process requires only 12 API calls, resulting in tens of thousands of tokens rather than hundreds of thousands
+or millions. For example, on the largest benchmark Adaptec3, GPT-4o consumes 37,109 tokens in total, with an LLM
+inference time of only 169.7 seconds. This indicates that the LLM-related overhead is minor compared with the overall
+optimization process. Moreover, since OrderPlace bootstraps the search with manually designed initial strategies instead of
+generating all strategies from scratch, the framework avoids excessive trial-and-error interactions with the LLM.
+The dominant runtime cost comes from evaluating generated strategies through greedy probing. As summarized in Table 14,
+the per-probe time remains moderate even on Adaptec3. For GPT-4o-generated strategies, the per-probe time ranges from
+15.95 seconds to 35.86 seconds; for DeepSeek-V3.2 and Claude Sonnet 4.5, it remains in a similar range. In addition, each
+generation is bounded by a 1,800-second timeout, which prevents extremely expensive strategies from dominating the search
+process. Therefore, the evolutionary process has a controllable evaluation budget and does not incur unbounded runtime
+growth.
+Table 15 further reports the end-to-end cost of evolving high-quality strategies. On Adaptec3, the total runtime is ap-
+proximately 85.6 minutes for GPT-4o, 92.4 minutes for DeepSeek-V3.2, and 111.5 minutes for Claude Sonnet 4.5. The
+estimated LLM API cost remains very low: approximately $0.19 for GPT-4o, $0.07 for DeepSeek-V3.2, and $0.54 for
+Claude Sonnet 4.5. These results show that the monetary cost of LLM-guided evolution is negligible compared with the cost
+of full placement optimization or training-based methods. In particular, unlike reinforcement-learning-based placers such as
+MaskPlace, which require model training and repeated policy updates, OrderPlace only evolves reusable placement-order
+strategies through a small number of LLM calls and lightweight proxy evaluations. As a result, its total time cost is
+comparable to, and in many cases lower than, the training time of standard RL-based placement models.
+
+                                                                                              33
+                                                                     OrderPlace
+
+
+                         Table 13. LLM API Call Cost Analysis across Different Models and Benchmarks.
+
+ Benchmark   LLM Model   Total Calls      Prompt Tokens   Completion Tokens           Total Tokens   Total Inference Time (s)    Avg. Inference Time (s/call)
+ Adaptec1    GPT-4o          12              23,784                  9,052               32,836                 201.8                       16.8
+ Adaptec1    DeepSeek        12              30,340                 19,363               49,703                 830.1                       69.2
+ Adaptec1    Claude          12              35,882                 20,766               56,648                 357.0                       29.8
+ Adaptec3    GPT-4o          12              26,530                 10,579               37,109                 169.7                       13.9
+ Adaptec3    DeepSeek        12              32,866                 19,936               52,802                 802.2                       66.9
+ Adaptec3    Claude          12              10,003                 25,840               35,842                 263.8                       22.0
+
+
+
+
+                Table 14. Strategy Evaluation (Greedy Probing) Time Analysis for Selected High-Quality Strategies.
+
+    Benchmark       LLM Model             Strategy                                       Greedy Probing Total (s)               Per-Probe Time (s)
+                                          hybrid entropy field                                        315.5                             6.31
+                                          entropy                                                     234.2                             4.68
+    Adaptec1        GPT-4o
+                                          field potential                                             217.2                             4.36
+                                          adaptive hybrid                                             502.0                             10.04
+                                          progressive cluster entropy                                 822.9                             16.45
+                                          reinforcement placement                                    1,523.0                            30.46
+    Adaptec1        DeepSeek
+                                          entropy                                                     214.2                              4.28
+                                          field potential                                             232.2                              4.64
+                                          adaptive gravity                                            166.9                              3.33
+                                          adaptive net criticality                                    138.3                              2.76
+    Adaptec1        Claude
+                                          quantum cluster                                             166.1                              3.32
+                                          entropy                                                     232.2                              4.64
+                                          hybrid entropy spatial field                                797.9                             15.95
+                                          weighted field entropy                                     1,389.6                            27.79
+    Adaptec3        GPT-4o
+                                          field potential                                             986.6                             19.73
+                                          spatial weighted field entropy                             1,793.4                            35.86
+                                          adaptive field entropy                                     1,353.6                            27.07
+                                          field potential                                             975.6                             19.51
+    Adaptec3        DeepSeek
+                                          spatial cluster                                            1,466.4                            29.32
+                                          entropy                                                     943.6                             18.87
+                                          adaptive cluster gravity                                   1,613.1                            32.26
+                                          gravitational cluster                                      1,580.6                            31.61
+    Adaptec3        Claude
+                                          adaptive gravity                                           1,659.5                            33.19
+                                          predictive tension                                         1,572.9                            31.45
+
+
+
+Table 15. End-to-End Total Cost Summary. Est. API Cost is calculated based on publicly available pricing: GPT-4o ($2.50/1M input +
+$10/1M output), DeepSeek-V3 ($0.27/1M input + $1.10/1M output), Claude 3.5 Sonnet ($3/1M input + $15/1M output).
+
+ Benchmark   LLM Model    LLM Inference (s)      Strategy Evaluation (s)          Total Time (s)   Total Time (min)     Total Tokens   Est. API Cost (USD)
+ Adaptec1    GPT-4o               201.8                   1,268.9                    1,470.7            ∼24.5             32,836              ∼$0.16
+ Adaptec1    DeepSeek             830.1                   2,792.3                    3,622.4            ∼60.4             49,703              ∼$0.07
+ Adaptec1    Claude               357.0                    703.5                     1,060.5            ∼17.7             56,648              ∼$0.85
+ Adaptec3    GPT-4o               169.7                   4,967.5                    5,137.2           ∼85.6              37,109              ∼$0.19
+ Adaptec3    DeepSeek             802.2                   4,739.2                    5,541.4           ∼92.4              52,802              ∼$0.07
+ Adaptec3    Claude               263.8                   6,426.1                    6,689.9           ∼111.5             35,842              ∼$0.54
+
+
+
+
+                                                                             34
+                                                                              OrderPlace
+
+I. End-to-End PPA Evaluation with OpenROAD
+Since the ISPD 2005 benchmarks do not provide the required technology and parasitic files for complete PPA evaluation,
+and commercial back-end tools such as Cadence Innovus and Synopsys ICC2 are not available in our environment, we
+further evaluate OrderPlace on the ChipBench benchmark using the open-source OpenROAD flow. As shown in Table 16,
+OrderPlace achieves lower HPWL and congestion on all evaluated designs, and these improvements are also reflected
+in post-routing metrics. Compared with EfficientPlace, OrderPlace obtains lower routed wirelength on all benchmarks,
+improves WNS on three benchmarks, improves TNS on three benchmarks, reduces the number of violating paths on three
+benchmarks, and achieves smaller area on all benchmarks. Although power is slightly higher in some cases, the overall
+results demonstrate that OrderPlace is not only effective in HPWL optimization, but also competitive in end-to-end PPA
+quality, including routing, timing, congestion, and area.
+
+Table 16. Comparisons of PPA metrics. These metrics include the routed wirelength (WL, um) and power consumption (Power, nW),
+where smaller values indicate better performance. In contrast, the worst negative slack (WNS, ns) and total negative slack (TNS, ns) are
+the higher the better, reflecting timing performance, with the best result of each metric for each benchmark in bold.
+
+Benchmark                Method               Intermediate Metrics                                                     PPA Metrics
+                                            HPWL ↓          Congestion ↓                WL ↓          Power ↓        WNS ↑            TNS ↑          NVP ↓         Area ↓
+                   EfficientPlace           6343114               0.304             9516763            0.352          -0.964        -2013.650            3360      366878
+ ariane133
+                    OrderPlace              5838502               0.299             7921340            0.368          -0.917        -1942.530            3298      366627
+                   EfficientPlace           9966452               0.425            13005699            0.410          -1.024        -610.876             2817      397814
+ ariane136
+                    OrderPlace              9497615               0.415            12297241            0.418          -0.693        -616.743             2860      397456
+                   EfficientPlace           5307768               0.480             7050761            0.525          -2.397        -417.067             442        96368
+    dft68
+                    OrderPlace              5161437               0.475             6986823            0.531          -2.208        -400.185             435        96041
+                   EfficientPlace           25689796              1.331            32891409            0.464         -11.671        -31150.4             9146      251324
+ wrapper43
+                    OrderPlace              25162108              1.325            32738131            0.481         -13.387        -30206.8             9136      250822
+
+
+J. Ablation Study on the Contribution of LLM
+To isolate the source of improvement in OrderPlace, we conduct an ablation study by removing the LLM from the framework
+and evaluating only a set of manually designed initial placement-order strategies. As shown in Table 17, the LLM-generated
+strategies consistently outperform all hand-crafted strategies across the evaluated benchmarks. For example, on adaptec3
+and adaptec4, the best manually designed strategies achieve HPWL values of 59.00 and 55.80, respectively, while the
+LLM-discovered strategies reduce them to 52.81 and 48.31. Similar improvements can also be observed on bigblue3, where
+the LLM-generated strategy significantly reduces HPWL from 66.59 to 35.22. These results indicate that the performance
+gain does not only come from the proxy-guided evolutionary search or the downstream greedy placement engine. Instead,
+the LLM plays a key role in discovering more effective and non-trivial placement-order strategies beyond manually designed
+heuristics. In addition, the large performance variance among different initial strategies shows that the placement-order
+optimization space is rich and has been insufficiently explored in previous studies.
+
+Table 17. Comparison of best HPWL (×105 ) for ablation experiments on placement order strategies, where inf indicates that there is no
+valid placement result, and desc and aes represent descending and ascending order, respectively. The best results are marked in bold, and
+the second-best result is underlined.
+            + Net Area Desc   + degree area desc   + area degree desc   + degree desc   + area desc   + degree asc   + area asc   + random   + net area asc    + LLM Design
+ adaptec1         5.91               5.92                 6.00              6.13            6.17          9.99         10.23        10.29        11.21             5.68
+ adaptec2        51.16                inf               39.50              43.47           39.03           inf           inf         inf           inf            28.66
+ adaptec3        59.00              62.52                63.53             66.26          64.98            inf           inf       112.32          inf            52.81
+ adaptec4        60.45              57.78               58.82              56.86          55.80          84.26         82.62       87.96         83.37            48.31
+ bigblue1         2.14               2.17                 2.18              2.40            2.18          2.40          2.42        5.01          2.36             1.97
+ bigblue3        67.61              72.06               111.05             66.59          121.71           inf           inf         inf           inf            35.22
+
+
+
+
+                                                                                    35
+

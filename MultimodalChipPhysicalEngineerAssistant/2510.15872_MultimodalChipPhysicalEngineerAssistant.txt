@@ -1,0 +1,1331 @@
+                                        Multimodal Chip Physical Design Engineer Assistant
+
+
+                                                           Yun-Da Tsai                                  Chang-Yu Chao
+                                                     National Taiwan University                    National Taiwan University
+                                                         NVIDIA Research                         r13922001@csie.ntu.edu.tw
+                                                   f08946007@csie.ntu.edu.tw
+
+                                                        Liang-Yeh Shen                                 Tsung-Han Lin
+arXiv:2510.15872v1 [cs.AR] 2 Jul 2025
+
+
+
+
+                                                   National Taiwan University                University of California, Los Angeles
+                                                 b10507008@csie.ntu.edu.tw                         lzh0212@g.ucla.edu
+
+                                                  Haoyu Yang                        Mark Ho                          Yi-Chen Lu
+                                                NVIDIA Research                  NVIDIA Research                  NVIDIA Research
+                                               haoyuy@nvidia.com              chiatungh@nvidia.com                yilu@nvidia.com
+
+                                                Wen-Hao Liu                       Shou-De Lin                       Mark Ren
+                                               NVIDIA Research              National Taiwan University           NVIDIA Research
+                                             wenhliu@nvidia.com             sdlin@csie.ntu.edu.tw              haoxingr@nvidia.com
+
+
+
+                                                                                     Abstract
+                                                 Modern chip physical design relies heavily on Electronic Design Automation
+                                                 (EDA) tools, which often struggle to provide interpretable feedback or actionable
+                                                 guidance for improving routing congestion. In this work, we introduce a Multi-
+                                                 modal Large Language Model Assistant (MLLMA) that bridges this gap by not
+                                                 only predicting congestion but also delivering human-interpretable design sugges-
+                                                 tions. Our method combines automated feature generation through MLLM-guided
+                                                 genetic prompting with an interpretable preference learning framework that models
+                                                 congestion-relevant tradeoffs across visual, tabular, and textual inputs. We compile
+                                                 these insights into a "Design Suggestion Deck" that surfaces the most influential
+                                                 layout features and proposes targeted optimizations. Experiments on the CircuitNet
+                                                 benchmark demonstrate that our approach outperforms existing models on both
+                                                 accuracy and explainability. Additionally, our design suggestion guidance case
+                                                 study and qualitative analyses confirm that the learned preferences align with real-
+                                                 world design principles and are actionable for engineers. This work highlights the
+                                                 potential of MLLMs as interactive assistants for interpretable and context-aware
+                                                 physical design optimization.
+
+
+                                        1   Introduction
+                                        The field of chip physical design encompasses critical prediction tasks such as congestion, timing,
+                                        Design Rule Check (DRC), and IR Drop. These tasks, traditionally tackled using Electronic Design
+                                        Automation (EDA) tools, often suffer from slow processing speeds and limited ability to provide
+                                        actionable guidance for design improvement. Existing approaches using image-to-image translation
+                                        models focus primarily on prediction accuracy but lack interpretability and the ability to suggest
+                                        corrective measures. This paper explores the potential of Multimodal Large Language Models
+                                        (MLLMs) in providing interpretable predictions along with actionable suggestions to assist engineers
+                                        in optimizing their designs. Recent advances in foundation models and instruction-tuned Large
+
+                                        Preprint. Under review.
+Language Models (LLMs) have led to impressive progress in tasks that require reasoning, code
+generation, and interactive assistance. However, their application to chip physical design remains
+largely underexplored. In particular, current EDA solutions lack the capability to provide real-time,
+explainable, and multimodal assistance that integrates layout visuals, tabular metrics, and design
+constraints into a unified decision-making process. We argue that a Multimodal Language Model
+Assistant (MLLMA) tailored to chip physical design can fill this gap.
+The motivation for this research is to address the gap between prediction accuracy and interpretability
+in physical design tasks. While current models are adept at predicting various metrics such as
+congestion and DRC violations, they fail to explain the underlying causes or offer corrective measures.
+By leveraging multimodal LLMs, we aim to move beyond mere prediction and offer a framework that
+provides both predictions and accompanying explanations. These explanations can be compiled into
+a "Design Suggestion Deck" which assists engineers by presenting comprehensible, human-readable
+reasoning to guide their design decisions. The primary research challenge is developing an MLLM-
+based agent framework capable of processing multimodal data inputs, including geometric images,
+tabular features, and circuit graphs, and providing interpretable predictions with actionable design
+suggestions. Furthermore, we aim to compare this approach against baseline models to demonstrate
+its effectiveness in improving design quality and interpretability.
+Our method consists of two stages: (1) Automate Feature Engineering and Generation, and (2)
+Interpretable Preferences Learning to Design Suggestion Deck. In the first stage, a Multimodal Large
+Language Model (MLLM) agent generates and extracts numeric features from Macro Region, RUDY,
+and RUDY pin images and text-based features from configuration and logs. Inspired by the Genetic
+Instruct (Majumdar et al., 2024), a genetic algorithm incorporating mutation and crossover is applied
+to expand the multimodal feature pool, with a deduplication process ensuring uniqueness. Feature
+importance and cross validation scores are evaluated using a Random Forest model to guide feature
+selection and refinement. The second stage uses these features and their importance scores to create
+a Design Suggestion Deck. The MLLM agent translates important features into interpretable rules,
+providing actionable guidance for chip design optimization.
+Our contributions are summarized as follows:
+
+       • Development of a multimodal LLM framework capable of handling geometric image
+         features, tabular data, and circuit graph inputs for prediction tasks in physical design.
+       • Design of an interpretable preference learning approach that generates interpretable predic-
+         tions and actionable suggestions compiled into a "Design Suggestion Deck".
+       • Evaluation of the proposed framework against the baseline models that demonstrate strong
+         improvements in design quality and efficiency.
+
+
+2     Related Work
+
+2.1   Multimodal Language Model Assistant
+
+Recent works such as Mipha (Zhu et al., 2024), MM-ReAct (Yang et al., 2023), and MultiModal-
+GPT (Gong et al., 2023) demonstrate that aligning visual inputs with language reasoning modules
+allows models to solve complex real-world tasks. Mipha, for example, focuses on efficiency by en-
+abling multi-turn multimodal dialogue with domain grounding, while MM-ReAct leverages reasoning
+traces and visual memory for tool-augmented perception.
+In the context of chip design, prior efforts such as Chip-Chat (Blocklove et al., 2023) investigate
+interactive co-design with conversational LLMs for hardware description generation, while Chip-
+NeMo (Liu et al., 2023) introduces domain-adapted LLMs for industrial chip tasks including EDA
+script generation and bug analysis. Unlike these works, which primarily focus on language-to-code
+translation or domain adaptation, our approach leverages MLLMs for spatially grounded reasoning
+over fine-grained layout features such as routing demand and macro placement. Additionally, we
+explicitly model design tradeoffs through learned interpretable preferences, extending the role of
+LLMs from passive code generators to interactive design assistants capable of justification and
+feedback.
+
+
+                                                  2
+                                        (a) Feature Engineering                                                                                                            (b) Feature Scoring and Selection
+
+                                                                                                                                                                       Random Forest Model                                               Importance Scoring
+
+                       def rudy_gradient_variability(images):
+                           """ Calculate the gradient variability of the RUDY image. """
+                           tiles_size = 2.25
+                           macro_image = images[0]
+                           rudy_image = images[1]
+                           rudy_pin_image = images[2]
+     Routability
+                          image_height, image_width = macro_image.shape
+      Images              total_image_area = image_width * image_height                                                                                                    1) Train the model and                                       2) Scoring features with the
+                          # Convert macro image to [0, 255] range                                                    id      feat #1    feat #2   ...   feat #n          record the validation score                                  importances in Random Forest
+                          macro_image = np.uint8(macro_image * 255)
+                          _, binary_image = cv2.threshold(macro_image, 127, 255, cv2.THRESH_BINARY)
+                          contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)   1        0.76       1.28     ...   -0.32
+                          num_macros = len(contours)
+
+                          # Compute gradients using the Sobel operator                                               2        0.34       1.07     ...   -0.11                                       Feature Selecting
+                          grad_x = cv2.Sobel(rudy_image, cv2.CV_64F, 1, 0, ksize=3)
+                          grad_y = cv2.Sobel(rudy_image, cv2.CV_64F, 0, 1, ksize=3)
+                          magnitude = cv2.magnitude(grad_x, grad_y)
+                                                                                                                     ...       ...        ...     ...       ...
+
+                          # Calculate gradient variability
+                          gradient_variability = np.var(magnitude)
+                                                                                                                     m        0.12       0.98     ...    0.46                                  score: 0.5 score: 0.3 score: 0.2 score: 0.1
+
+                           feature_value = gradient_variability * (tiles_size ** 2)   # Convert to um^2
+                                                                                                                           Processed Tabular Data
+                           return {"rudy_gradient_variability": feature_value}
+ Feature Engineering                                                                                                                                              Update Feature Pool
+                                                                                                                                                                                                  3) Select the features with
+       Codes                                                                                                                                                      for selected features                the top k scores
+
+
+
+
+                                                                                                                                                                                                                                        Mutation Prompt
+feat #1
+                                                                                                                                       Routability Sample                                                                 Please slightly mutate the feature into a
+                                                                                                                                            Images                                                                        new related digital feature surrounding
+                                                                                                                                                                                                                          ...
+feat #2                                                                                                                                                                                                                   Original feature:
+                                                                                                                                                                                                                          {feature}
+                                                                                                                                                                                                                          New mutated feature:
+                                                                                                      MLLM                                                                    MLLM
+feat #3                                                                                               Coding Agent                                                            Feature Agent
+
+                                                                                                                                                                                                                                       Crossover Prompt
+                                               Generated Codes                                                                       Generated Features
+            ...
+
+
+
+
+                                                                                                                                                                                                                         I will provide you with an example feature
+                                                                                                                                                                                                                         list, please give me more features
+                                                                                                                                                                                                                         ...
+feat #n                                                                                                                                                                                                                  Example feature list:
+                                                                             Store in Feature Pool                                                                                                                       {feat_pool}
+                                                                                                                                                                                                                         Now, generated 10 new features.
+
+    Feature Pool
+                                                                                                                                        (c) Feature Generation
+
+   Figure 1: Overview of the Genetic Instruct framework. (a) Spatial metrics are extracted from
+   routability images using domain-specific rules. (b) A Random Forest ranks and selects key features.
+   (c) MLLM agents iteratively generate and mutate features via code, enriching the feature pool to
+   improve downstream performance.
+
+
+
+
+   2.2            Congestion Map Prediction
+
+   ClusterNet (Min et al., 2023) focuses on predicting routing congestion caused by netlist topology
+   using netlist clustering and Graph Neural Networks (GNNs). By employing the Leiden algorithm
+   to generate cohesive clusters and developing a GNN-based model to generate cluster embeddings,
+   ClusterNet achieves improved prediction performance and congestion optimization without requiring
+   placement and routing (P&R) tools. CircuitNet (Chai et al., 2023; Jiang et al., 2023) provides an
+   open-source dataset for machine learning applications in VLSI CAD, facilitating the development
+   and benchmarking of ML models for tasks like congestion prediction and design rule check (DRC)
+   violation prediction. The dataset includes diverse samples collected from various chip designs and
+   supports comprehensive data, including routability, timing, and power metrics. CircuitFormer (Zou
+   et al., 2023) introduces a novel approach by treating circuit components as point clouds and utilizing
+   Transformer-based point cloud perception methods for feature extraction. This method enables
+   direct feature extraction from raw data without any preprocessing, allows for end-to-end training,
+   and achieves state-of-the-art performance in congestion prediction tasks on both the CircuitNet
+   and ISPD2015 datasets, as well as in DRC violation prediction tasks on the CircuitNet dataset.
+   MPGD (Yang et al., 2024) proposes Mini-Pixel Batch Gradient Descent, a plug-and-play optimization
+   algorithm that focuses on the most informative entries in the congestion map. By integrating this
+   method into predictive AI models for physical design flows, MPGD enhances congestion prediction
+   accuracy and efficiency, demonstrating its effectiveness in optimizing chip design processes.
+
+
+
+   3         Methodology
+
+   Our proposed MLLM assistant consists of two core components: (1) automated feature generation and
+   engineering, and (2) interpretable preference modeling for generating actionable design suggestions.
+
+
+                                                                                                                               3
+3.1     Automated Feature Generation and Engineering
+
+Figure 1 illustrates our pipeline for automated feature generation and engineering. The approach
+integrates domain-driven initial features, MLLM-guided mutation, and a feedback loop to iteratively
+expand and refine a pool of predictive and interpretable features.
+
+
+3.1.1     Initial Feature Types
+
+We begin with two categories of raw features for routing congestion prediction:
+Image-based layout features: Macro Region encodes macro and cell placement for global layout
+context. RUDY (Routing Demand) highlights routing density hotspots. RUDY Pin Images capture
+local pin density patterns affecting routing complexity.
+Text-based configuration features: Logs from EDA tools include placement constraints, blockages,
+net priorities, and timing directives. These symbolic features complement spatial representations with
+interpretable design signals.
+
+
+3.1.2     Genetic Instruct Feature Generation
+
+We employ a Genetic-Instruct framework (Majumdar et al., 2024) to iteratively evolve and expand fea-
+ture sets using MLLMs. The process consists of initialization, evaluation, variation, and deduplication
+steps:
+Initialization: The feature pool is seeded with handcrafted features that map visually and semantically
+to congestion causes. Each feature includes a human-readable name and description. MLLMs are
+prompted to generate extraction code, producing tabular data for training. Congestion severity is
+labeled using the average congestion value in the 20 most-congested grid cells of each sample.
+Evaluation and Selection: A Random Forest model is trained on the extracted features and labels.
+The model’s feature importance scores act as the fitness function, guiding the pruning of low-impact
+features. We retain the top k=20 candidates for the next generation.
+Crossover and Mutation: New features are created by prompting MLLMs with few-shot examples
+drawn from high-ranking features (crossover), or by mutating individual features with probabilities
+based on a rank-sensitive version
+                             r
+                                  of the Ebbinghaus forgetting curve. Specifically, mutation proba-
+bility is defined as: M = e− N , where r is the feature’s rank and N is the total number of features.
+Higher-ranked features have greater mutation probability, encouraging diversity while maintaining
+quality.
+Deduplication: To avoid redundancy, newly proposed features are compared against the existing pool
+using a Deduplicator-MLLM. It evaluates semantic similarity in descriptions and removes duplicates
+with reasoned justifications.
+This process iteratively refines the feature space, producing a diverse, interpretable, and model-
+relevant set of features for downstream congestion prediction. Some generated feature example is
+shown in Figure 2 and the complete list of generated feature pool is in Appendix F.
+
+
+      Feature Pool Examples
+
+      {macro_compactness_index: "a measure of how closely packed the macros are, potentially affecting
+      routing paths and congestion",
+      clustered_macro_distance_std: "the standard deviation of distances between clustered groups of
+      macros",
+      rudy_pin_clustering_coefficient: "a measure of how many rudy pins cluster together relative
+      to the total number of rudy pins",
+      macro_density_gradient: "the change in macro density across the layout, impacting local conges-
+      tion", ...}
+
+
+                                    Figure 2: Feature Pool Examples
+
+
+                                                     4
+        Fixed            Trainable           Image End
+      Parameters        Parameters   *         Token                              Interpretable Features Fusion                   high_density_rudy_ratio
+                                                                                                                               rudy_pin_gradient_convergence
+                                                         Congestion Score
+                                                                                       Weighted                                   macro_compactness_index
+                          Congestion Map                            𝑦ො                  Sum                                      rudy_gradient_variability
+ Congestion Map          Generation Module     Image Features
+                                                                                                                                   macro_density_gradient
+
+                                                                                          FWeights           FScores
+                            …        …
+                                                                                      Gating Layer                                      Regression Layer
+
+
+                                                          …                                                   *
+                                                                     Controller
+
+
+
+
+                                               Multimodal Large Language Model (MLLM)
+
+
+
+                                                                                                              *
+                                                                                                          [/IMG]
+                                                                    Vision Encoder
+  Chip Configuration:
+                                                                                                                       Task Description:
+  - Design Name: RISCY-a
+                                                                                                                       Predict the congestion level of this sample
+  - Clock Frequency: 500MHz
+                                                                …                     …                  …             from the given images.
+  - Power Mesh Setting: 8 …
+
+
+
+
+Figure 3: Overview of our interpretable preference modeling framework. The model leverages
+interpretable features identified in Phase 1 as preference signals to guide congestion prediction and
+design suggestion generation. A multimodal architecture integrates layout images and task prompts,
+predicts feature values, learns objective weights via a gating mechanism, and generates both scalar
+congestion scores and spatial congestion maps. This enables transparent and actionable feedback for
+physical design refinement.
+
+
+3.1.3      Automated Feature Engineering
+
+We employ Multimodal Large Language Models (MLLMs) to automate feature transformation by
+generating code snippets tailored to the characteristics of input features and target objectives. The
+generated code is then executed in a controlled environment, where inputs, outputs, and errors are
+systematically handled to ensure robustness. This automation streamlines the feature engineering
+process, improving both efficiency and scalability in modeling routing congestion.
+
+3.2     Interpretable Preferences to Design Suggestions
+
+To bridge the gap between predictive modeling and actionable design insights, we develop a method-
+ology that directly uses the features discovered in Phase 1 as interpretable preference indicators,
+enabling their translation into concrete and actionable design suggestions.
+
+3.2.1      Interpretable Preferences and Model Architecture
+
+Inspired by the ArmoRM framework (Wang et al., 2024), we formulate design evaluation as a multi-
+objective task, addressing both scalar congestion prediction and spatial congestion map generation.
+Central to our approach is the reuse of the feature pool generated in Phase 1 via genetic instruction
+prompting. These features serve as interpretable preference indicators—each representing a physically
+meaningful and actionable design attribute such as pin clustering, macro placement density, or region-
+based congestion asymmetry.
+Our model adopts a multimodal LLM backbone based on MiniCPM (Yao et al., 2024). Design
+configuration images are tokenized as vision inputs, while the task descriptions are encoded as text
+tokens. We then apply a regression layer trained on the last tokens to predict interpretable feature
+values, and a gating layer trained on vision tokens to learn objective weights based on layout context.
+The gating layer dynamically assigns importance to each interpretable feature dimension, effectively
+scalarizing the multi-objective signal into a preference-aware score. This architecture enables both
+granular score decomposition and end-to-end learning across objectives. The model not only predicts
+
+
+                                                                                  5
+congestion values but also generates pixel-level congestion maps, providing actionable, interpretable
+guidance to support iterative physical design refinement.
+In the congestion map generation stage, a conditional U-Net architecture is employed for the image-
+to-image translation task, where the input consists of image-based layout features and the output is
+the predicted congestion map. To incorporate the interpretable features as conditional information,
+we explore two representation methods: numerical vectors and text-based descriptions. Through the
+ablation studies in Appendix D, we find that using interpretable features with gating weights in a
+text-based representation achieves better performance, demonstrating their effectiveness in providing
+semantic information to guide the generation of congestion maps.
+
+3.2.2    Design Suggestions
+
+Using the interpretable preference signals, we generate targeted design suggestions focused on
+improving the most critical objectives. Since the model reasons over features that are both informative
+and physically grounded (e.g., pin density imbalance, macro boundary interactions), its suggestions
+are inherently actionable. For example, in cases where congestion is identified as a dominant issue, the
+model might recommend reducing cluster density in specific regions or modifying routing constraints.
+Each suggestion is directly traceable to feature-level insights, ensuring that design decisions are not
+only effective but also well-justified.
+
+
+4     Experiment
+
+Details of the experimental setup and hyperparameters are provided in Appendix E.
+
+4.1     Dataset
+
+The CircuitNet dataset (Jiang et al., 2023; Chai et al., 2023) serves as the foundation for this study. It
+is a large-scale, open-source benchmark comprising over 10,000 synthesized chip designs—including
+CPUs, GPUs, and AI accelerators—fabricated using the 14nm FinFET process. It provides two
+types of features: image-like layout representations and text-based features that extracted from
+configuration log. Details on preprocessing and data augmentation are included in Appendix E.
+
+4.2     Baselines
+
+We compare our method against three state-of-the-art congestion prediction models. GPDL (Chai
+et al., 2023) is a CNN-based architecture that predicts congestion maps from layout images us-
+ing spatial convolutions to model local routing patterns. CircuitFormer (Zou et al., 2023) is a
+Transformer-based model operating on point cloud data, learning spatial relationships from raw
+layout coordinates. MPGD (Yang et al., 2024) introduces Mini-Pixel Batch Gradient Descent that
+targets the most informative regions of the congestion map.
+
+4.3     Evaluation Metrics
+
+Each model is trained to output a pixel-level prediction of congestion, which is then compared
+against the ground-truth congestion heatmap. We adopt standard metrics used in prior work to
+evaluate congestion prediction quality. These include SSIM for perceptual similarity, NRMSE and
+PeakNRMSE for error measurement, and PLCC, SRCC, and KRCC for correlation analysis. A
+detailed explanation and formal definitions of each metric are provided in Appendix B.
+
+4.4     Experiment Results
+
+Table 1 shows that our model consistently outperforms baselines in SSIM, NRMSE, and peak error
+metrics, validating the benefit of interpretable preference modeling and multi-objective supervision.
+Our qualitative results in Figure 4 further show that the predictions from our model more accurately
+capture fine-grained congestion boundaries compared to the baselines.
+
+
+                                                    6
+   Table 1: Congestion prediction performance on CircuitNet across pixel-based and correlation-based
+   metrics.
+                                                                      Peak NRMSE ↓                     Correlation Metrics
+Method                             SSIM ↑     NRMSE ↓
+                                                        0.5%         1%    2%    5%         avg     PLCC ↑ SRCC ↑ KRCC ↑
+GPDL (Chai et al., 2023)           0.773        0.047   0.441       0.323   0.236   0.155   0.289   0.5032     0.5143   0.3787
+MPGD (Yang et al., 2024)           0.787        0.046   0.271       0.217   0.171   0.121   0.195      –          –        –
+CircuitGNN                           –            –       –           –       –       –       –     0.3287     0.4483   0.3688
+CircuitFormer (Zou et al., 2023)     –            –       –           –       –       –       –     0.6374     0.5282   0.3935
+Ours                               0.807        0.045   0.263       0.205   0.169   0.118   0.189   0.6452     0.5233   0.3941
+
+
+
+
+       (a) Input Image Features            (b) GPDL                   (c) MLLMA (Ours)               (d) Ground-truth
+
+
+   Figure 4: Qualitative comparison of congestion prediction heatmaps between the GPDL baseline
+   and our proposed multimodal model, MLLMA. Red bounding boxes highlight congestion hotspots
+   where MLLMA more accurately captures the spatial patterns and severity of congestion compared to
+   the ground truth. Black bounding boxes indicate regions where GPDL fails to localize congestion
+   accurately.
+   4.5 Ablation Study
+
+   To understand which components contribute most to our model’s effectiveness, we conduct a two-
+   phase ablation study.
+
+   Phase 1: Ablation Study on Feature Generation Pipeline This phase evaluates the necessity and
+   effectiveness of our proposed Genetic Instruct prompting strategy for MLLMs. We compare it
+   against two variants: a crossover-only version that recombines prompt elements and a mutation-only
+   version that introduces random prompt variations. Our Genetic Instruct method integrates both
+   crossover and mutation with evolutionary selection, and achieves significantly better feature quality
+   for downstream congestion prediction. As shown in Table 5a, the Genetic Instruct strategy leads
+   to substantial performance gains, demonstrating that careful prompt optimization is crucial when
+   leveraging MLLMs for physical design tasks.
+
+   Phase 2: Ablation Study on Interpretable Preference Pipeline This phase investigates which
+   components of our interpretable preference modeling pipeline are most critical to performance. We
+   ablate four key aspects: the input modalities, the loss functions, the congestion map generation
+   modules, and the interpretable preference features used for gating mechanism. Each removal leads
+   to varying degrees of performance degradation, highlighting the importance of both structural and
+   semantic components in learning meaningful preferences. A subset of the ablation results is sum-
+   marized in Table 2, with additional details provided in Appendix D. These findings confirm that
+   the learned preference signals are not only interpretable but also integral to model performance.
+   Notably, removing structured inputs or disabling the gating mechanism leads to substantial degrada-
+   tion, underscoring the critical role of each component in modeling contextual and actionable design
+   preferences.
+
+   5      Analysis
+   5.1     Feature Attribution Analysis
+
+   Each design feature is associated with a scalar gating value representing its relative importance or pref-
+   erence weight. To interpret the sign of these values: These interpretations allow us to understand how
+   each feature drives model predictions in different design contexts. We observe that low-congestion
+   samples tend to exhibit high values on the macro_rudy_boundary_interaction_index feature,
+   as illustrated in Table 3. This trend is consistent across multiple instances, with a negative Pearson
+   correlation of −0.72 between this feature and the congestion score.
+
+
+                                                                7
+                                                                                               Table 2: Ablation Studies.
+(a) Ablation on feature generation pipeline.                                                                                             (b) Ablation on interpretable features.
+
+  Pipeline Variant
+                                zero-riscy-a                                                         zero-riscy-b                         Feature Source Modality                       SSIM ↑        NRMSE ↓
+                      PLCC ↑ SRCC ↑ KRCC ↑                                                     PLCC ↑ SRCC ↑ KRCC ↑
+                                                                                                                                          Image-Based                                     0.791          0.047
+ Crossover-Only                          0.630         0.674        0.492                           0.589       0.686        0.493
+ Mutation-Only                           0.353         0.485        0.348                           0.469       0.462        0.314        Log-Based                                       0.764          0.052
+ Genetic Instruct                        0.705         0.786        0.595                           0.599       0.591        0.412        Mixed (Image + Log)                             0.789          0.046
+
+
+
+          Similarly, features such as rudy_pin_clustering_coefficient and rudy_pin_compaction
+          _ratio tend to have high values in high-congestion samples, showing a positive correlation. This
+          suggests that pin-related density features are dominant contributors to congestion under high-load
+          scenarios.
+          To further support interpretability, we conduct a detailed breakdown analysis covering the value
+          distribution, gating value, and associated congestion level for every major design feature. This
+          comprehensive analysis is included in Appendix C and Figure 7, where we also include additional
+          observations and insights derived from these patterns.
+
+                                 Low Congestion High Feature Value                                  High Congestion High Feature Value                              High Congestion High Feature Value
+                                         (Pearson r = -0.33)                                                 (Pearson r = 0.43)                                              (Pearson r = 0.44)
+                           40                                                                                                                                 7.0
+                           35                                                                  7                                                              6.5
+                           30                                                                                                                                 6.0
+        Congestion Label
+
+
+
+
+                                                                            Congestion Label
+
+
+
+
+                                                                                                                                           Congestion Label
+                                                                                               6
+                           25                                                                                                                                 5.5
+                           20                                                                  5                                                              5.0
+                           15                                                                                                                                 4.5
+                           10                                                                  4                                                              4.0
+                                                                                                                                                              3.5
+                            5                                                                  3                                                              3.0
+                                   0.2   0.4     0.6   0.8   1.0   1.2                             0.000 0.025 0.050 0.075 0.100 0.125                              0.00 0.01 0.02 0.03 0.04 0.05
+                                macro_rudy_boundary_interaction_index                                  rudy_pin_clustering_coefficient                                rudy_pin_gradient_convergence
+          Table 3: Scatter plots showing the relationship between key layout features and congestion labels.
+          (Left) macro_rudy_boundary_interaction_index is negatively correlated with congestion (r =
+          −0.33), indicating that low-congestion samples tend to exhibit higher values in this macro-level
+          feature. (Middle) rudy_pin_clustering_coefficient shows a moderate positive correlation
+          with congestion (r = 0.43), suggesting that dense pin clusters contribute to congestion under high-
+          load conditions. (Right) rudy_pin_gradient_convergence similarly displays a positive trend
+          (r = 0.44), further highlighting the influence of pin-level spatial patterns on congestion outcomes.
+
+
+          5.2                     Design Suggestion Guidance Leads To Lower Congestion
+
+          To evaluate the practical utility of the model’s interpretable outputs, we conduct a case study that
+          demonstrates how applying model-guided feature adjustments can lead to a substantial reduction
+          in routing congestion. Specifically, we use the model’s top-attributed features to inform actionable
+          design changes and compare outcomes before and after applying these suggestions. Figure 5 presents
+          one representative example. The left side shows a high-congestion design sample, along with the top-
+          5 features contributing most to the model’s prediction. Based on these attributions, we systematically
+          adjust feature values—particularly those with strong positive influence on congestion—toward more
+          favorable levels. The adjusted design, shown on the right, exhibits a notable improvement.
+          This case highlights the effectiveness of the model’s interpretable reasoning. The ability to trace
+          predictions back to key design features enables not just post hoc understanding, but also actionable
+          guidance. By following these learned preferences, designers can reduce congestion and iteratively
+          improve design quality in practice.
+
+          Feature Attribution and Congestion Change Summary:
+          This case illustrates how interpreting the gating values and using them to guide feature adjustment
+          can lead to measurable congestion reduction, demonstrating the interpretability and actionability of
+          our model’s learned preferences.
+
+
+                                                                                                                  8
+               (a) Before adjustment.                                         (b) After adjustment.
+
+Figure 5: By following the top model-attributed features and adjusting actionable design parameters,
+the resulting design exhibits significantly lower predicted and actual congestion.
+
+
+            Table 4: Top features before/after adjustment and their impact on congestion.
+ Feature                                 Before Value   After Value   Attribution (Before)     Congestion Impact
+ rudy_pin_gradient_convergence             0.3351          0.1202      0.1551 → 0.0001                High
+ rudy_pin_clustering_coefficient           0.5913          0.3606      0.1409 → 0.0002                  ↓
+ rudy_pin_compaction_ratio                 0.4273          0.3035      0.1216 → 0.0001                  ↓
+ high_density_rudy_pin_ratio               0.3138          0.4867      0.0638 → 0.0003                Mixed
+ demarcated_macro_proximity_index          0.3765         -0.0030      0.0539 → 0.0000                  ↓
+ macro_rudy_boundary_interaction_index     0.0849         0.0721       0.0321 → 1.2655       High post-adjustment role
+
+
+
+We compute the consistency rate across a large number of matched sample pairs. A high agreement
+between the sign of the gating value and the direction of the label difference indicates that the learned
+preferences are interpretable and aligned with the optimization objective. Additionally, we collaborate
+with experienced chip designers and researchers to manually review selected cases, further validating
+that the gating values reflect meaningful and actionable design insights.
+
+5.3   Design Suggestion Qualitative Examples
+
+We complement our quantitative and case-based evaluation with a set of qualitative examples that
+further illustrate how the model adapts its reasoning to context-specific designs. In Figure 6, we
+compare two designs—Design 8277 and Design 8243—exhibiting congestion scores of 40.21 and
+20.04, respectively. Despite having similar raw feature values in some cases, the relative importance
+assigned to each feature varies dramatically between the two layouts. Design 8277 shows elevated
+importance on multiple pin-related density features, suggesting that the layout suffers from excessive
+pin compaction and clustering. In contrast, Design 8243 is dominated by a single macro-level
+feature—macro_rudy_boundary_interaction_index—highlighting the positive influence of
+well-structured macro placement. These examples demonstrate that our model not only identifies
+which features matter most, but also how their importance is modulated by spatial context. This
+supports our broader goal of providing interpretable, design-aware guidance that generalizes across
+different physical design scenarios.
+
+
+
+
+Figure 6: Qualitative interpretation comparing Design 8277 and 8243. Left: Feature importance bar
+chart. Right: Root causes and actionable takeaways.
+
+
+
+                                                         9
+6   Limitation
+While our framework shows strong performance, several limitations remain. First, the current evalua-
+tion is limited to a RISC-V chip architectures and the CircuitNet dataset. Broader validation across
+different architectures and more diverse commercial designs is necessary for practical deployment.
+Second, our focus is confined to congestion prediction; extending the approach to other critical
+physical design objectives such as power, performance, area (PPA), IR drop, and timing closure
+remains an open direction.
+
+7   Conclusion
+We propose a multimodal LLM assistant for chip physical design that predicts congestion and
+provides interpretable guidance. By combining genetic prompting and preference-based explanation,
+our method delivers actionable design suggestions aligned with expert intuition. Experiments show
+state-of-the-art results on CircuitNet, and case studies confirm practical utility. Future work will
+expand to broader tasks and interactive, real-time, instruction-like design support.
+
+Acknowledgments and Disclosure of Funding
+
+References
+J. Blocklove, S. Garg, R. Karri, and H. Pearce. Chip-chat: Challenges and opportunities in con-
+   versational hardware design. In 2023 ACM/IEEE 5th Workshop on Machine Learning for CAD
+   (MLCAD), pages 1–6. IEEE, 2023.
+
+Z. Chai, Y. Zhao, W. Liu, Y. Lin, R. Wang, and R. Huang. Circuitnet: An open-source dataset for
+  machine learning in vlsi cad applications with improved domain-specific evaluation metric and
+  learning strategies. IEEE Transactions on Computer-Aided Design of Integrated Circuits and
+  Systems, 42(12):5034–5047, 2023.
+
+Y. Da Tsai and S. De Lin. Fast online inference for nonlinear contextual bandit based on generative
+   adversarial network. arXiv preprint arXiv:2202.08867, 2022.
+
+C. Deng, Y.-D. Tsai, G.-T. Liu, Z. Yu, and H. Ren. Scalertl: Scaling llms with reasoning data and
+  test-time compute for accurate rtl code generation. arXiv preprint arXiv:2506.05566, 2025.
+
+T. Gong, C. Lyu, S. Zhang, Y. Wang, M. Zheng, Q. Zhao, K. Liu, W. Zhang, P. Luo, and K. Chen.
+   Multimodal-gpt: A vision and language model for dialogue with humans. arXiv preprint
+   arXiv:2305.04790, 2023.
+
+P.-F. Guo, Y.-H. Chen, Y.-D. Tsai, and S.-D. Lin. Towards optimizing with large language models.
+   arXiv preprint arXiv:2310.05204, 2023.
+
+P.-F. Guo, Y.-D. Tsai, and S.-D. Lin. Benchmarking large language model uncertainty for prompt
+   optimization. arXiv preprint arXiv:2409.10044, 2024.
+
+P.-F. Guo, Y.-D. Tsai, and S.-D. Lin. Uncertainty profiles for llms: Uncertainty source decomposition
+   and adaptive model-metric selection. arXiv preprint arXiv:2505.07309, 2025.
+
+X. Jiang, Y. Zhao, Y. Lin, R. Wang, R. Huang, et al. Circuitnet 2.0: An advanced dataset for promoting
+  machine learning innovations in realistic chip design environment. In The Twelfth International
+  Conference on Learning Representations, 2023.
+
+F. Liawi, Y.-D. Tsai, G.-L. Lu, and S.-D. Lin. Psgtext: Stroke-guided scene text editing with psp
+   module. arXiv preprint arXiv:2310.13366, 2023.
+
+M. Liu, T.-D. Ene, R. Kirby, C. Cheng, N. Pinckney, R. Liang, J. Alben, H. Anand, S. Baner-
+ jee, I. Bayraktaroglu, et al. Chipnemo: Domain-adapted llms for chip design. arXiv preprint
+ arXiv:2311.00176, 2023.
+
+
+                                                 10
+M. Liu, Y.-D. Tsai, W. Zhou, and H. Ren. Craftrtl: High-quality synthetic data generation for verilog
+  code models with correct-by-construction non-textual representations and targeted code repair.
+  arXiv preprint arXiv:2409.12993, 2024.
+S. Majumdar, V. Noroozi, S. Narenthiran, A. Ficek, J. Balam, and B. Ginsburg. Genetic instruct:
+   Scaling up synthetic generation of coding instructions for large language models. arXiv preprint
+   arXiv:2407.21077, 2024.
+K. Min, S. Kwon, S.-Y. Lee, D. Kim, S. Park, and S. Kang. Clusternet: Routing congestion
+  prediction and optimization using netlist clustering and graph neural networks. In 2023 IEEE/ACM
+  International Conference on Computer Aided Design (ICCAD), pages 1–9. IEEE, 2023.
+N. Pinckney, C. Deng, C.-T. Ho, Y.-D. Tsai, M. Liu, W. Zhou, B. Khailany, and H. Ren. Comprehen-
+  sive verilog design problems: A next-generation benchmark dataset for evaluating large language
+  models and agents on rtl design and verification. arXiv preprint arXiv:2506.14074, 2025.
+T.-H. Tsai, Y.-D. Tsai, and S.-D. Lin. lil’hdoc: an algorithm for good arm identification under small
+   threshold gap. In Pacific-Asia Conference on Knowledge Discovery and Data Mining, pages 78–89.
+   Springer, 2024a.
+Y. Tsai, M. Liu, and H. Ren. Rtlfixer: Automatically fixing rtl syntax errors with large language
+  models. arXiv preprint arXiv:2311.16543, 2023a.
+Y.-D. Tsai. Generalizing large language model usability across resource-constrained. arXiv preprint
+   arXiv:2505.17040, 2025.
+Y.-D. Tsai and S.-D. Lin. Handling concept drift in non-stationary bandit through predicting future
+  rewards. In Z. Wang and C. W. Tan, editors, Trends and Applications in Knowledge Discovery and
+  Data Mining, pages 161–173, Singapore, 2024. Springer Nature Singapore. ISBN 978-981-97-
+  2650-9.
+Y.-D. Tsai, C. Chen, and S.-D. Lin. Toward an effective black-box adversarial attack on functional
+  javascript malware against commercial anti-virus. In Proceedings of the 30th ACM International
+  Conference on Information & Knowledge Management, pages 4165–4172, 2021.
+Y.-D. Tsai, T.-H. Tsai, and S.-D. Lin. Differential good arm identification. arXiv preprint
+  arXiv:2303.07154, 2023b.
+Y.-D. Tsai, Y.-C. Tsai, B.-W. Huang, C.-P. Yang, and S.-D. Lin. Automl-gpt: Large language model
+  for automl. arXiv preprint arXiv:2309.01125, 2023c.
+Y.-D. Tsai, C. Liow, Y. S. Siang, and S.-D. Lin. Toward more generalized malicious url detection
+  models. In Proceedings of the AAAI Conference on Artificial Intelligence, volume 38, pages
+  21628–21636, 2024b.
+Y.-D. Tsai, M. Liu, and H. Ren. Code less, align more: Efficient llm fine-tuning for code generation
+  with data pruning. arXiv preprint arXiv:2407.05040, 2024c.
+Y.-D. Tsai, T.-Y. Yen, P.-F. Guo, Z.-Y. Li, and S.-D. Lin. Text-centric alignment for multi-modality
+  learning. arXiv preprint arXiv:2402.08086, 2024d.
+Y.-D. Tsai, T.-Y. Yen, K.-T. Liao, and S.-D. Lin. Enhance modality robustness in text-centric
+  multimodal alignment with adversarial prompting. arXiv preprint arXiv:2408.09798, 2024e.
+H. Wang, W. Xiong, T. Xie, H. Zhao, and T. Zhang. Interpretable preferences via multi-objective
+  reward modeling and mixture-of-experts. In Findings of the Association for Computational
+  Linguistics: EMNLP 2024, pages 10582–10592, 2024.
+Y.-A. Wu, Y.-D. Tsai, and S.-D. Lin. Linearapt: An adaptive algorithm for the fixed-budget thresh-
+  olding linear bandit problem. arXiv preprint arXiv:2403.06230, 2024.
+H. Yang, A. Agnesina, and H. Ren. Optimizing predictive ai in physical design flows with mini
+  pixel batch gradient descent. In Proceedings of the 2024 ACM/IEEE International Symposium on
+  Machine Learning for CAD, pages 1–7, 2024.
+
+
+                                                 11
+Z. Yang, L. Li, J. Wang, K. Lin, E. Azarnasab, F. Ahmed, Z. Liu, C. Liu, M. Zeng, and L. Wang. Mm-
+   react: Prompting chatgpt for multimodal reasoning and action. arXiv preprint arXiv:2303.11381,
+   2023.
+Y. Yao, T. Yu, A. Zhang, C. Wang, J. Cui, H. Zhu, T. Cai, H. Li, W. Zhao, Z. He, et al. Minicpm-v: A
+   gpt-4v level mllm on your phone. arXiv preprint arXiv:2408.01800, 2024.
+T.-Y. Yen, Y.-D. Tsai, K.-T. Liao, and S.-D. Lin. Enhance the robustness of text-centric multimodal
+   alignments. arXiv preprint arXiv:2407.05036, 2024.
+M. Zhu, Y. Zhu, X. Liu, N. Liu, Z. Xu, C. Shen, Y. Peng, Z. Ou, F. Feng, and J. Tang. Mipha:
+ A comprehensive overhaul of multimodal assistant with small language models. arXiv preprint
+ arXiv:2403.06199, 2024.
+J. Zou, X. Wang, J. Guo, W. Liu, Q. Zhang, and C. Huang. Circuit as set of points. In Thirty-seventh
+   Conference on Neural Information Processing Systems, 2023.
+
+
+
+
+                                                12
+A    Automated Feature Generation and Feature Engineering Algorithm
+
+Algorithm 1 Automated Feature Generation and Feature Engineering
+Input: N : Number of automated iterations
+        k: Maximum size of feature pool
+        Finit : Initial set of hand-crafted features
+        D: Raw images of training data
+        L: Congestion levels of training data
+        Is : Sample images for the inputs of MLLMs
+        Pm : Probability of selecting mutation operation
+        Pop : Probability distribution over the operations {Mutation: Pm , Cross-Over: 1 − Pm }
+Output: Ftotal : Final feature pool, Etotal : Final feature extraction codes
+ 1: Initialize Fpool ← Finit ;
+ 2: Initialize Ecode ← CoderM LLM (Is , Fpool );
+ 3: for r ← 1 to N do
+ 4:     Initialize T ← {L};
+ 5:     for each feature extractor ϵi in Ecode do
+ 6:          T ← T ∪ ϵi (D);
+ 7:     end for
+ 8:     R ← Train a Random Forest Regressor with tabular features T ;
+ 9:     f ← Return the feature importance function in trained Random Forest Regressor R;
+10:     Fpool , Ecode ← F eatureSelector(Fpool , Ecode , f, min(k, len(Fpool )));
+11:     Sop ← Choose an operation from Pop ;
+12:     if Sop = Mutation then
+13:          M ← RankSensitveF ormula(Fpool , f );
+14:          Fparents ← Select parent features ⊂ Fpool from mutation probabilities M ;
+15:          Fnew ← M utatorM LLM (Is , Fparents );
+16:     else
+17:          Fnew ← CrossoverM LLM (Is , Fpool );
+18:     end if
+19:     Fnew ← DeduplicatorM LLM (Is , Fpool , Fnew );
+20:     Enew ← CoderM LLM (Is , Fnew );
+21:     Fpool ← Fpool ∪ Fnew ;
+22:     Ecode ← Ecode ∪ Enew ;
+23: end for
+24: Ftotal , Etotal ← Fpool , Ecode ;
+
+
+
+
+                                                13
+B    Evaluation Metric Definition
+Definition 1 (SSIM). The Structural Similarity Index Measure (SSIM) evaluates the perceptual
+similarity between two images based on luminance, contrast, and structural information. It is defined
+as:
+                                           (2µx µy + c1 )(σxy + c2 )
+                          SSIM(x, y) = 2                                  ,
+                                        (µx + µ2y + c1 )(σx2 + σy2 + c2 )
+where µ denotes the mean, σ 2 the variance, and σxy the covariance between prediction x and ground
+truth y. Constants c1 and c2 stabilize the denominator.
+
+
+
+
+Definition 2 (MSE, NRMSE, PeakNRMSE). The Mean Squared Error (MSE) is defined as:
+                                                      n
+                                                 1X
+                                  MSE(x, y) =          (xi − yi )2 .
+                                                 n i=1
+
+The Normalized Root Mean Square Error (NRMSE) scales the RMSE by the value range of the
+ground truth:
+                                                    1         p
+                        NRMSE(x, y) =                           MSE(x, y).
+                                          max(y) − min(y)
+The PeakNRMSE evaluates NRMSE restricted to the top-k largest entries of both x and y, emphasiz-
+ing high-congestion regions that are most critical in physical design.
+
+
+
+
+Definition 3 (Correlation-Based Metrics: PLCC, SRCC, KRCC). These metrics evaluate statistical
+and rank-order correlation between prediction x and ground truth y:
+
+      • PLCC (Pearson Linear Correlation Coefficient) measures linear correlation:
+                                                          Cov(x, y)
+                                         PLCC(x, y) =               ,
+                                                           σx σy
+         where Cov(x, y) is the covariance and σ is the standard deviation.
+      • SRCC (Spearman Rank-Order Correlation Coefficient) computes PLCC on the rank-
+        transformed values of x and y, capturing monotonic relationships.
+      • KRCC (Kendall Rank Correlation Coefficient) compares the number of concordant and
+        discordant pairs:
+                                                   nc − nd
+                                    KRCC(x, y) =      n
+                                                        ,
+                                                               2
+                                                                                         n
+                                                                                             
+         where nc and nd are the counts of concordant and discordant pairs among all     2       possible
+         pairs.
+
+
+
+
+                                                 14
+C    Feature Attribution Breakdown Across All Features
+To further examine the interpretability of the learned gating values, we analyze all 25 features used
+by the model. Figure 8 presents a comprehensive visualization, where each subplot corresponds to
+one feature.
+For each subplot:
+
+           • The x-axis denotes the raw feature value.
+           • The y-axis shows the corresponding gating weight assigned by the model.
+           • Each point is colored by its associated congestion score, with darker colors indicating higher
+             congestion.
+           • The left panel shows results from model predictions, and the right panel shows alignment
+             with ground-truth labels.
+
+Observation 1: Prediction-Label Alignment. Across most features, the gating weights show
+strong alignment between predicted and true congestion labels. This validates that the model is not
+only fitting the training objective, but that the learned preferences generalize to meaningful physical
+properties in actual designs.
+
+Observation 2: Unique Negative Attribution. Among all 25 features, only one —
+macro_rudy_boundary_interaction_index — consistently receives a negative gating weight.
+This aligns with earlier findings in Section 5.1, where this feature ranked highly (inversely) corre-
+lated with congestion. The model correctly assigns it a down-weighted preference, consistent with
+human-understandable design heuristics.
+
+Observation 3: Gating Weights Capture Context Beyond Feature Values. Notably, the spread
+of gating weights is often broader than that of feature values. In some features, the same value
+results in different gating weights across samples. This suggests that the model modulates importance
+dynamically based on context — likely derived from the input image, configuration tokens, or
+pretraining of the MLLM backbone. This further supports the idea that gating weights encode richer,
+more contextualized preference signals than raw features alone.
+
+                                                                     Preference Feature Importance
+                    0.6
+
+                    0.5
+
+                    0.4
+     Gating Value
+
+
+
+
+                    0.3
+
+                    0.2
+
+                    0.1
+
+                    0.0
+                                     io
+                          gth
+
+
+
+
+                                                ce
+
+
+                                                           n
+
+
+
+
+                                                                                        o
+                                                                  n
+
+                                                                           dy
+
+
+
+
+                                                                                                 tio
+
+
+                                                                                                          dy
+
+
+                                                                                                                     n
+
+
+                                                                                                                            y
+
+                                                                                                                                 ...
+                                                                                                                           rud
+                                                                                      ati
+                                                       _pi
+
+
+
+
+                                                                                                                   _pi
+                                                                    i
+                                   rat
+
+
+
+
+                                                                y_p
+                                             an
+
+
+
+
+                                                                           _ru
+
+
+
+
+                                                                                                       _ru
+                                                                                               _ra
+                     en
+
+
+
+
+                                                                                        _r
+                                                     dy
+
+
+
+
+                                                                                                                 dy
+
+
+                                                                                                                           R_
+                                   n_
+
+
+                                              t
+
+
+
+
+                                                               rud
+
+
+                                                                        std
+
+
+
+
+                                                                                                       an
+                                           dis
+
+
+
+
+                                                                                     dy
+
+
+                                                                                                ea
+             e_l
+
+
+
+
+                                                     _ru
+
+
+
+
+                                                                                                               _ru
+                               _pi
+
+
+
+
+                                                                                                                         PA
+                                                                                             _ar
+
+
+                                                                                                     me
+                                                                                 _ru
+                                          or_
+           dg
+
+
+
+
+                                                             R_
+                                                  std
+
+
+
+
+                                                                                                             an
+                            dy
+
+
+
+
+                                                           PA
+
+
+
+
+                                                                                         cro
+         e
+
+
+
+
+                                                                                  y
+                                        hb
+
+
+
+
+                                                                                                            me
+                              u
+
+
+
+
+                                                                              sit
+     ro_
+
+                          y_r
+
+                                     eig
+
+
+
+
+                                                                                       ma
+                                                                            en
+     ac
+
+                      sit
+
+
+                                      n
+
+
+
+
+                                                                         h_d
+  _m
+
+
+
+
+                                  ro_
+                en
+an
+
+
+
+
+                                                                        hig
+             h_d
+
+
+                                ac
+me
+
+
+
+
+                            _m
+       hig
+
+                           an
+                          me
+
+
+
+
+Figure 7: Bar plot showing the relative importance based on gating values from the preference
+features used for congestion prediction. The most influential feature is mean_macro_edge_length,
+significantly outweighing others. This suggests that macro-level spatial layout characteristics
+play a dominant role in determining congestion levels, followed by pin-density features such as
+high_density_rudy_pin_ratio and mean_macro_neighbor_distance.
+
+
+
+
+                                                                              15
+                 (a) Gating values vs. feature values, colored by predicted congestion.
+
+
+
+
+                (b) Gating values vs. feature values, colored by ground-truth congestion.
+Figure 8: Feature attribution breakdown across all 25 features. Each point represents a sample,
+colored by congestion score.
+
+
+                                                   16
+D       Detailed Ablation Study
+
+                                                         Table 5: Ablation Studies.
+(a) Ablation on feature generation pipeline methods.                                 (b) Ablation on interpretable features.
+Pipeline Variant
+                   PLCC ↑
+                            zero-riscy-a
+                              SRCC ↑ KRCC ↑    PLCC ↑
+                                                        zero-riscy-b
+                                                          SRCC ↑ KRCC ↑        Feature Source Modality        SSIM ↑   NRMSE ↓
+Crossover-Only      0.630     0.674   0.492     0.589     0.686   0.493
+Mutation-Only       0.353     0.485   0.348     0.469     0.462   0.314        Image-Based                    0.791        0.047
+Genetic Instruct    0.705     0.786   0.595     0.599     0.591   0.412        Log-Based                      0.764        0.052
+                                                                               Mixed (Image + Log)            0.789        0.046
+
+               (c) Ablation on conditional states.                                       (d) Ablation on loss functions.
+
+ Conditional Modality                         SSIM ↑      NRMSE ↓              Loss Variant                   SSIM ↑   NRMSE ↓
+ Features and Gating weights                                                   U-Net with text conditioning
+ - numerical format (MLP)                     0.787          0.047             - MSE                           0.791       0.047
+ - text format (T5 Encoder)                   0.791          0.047             - MPGD                          0.789       0.047
+                                                                               - MS-SSIM + L1                  0.762       0.079
+
+                                       (e) Ablation on congestion map generation modules.
+
+                                         Input Variant                          SSIM ↑     NRMSE ↓
+                                         U-Net                                   0.791        0.047
+                                         U-Net + CNN Highway                     0.792        0.048
+                                         U-Net + MLLM (trainable)                0.807        0.045
+
+
+
+E      Experiment Setup
+E.1      Training Setup
+
+All models are trained using the AdamW optimizer with mixed-precision (FP16) training enabled.
+Most experiments are conducted on 32 NVIDIA A100 GPUs, while some smaller-scale experiments
+and ablations are run on NVIDIA RTX A6000 GPUs. We train for 50 epochs with early stopping
+based on validation loss. The learning rate follows a linear warm-up over the first 500 steps and a
+cosine decay schedule thereafter. The dataset is split into 80% training, 10% validation, and 10%
+test. All reported results are based on the held-out test set. To ensure robustness, each experiment is
+repeated with three random seeds.
+
+E.2      Hyperparameters
+
+We set the initial learning rate to 1e-4 with weight decay of 0.01. The optimizer uses β1 = 0.9 and
+β2 = 0.999. The batch size is set to 4. We adopt MiniCPM-V-2_6 (Yao et al., 2024) as the backbone
+of our MLLM, where the visual encoder follows a SigLIP-like architecture. For the regression
+layer encoder, we use a linear layer appended to the backbone; for the gating layer, we use a ReLU
+MLP of 3 hidden layers with 1024 hidden units. The conditioning text descriptions for U-Net are
+encoded with a frozen T5 encoder model unless otherwise stated. Dropout of 0.1 is applied to all
+modality-specific encoders.
+
+E.3      Dataset Preprocessing
+
+We preprocess the CircuitNet dataset to construct aligned multimodal representations, including:
+(1) layout-based raster images (e.g., Macro Region, RUDY, and RUDY pin maps), (2) normalized
+tabular features extracted through code-driven analysis, and (3) optional configuration text describing
+design modules and target specifications. We partition the dataset into 80% training, 10% validation,
+and 10% test. All results reported are on held-out test samples. Additional augmentations include
+rotational invariance for layout images and controlled masking of tabular features to assess robustness.
+
+
+
+
+                                                                          17
+F   Complete List of Generated Feature Pool and Feature Engineering Details
+
+    Image-based Feature Pool (Appendix)
+
+     Feature Name                                Description
+
+     rudy_gradient_variability                   the variation in gradient changes across the rudy map indicating potential areas of abrupt routing
+                                                 demand shifts
+     clustered_macro_distance_std                the standard deviation of distances between clustered groups of macros
+     rudy_pin_clustering_coefficient             a measure of how many rudy pins cluster together relative to the total number of rudy pins
+     macro_density_gradient                      the change in macro density across the layout, impacting local congestion
+     macro_aspect_ratio_variance                 the variance in aspect ratios of macros, indicating potential alignment and spacing issues that may
+                                                 impact congestion
+     macro_compactness_index                     a measure of how closely packed the macros are, potentially affecting routing paths and congestion
+     rudy_pin_compaction_ratio                   the ratio of compacted rudy pin clusters to the total number of rudy pins, indicating areas with high
+                                                 potential routing conflicts
+     macro_variability_coefficient               a measure of the consistency in macro sizes and shapes relative to each other, potentially affecting
+                                                 congestion balance
+     macro_cluster_density_contrast              the contrast in density between clustered groups of macros and their surrounding layout areas,
+                                                 indicating potential localized congestion pressure
+     rudy_pin_distribution_kurtosis              a measure of the peakedness or flatness in the distribution of rudy pins across the layout
+     localized_rudy_variability_coefficient      variation in RUDY intensity within localized regions, indicating potential micro-level congestion
+                                                 fluctuations
+     macro_distribution_clarity_index            a measure of how distinct macro distributions are across the layout, indicating clarity in separation
+     rudy_direction_consistency_index            a measure of the uniformity in the directional flow of RUDY intensity
+     rudy_pin_area_masking_index                 the ratio of the area masked by rudy pin regions relative to the total layout
+     rudy_pin_gradient_convergence               a measure of how gradients in the rudy pin map converge into specific regions
+     rudy_deviation_effect_index                 the deviation of RUDY intensities from the mean, indicating areas of abnormal routing demand
+     demarcated_macro_proximity_index            proximity of macros to predefined boundary regions, potentially affecting congestion near edges
+     macro_surface_irregularity_index            the irregularity in macro surface shapes, which can impact routing paths
+     macro_rudy_boundary_interaction_index       interaction between macros and high RUDY regions, indicating potential congestion hotspots
+     pin_density_peak_contrast                   the contrast between peak pin density regions and their surroundings
+     rudy_pin_density_flux_index                 the rate of change in rudy pin density across the layout
+     high_density_rudy_ratio                     the ratio of areas with high RUDY intensity to the total layout area
+     high_density_rudy_pin_ratio                 the ratio of areas with high RUDY pin intensity to the total layout area
+
+
+
+
+Figure 9: Complete list of generated features used in our modeling pipeline. These capture spatial,
+statistical, and gradient-based properties derived from chip layout images.
+
+
+    Configuration and Log-derived Feature Pool
+
+     Feature Name                                Description
+     design_name                        Design identifier (e.g., RISCY-a), useful for tracking design variants.
+     number_of_macros                   Total number of macros in the design, affecting placement complexity.
+     clock_frequency                    Operating frequency (e.g., 200MHz), indicating timing pressure that may affect place-
+                                        ment/routing.
+     utilization                        Target utilization (e.g., 70%), influencing available routing resources.
+     macro_placement                    Macro placement strategy or group count, impacting layout structure.
+     power_mesh_setting                 Power mesh granularity (e.g., 8), which may influence routing congestion and IR-drop
+                                        safety margins.
+     filler_insertion                   Stage of filler insertion (e.g., after placement), potentially affecting congestion distri-
+                                        bution.
+     initial_placement_efficiency       Efficiency of macro and cell placement before routing begins.
+     instance_blockages_count           Number of instance blockages, reflecting routing resource obstruction from macro/cell
+                                        placement.
+     hard_to_access_pins_ratio          Proportion of pins difficult to route due to placement or geometry constraints.
+     pin_density_variance_map           Variance in pin density across layout regions, highlighting routing hotspots.
+     multi_layer_pin_access_variability Variation in pin accessibility across metal layers, indicating routing complexity.
+     non_default_routing_rule_usage     Frequency of non-default routing rules (if known from constraints or synthesis config).
+     crosstalk_sensitive_zones          Areas near critical nets where routing rules must prevent signal interference.
+
+
+
+Figure 10: Complete list of configuration- and log-derived features used in our modeling pipeline.
+These include routing and congestion-related metrics obtained from the global placement and routing
+stages, as well as features generated by our own pipeline. They collectively capture layout-level
+difficulty indicators relevant for congestion prediction.
+
+
+
+
+                                                                   18
+   Feature Extraction Code Example: Macro Density Gradient
+
+   def m a c r o _ d e n s i t y _ g r a d i e n t ( images ) :
+       tiles_size = 2.25
+       macro_image = images [0]
+       rudy_image = images [1]
+       rud y_pin_ image = images [2]
+
+         image_height , image_width = macro_image . shape
+         t o t a l _ i m a g e _ a r e a = image_width * image_height
+
+         # Convert macro image to binary [0 , 255]
+         macro_image = np . uint8 ( macro_image * 255)
+         _ , binary_image = cv2 . threshold ( macro_image , 127 , 255 , cv2 . THRESH_BINARY )
+
+         # Find contours to get macro regions
+         contours , _ = cv2 . findContours ( binary_image , cv2 . RETR_EXTERNAL , cv2 .
+              CHAIN_APPROX_SIMPLE )
+
+         # Calculate macro density per region
+         macro_density = np . zeros (( image_height , image_width ) )
+         for contour in contours :
+             mask = np . zeros_like ( binary_image )
+             cv2 . drawContours ( mask , [ contour ] , -1 , 255 , thickness = cv2 . FILLED )
+             macro_density += mask
+
+         # Gradient of the macro density
+         gradient_x = cv2 . Sobel ( macro_density , cv2 . CV_64F , 1 , 0 , ksize =5)
+         gradient_y = cv2 . Sobel ( macro_density , cv2 . CV_64F , 0 , 1 , ksize =5)
+
+         # Calculate the magnitude of gradients
+         g r a d i e n t _ m a g n i t u d e = cv2 . magnitude ( gradient_x , gradient_y )
+
+         # Calculate the average gradient magnitude in micrometers
+         m a c r o _ d e n s i t y _ g r a d i e n t _ u m = np . sum ( g r a d i e n t _ m a g n i t u d e ) / ( image_height *
+                  image_width )
+         m a c r o _ d e n s i t y _ g r a d i e n t _ u m *= tiles_size # Convert to micrometers
+
+         return { " m a c r o _ d e n s i t y _ g r a d i e n t " : m a c r o _ d e n s i t y _ g r a d i e n t _ u m }
+
+
+
+
+Figure 11: Python implementation of the macro_density_gradient feature extractor. This func-
+tion computes the average gradient magnitude of macro cell density across a chip layout image,
+offering a scalar representation of spatial density variation in micrometers.
+
+
+
+
+   Feature Extraction Code Example: High Density Rudy Ratio
+
+   def h i g h _ d e n s i t y _ r u d y _ r a t i o ( images ) :
+       image = images [1]
+       total_area = image . shape [0] * image . shape [1]
+       mean_rudy = np . mean ( image )
+       h i g h _ d e n s i t y _ r u d y _ r a t i o = ( image > mean_rudy ) . sum () /                       total_area
+
+         return {
+             " h i g h _ d e n s i t y _ r u d y _ r a t i o " : high_density_rudy_ratio ,
+         }
+
+
+
+
+Figure 12: Python implementation of the high_density_rudy_ratio feature extractor. This
+function computes the average gradient magnitude of macro cell density across a chip layout image,
+offering a scalar representation of spatial density variation in micrometers.
+
+
+
+
+                                                                          19
+
