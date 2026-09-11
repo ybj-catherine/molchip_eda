@@ -1,0 +1,612 @@
+                                  2026 Design, Automation & Test in Europe Conference (DATE 2026)
+
+
+
+
+             CHIP-MAP: A Collaborative Optimization
+           Framework for Macro Placement Using Large
+                       Language Models
+          Yiming Du1,∗                     RenYe Yan1,∗                    yunfan yang1                       Frank Qu2                      Jiajun Tan1
+  yimingdu@stu.ahu.edu.cn victory@stu.pku.edu.cn yangfanfan@pku.edu.cn zhengqu.ece@gmail.com javin@stu.ahu.edu.cn
+
+         ZhiYu Zheng4                      Yiming Gan3                LING LIANG1,‡                     Zongwei Wang1                      YiMao Cai1,‡
+zyzheng24@m.fudan.edu.cn ganyiming@ict.ac.cn lingliang@pku.edu.cn wangzongwei@pku.edu.cn caiyimao@pku.edu.cn
+
+1
+    School of Integrated Circuits, Beijing Advanced Innovation Center for Integrated Circuits, Peking University, Beijing, China
+            2
+              Department of Electrical and Computer Engineering, University of California, Santa Barbara, CA, USA
+                         3
+                           Institute of Computing Technology, Chinese Academy of Sciences, Beijing, China
+                    4
+                      State Key Laboratory of Integrated Chip and System, Fudan University, Shanghai, China
+
+
+   Abstract—As integrated circuits continue to grow in both scale                  While existing automated placement methods can generate rea-
+and complexity, macro placement plays a critical role in physical                  sonable layouts, there are still bottlenecks in further optimizing
+design, directly affecting chip-level performance, power, and area                 PPA performance. Therefore, proposing a novel optimization
+(PPA). Traditional macro placement methods, such as simulated
+annealing, analytical optimization, and reinforcement learning,                    method that can effectively improve macro placement PPA
+face limitations including slow convergence, heavy dependence on                   performance has become a key issue that needs to be addressed.
+large datasets, and over-reliance on intermediate PPA indicators                      Existing macro placement methods primarily include black-
+rather than final PPA. Large language models (LLMs) offer strong
+                                                                                   box optimization, analytical methods, and reinforcement learn-
+generative power and semantic reasoning that can potentially
+automate macro layout tasks while addressing the aforementioned                    ing techniques. Black-box optimization methods, such as Sim-
+problems in traditional methods, but their limited understanding                   ulated Annealing (SA) [7], treat the placement task as a com-
+of layout rules and lack of iterative, feedback-driven refinement                  binatorial search guided by a heuristic cost function. Although
+make direct application challenging. To address this, we propose                   simple and widely used, they often converge slowly and are
+CHIP-MAP, a macro placement framework based on multi-agent
+                                                                                   not well suited for larger or more complex designs. Analytical
+collaboration and feedback-driven optimization. Furthermore, we
+introduce two innovative tools: the Module Link Weight Analyzer                    methods, such as DREAMPlace [8], express placement ob-
+(MWA) and the Standard Cell Usability Score (SCUS), which                          jectives (e.g., wirelength, density) as differentiable functions,
+are designed to guide fine-grained layout refinement. We evaluate                  enabling the optimization of layout quality. However, these
+CHIP-MAP on five benchmarks ranging from low-power cores                           methods are prone to getting stuck in local optimal and may
+to large multi-core processors implemented at 130nm and 45nm
+                                                                                   overlook non-differentiable design constraints. Reinforcement
+technology nodes. Results show that it achieves up to 1.5% area
+reduction and an average repair of 61.6% of total negative slack                   learning methods, such as ChiPFormer [9], provide a data-
+(TNS), while also reducing wirelength and improving timing.                        driven perspective by learning placement strategies from his-
+   Index Terms—Electronic design automation; Macro Placement;                      torical chip layouts. While they have potential in sequential
+Large language models; physical design.                                            decision-making, these methods heavily rely on large labeled
+                                                                                   datasets and proxy objectives (e.g., macro HPWL) that correlate
+                            I. I NTRODUCTION                                       poorly with final PPA metrics. Furthermore, they typically lack
+   Macro placement plays a critical role in modern digital chip                    effective feedback mechanisms for iterative improvement.
+design, directly affecting the chip’s performance, power, and                         The integration of LLMs into EDA provides new possibilities
+area (PPA). As technology nodes continue to advance, the                           for addressing these challenges. Recent studies [10] highlight
+complexity of design and constraints increases, making macro                       how LLMs enhance design efficiency by extracting insights
+placement optimization an increasingly challenging task [1]–                       from complex datasets and automating iterative design pro-
+[6]. In traditional industrial practice, macro placement often re-                 cesses. However, directly applying LLMs to macro placement
+lies on manual efforts that are heavily experience-driven, which                   remains difficult: they fail to accurately interpret physical
+makes the process time-consuming and difficult to generalize.                      design constraints, resulting in illegal layouts or poor area
+                                                                                   utilization; they lack domain-specific knowledge and struggle
+    * Equal Contribution   ‡ Corresponding Author
+                                                                                   to iteratively refine solutions based on layout feedback.
+  Beijing Natural Science Foundation (L223004), National Natural Science
+Foundation of China (62341407, 62322401, U24B20166, 62495102), in part                To address these limitations, we propose CHIP-MAP, a hier-
+by the ‘111’ Project (B18001)                                                      archical multi-agent framework that integrates LLMs for macro
+
+
+
+
+                                                                                                        978-3-9826741-1-7/DATE26/© 2026 EDAA
+      Authorized licensed use limited to: Shanghai Jiaotong University. Downloaded on September 10,2026 at 12:07:20 UTC from IEEE Xplore. Restrictions apply.
+placement optimization. This framework translates physical                               Common failures of existing LLMS in macro layout
+constraints into LLM-interpretable representations and itera-
+tively refines macro placement through multi-agent evaluation                        (a) Lack of understanding of physical design constraints
+and feedback. The contributions of this paper are as follows:
+                                                                                                                                         CORE_AREA=1150 1150
+   • We proposed the CHIP-MAP framework, a closed-loop                                                                                   MACRO_PLACE_HALO = 10 10
+                                                                                                                                         …..
+      macro placement optimization system based on multi-
+      agent collaboration that leverages large language models
+                                                                                                       CORE_AREA=1100 1100                                   CORE_AREA=1150 1150
+      to enhance overall coordination and iterative refinement in                                      MACRO_PLACE_HALO = 10 10                              MACRO_PLACE_HALO =?
+                                                                                                       …..                                                   …..
+      the physical design process.
+   • We propose a novel constraint-structuring and adaptive
+      grouping mechanism. It leverages LLM reasoning to make
+      macro classification and complex constraint interpretation
+      more effective in physical design.                                                                      Beyond layout boundary                         Overlap between macros
+   • We developed the Module Link Weight Analyzer (MWA)
+                                                                                     (b) Irregular layout and low utilization
+      and Standard Cell Usability Score (SCUS) to guide
+      feedback-driven macro placement refinement.
+                                                                                                                                             standard cell
+   • We conducted experiments on multiple industrial-scale de-                                                                                   area
+
+
+      sign cases, and the results show that our method achieved
+      up to a 1.5% reduction in layout area and significantly                                                                                standard cell
+                                                                                                                                                 area
+      improved timing performance, with an average repair of
+      61.6% of the total negative timing slack (TNS).
+                                                                                                                                       standard cell area
+                         II. R ELATED W ORK                                                          Cannot place macro            The standard cell               The signal flow is
+                                                                                                        around core                area is irregular                  incorrect
+   LLMs have recently shown strong potential in physical
+design optimization, particularly in macro placement tasks,                          (c) Lack of layout quality assessment ability
+where they use natural language instructions and advanced
+                                                                                                                                             Suggestion:
+generative capabilities for design automation. ChatPattern [11]                                standard cell
+                                                                                                   area
+                                                                                                                                             1. Rotate the macro
+enables flexible layout pattern creation through natural lan-                                                                                2. The standard unit area is inconsistent
+
+guage interaction; LayoutCopilot [12] translates high-level de-
+sign intent into executable commands; and LayoutLLM [13]                                 standard cell area
+
+
+employs layout-aware pretraining to better understand hierar-                                                                                        Pass!
+chical layout structures. For macro placement optimization,                      Fig. 1: Comparison between LLM-based and human engi-
+LLMs combine high-level constraints with reinforcement learn-                    neer approaches in macro layout design. The figure illustrates
+ing strategies. In standard cell implementation, Ho et al. [15]                  common limitations when LLMs attempt macro placement
+achieved 19.4% cell area reduction and 23.5% improvement in                      compared to experienced human engineers.
+LVS/DRC-clean layouts.
+                          III. M OTIVATION                                       B. Irregular Layout and Low Area Utilization
+   Although large language models (LLMs) have shown                                LLMs often fail to place macros efficiently around the core
+promise in electronic design automation (EDA), their direct                      region, leading to irregular layouts and low area utilization. As
+application to macro placement remains challenging. Our pre-                     shown in Fig. 1(b), generated layouts typically contain large
+liminary evaluation shows that LLMs can generate layouts                         unused spaces and fragmented standard cell regions. In contrast,
+that satisfy basic alignment and spacing rules, indicating their                 human designers leverage design experience and signal flow
+potential as high-level design assistants. However, these lay-                   considerations to achieve compact and balanced layouts. The
+outs still exhibit critical deficiencies that limit their practical              absence of such structured reasoning results in suboptimal
+usability in real-world macro placement tasks.                                   macro arrangements that degrade PPA performance.
+A. Limited Understanding of Physical Design Constraints
+                                                                                 C. Lack of Layout Quality Evaluation and Refinement
+   LLMs struggle to correctly interpret physical design con-
+straints specified in EDA files such as LEF, LIB, and SDC. As                       LLMs lack an integrated layout quality assessment mecha-
+illustrated in Fig. 1(a), key parameters (e.g., CORE AREA and                    nism to identify and correct critical issues such as component
+MACRO PLACE HALO) are often misinterpreted, resulting                            misalignment, inconsistencies in standard cell regions, or rout-
+in macros placed outside the core or overlapping with each                       ing congestion. As illustrated in Fig. 1(c), their layouts are often
+other. Unlike human designers, who can quickly reason about                      labeled as Pass without detailed checks. In contrast, human
+constraints and adjust placements accordingly, LLMs lack such                    designers iteratively refine layouts by identifying and fixing
+domain-specific understanding, making their layouts infeasible                   defects to meet PPA requirements. Without such feedback and
+for practical design.                                                            optimization, LLMs cannot ensure design quality.
+
+
+
+
+    Authorized licensed use limited to: Shanghai Jiaotong University. Downloaded on September 10,2026 at 12:07:20 UTC from IEEE Xplore. Restrictions apply.
+  Step1:Extract design information
+                                                                                                                                Step3:Generate initial                                                      Step4:Validate and adjust
+                                                                    Step2:Macro Grouping
+                                                                                                                                       layout
+                                                                                                                    Final Group
+                                            Group agent:Macro grouping thought chain
+                                                              Step2.1:Semantic Analysis
+
+
+
+                                           ALU                          SRAM                    Instruction Cache
+                                          Compute                       Storage                      Control                                                                                                           Evaluation
+                                          Module                        Module                       Module
+                                                                                                                               Final group-guided layout
+                                                             Step2.2:Strategy Exploration                                       Tool1:
+                                                                                                                                MWA                                                                                                      Tool 2:SCUS
+
+
+
+
+                                                                                                                                                                         Poor standard cell continuity
+                                                                                                           group1
+                                                                                                                                                                                                                                 Layout scoring system
+                                        group1       group2            group3                              group2
+                                                                                                                                                                                                             Fail                                  Pass
+                                                 Functional grouping                      Time domain grouping
+                                                                 Step2.3:Cluster Decision                                        MWA -guided layout                                                          Suggestions
+                                                                                                                                                 DRC
+                                                                 group1
+
+                                                                 group2         group1       group2        group3
+       Structured data                                                                                                                               Layout
+                                           Time domain grouping                          Functional grouping
+                                                                                                                                                                     Layout
+                                     Structured data                                            Grouped Specification
+          Analysis Agent                                                  Group Agent                                               Floorplan Agent                                                                 Verification Agent
+                                                                                                                                                                Suggestions
+
+Fig. 2: Overview of the CHIP-MAP framework. The process consists of four stages: extracting structured design data, performing
+semantic macro grouping, generating an initial layout guided by MWA, and validating the result with SCUS scoring.
+   Overall, these observations indicate that while LLMs can                                                         structured representation not only preserves design semantics
+generate preliminary macro layouts, they lack the domain                                                            but also provides reliable input for subsequent optimization.
+knowledge and iterative optimization capability required for                                                           Group Agent: To address the issues of low area utilization
+practical macro placement. This motivates the need for a                                                            and disrupted signal flow in LLM-generated layouts, the Group
+framework that combines LLM-based generation with targeted                                                          Agent performs semantic clustering of macros based on Chain-
+optimization and feedback to produce high-quality, manufac-                                                         of-Thought reasoning. It first receives structured design data
+turable layouts.                                                                                                    from the Analysis Agent and classifies macros according to
+                                                                                                                    their functional roles, such as grouping ALU as compute mod-
+                      IV. F RAMEWORK O F CHIP-MAP                                                                   ules and instruction cache as control modules. The Group Agent
+A. Overview of The CHIP-MAP                                                                                         then generates and compares different grouping strategies: a
+                                                                                                                    function-driven strategy clusters macros with similar functions
+   We propose CHIP-MAP, a multi-agent collaborative frame-
+                                                                                                                    and high constraint correlation to improve area utilization,
+work that systematically integrates design understanding, log-
+                                                                                                                    while a timing-driven strategy places macros on critical timing
+ical grouping, layout optimization, and iterative quality eval-
+                                                                                                                    paths closer together to reduce wirelength and delay. Finally,
+uation. As shown in Fig. 2, CHIP-MAP consists of four
+                                                                                                                    through step-by-step reasoning, the Group Agent selects the
+specialized agents: Analysis Agent, Group Agent, Floorplan
+                                                                                                                    optimal grouping scheme and outputs the final group assign-
+Agent, and Verification Agent. These agents work together in
+                                                                                                                    ments together with the structured design data in JSON format,
+a closed-loop process to refine macro placement quality.
+                                                                                                                    which are passed to the next agent for further processing.
+   Analysis Agent: To address the challenge of large language
+models in understanding physical design rules and constraints,                                                         Floorplan Agent: After receiving the structured grouping
+we introduce the Analysis Agent as the first step of the                                                            information, the Floorplan Agent generates the initial macro
+framework. As shown in Fig. 3, this agent receives the input                                                        layout. At first, the macros are placed in a random initial-
+EDA files (LEF, LIB, and SDC). Since the original Verilog                                                           ization. To refine placement, the Floorplan Agent leverages
+netlist is too large and directly inputting it into the LLM would                                                   the connectivity weights generated by MWA to determine
+exceed the context length, we employ script-based automatic                                                         the positions of modules both within and between groups.
+extraction: the Verilog source is parsed to obtain module
+definitions, instantiation relationships, and port connections.                                                                              Input                   Extract                             Macro Specifications
+Based on this information, a module hierarchy tree and a critical                                                                                                                                        Hierarchical Structure
+                                                                                                                                                                                                         Placement Constraints                Spec List
+connection summary are constructed, enabling the LLM to                                                                         EDA files            Analysis                                            Optimization Goals
+better capture the design structure and timing relationships.
+   Subsequently, the Analysis Agent parses the input data                                                                            A                                                                                              Output
+                                                                                                                                B        C                                                               Information integration
+and transforms it into structured representation according to
+a predefined Spec List: macro information captures size and                                                                D        E        F
+                                                                                                                        Hierarchy + Connections            Netlist                                                                          Structured data
+orientation constraints, hierarchical data describe module de-
+pendencies, physical rules encode placement restrictions, and                                                       Fig. 3: Analysis Agent workflow: Transform complex design
+design objectives map to timing and area requirements. This                                                         information into structured and organized data.
+
+
+
+
+    Authorized licensed use limited to: Shanghai Jiaotong University. Downloaded on September 10,2026 at 12:07:20 UTC from IEEE Xplore. Restrictions apply.
+  Prompt:                                                                                            Integration of Human Expertise: In the Verification Agent,
+  “Summarize the [Task Objective] from the [Source Artifacts] with the [Agent Notes].             we integrate human expertise on layout strategies to gener-
+  Respond in JSON following the [Output].”
+                                                                                                  ate targeted optimization suggestions. The Layout Experience
+  Analysis Agent                                                                                  Manual consolidates years of practical experience and heuristic
+  [Task Objective]: Extract structured constraints such as macro sizes, pins, orientation         rules from the chip design community, academic resources,
+  restrictions, macro halo, clock domains, and layout dimensions…
+  [Source Artifacts]: The information extracted from the netlist, LEF, LIB,SDC.                   and textbooks, encoding them as: (i) design rules and check-
+  [Agent Notes]:The macro orientation format is {R0,R90,R180,R270,MX,MY}…                         lists (spacing, channel width, macro orientation, power/clock
+  [Output]:{"core_area": [1150.0, 1150.0], " die_area": [1200.0, 1200.0],
+  "macro_constraints": [{"name": “Macro1", "size": [128.5, 64.2], " orientation_restrictions":    alignment, etc.); (ii) strategies for congestion and timing issues
+  ["R0", "R180", "MY"]…}                                                                          (buffering, routing, blockage handling); (iii) templates that con-
+  Group Agent                                                                                     vert expert knowledge into verifiable constraints. The agent uses
+  [Task Objective]: Classify each macro by functional characteristics, generate multiple          this knowledge to evaluate floorplans and make deterministic
+  grouping strategies, and select the optimal strategy for downstream placement.
+  [Source Artifacts]: Analysis Agent Output.
+                                                                                                  decisions based on process specifications and SCUS scores.
+  [Agent Notes]:Follow three-step process: (1) classify each macro by type and
+  characteristics; (2) generate functional and timing-based grouping strategies with reasoning;   B. Tools for Guidance and Placement Assessment
+  (3) select optimal strategy based on area utilization benefits.
+  [Output]:{"classification":{"Macro1":"Storage","Macro2":"Compute","..."}," strategies":{
+                                                                                                     We designed a Dual-Tool Framework consisting of the MWA
+  "functional":{"groups":[{"macros":["Macro2","Macro3","..."]},"..."],"reasoning":“[]"},"timi     and the SCUS to support and enhance the chip layout process.
+  ng":{"groups":[{"macros":["Macro2","Macro4","..."]},"..."],"reasoning":“[]"},"..."}," selecti
+  on":{"strategy":"functional","final_groups":[{"id":"group1","macros":["Macro2","Macro3",
+                                                                                                     Module Link Weight Analyzer (MWA): MWA quantifies
+  "..."]},"..."]}}                                                                                the proximity priority between any two macro modules A
+                                                                                                  and B during placement. It constructs a sequential graph with
+  Floorplan Agent
+  [Task Objective]: Generate macro coordinates using MWA connectivity weights, ensure             flip-flops, macro units, and I/O pins as nodes, and traverses
+  DRC compliance, and iteratively optimize layout based on verification feedback.                 directed combinational logic paths using a breadth-first search
+  [Source Artifacts]: Group Agent Output, Verification Agent feedback (suggestions),
+  MWA.                                                                                            algorithm. For each path, MWA computes the register hop
+  [Agent Notes]:Use MWA to prioritize highly connected macro pairs for proximity                  count and signal bitwidth, and applies an exponential decay
+  placement. Ensure no overlaps, respect halo boundaries. Apply verification suggestions for
+  edge alignment and gap optimization.                                                            factor to penalize longer and indirect connections. The resulting
+  [Output]: {macro1 MY 100 200;macro2 R0 52 64…}
+                                                                                                  connection weights guide the Floorplan Agent to place strongly
+  Verification Agent                                                                              connected macro pairs closer together, reducing critical path
+  [Task Objective]: Evaluate layout quality using SCUS metrics, detect continuity and             delay and improving layout efficiency. In this work, we adopt
+  alignment issues, generate optimization suggestions, and determine convergence status for       a method similar to [19] and define the MWA formula as:
+  iterative refinement.                                                                                                              |p|
+  [Source Artifacts]: Floorplan Agent coordinates, Layout Experience Manual,SCUS.                                             X      X   bitwidth(si )
+  [Agent Notes]:Calculate SCUS score considering continuity and compactness. Detect                            W (A, B) =                                        (1)
+  issues like poor standard cell continuity, excessive gaps, misalignment. Generate structured                                                2i
+                                                                                                                            p∈P (A,B) i=1
+  suggestions with target areas for improvement.
+  [Output]:{"scus_score":0.8877,"layout_quality":"PASS"," issues_detected":[],"suggestio
+                                                                                                  where P (A, B) is the set of signal paths from module A to
+  ns":[{"action":"increase_macro_edge_alignment","target_area":"upper_right_vacant"}]," co        B, including direct and indirect connections; |p| is the number
+  nvergence_achieved":true…}
+                                                                                                  of register hops in path p; i denotes the position of the i-th
+                                                                                                  signal segment in the path; bitwidth(si ) is the width of signal
+Fig. 4: CHIP-MAP Multi-Agent Prompt Engineering Frame-
+                                                                                                  segment si ; and dividing by 2i penalizes longer paths so that
+work. Each agent card shows the standardized prompt structure.
+                                                                                                  closer modules receive higher weights. Paths with hop count
+The four agents form a sequential workflow from constraint
+                                                                                                  exceeding 4 are discarded.
+extraction to layout optimization.
+                                                                                                     Standard Cell Usability Score (SCUS): SCUS is a metric
+Modules with higher intragroup connectivity are placed in                                         for evaluating layout quality by balancing connectivity and
+compact and regular patterns (e.g., an m × n matrix), while                                       compactness. Based on the macro coordinates generated by
+the relative positions between groups are determined by their                                     the Floorplan Agent, SCUS computes the size of the largest
+overall connectivity strength. Meanwhile, the Floorplan Agent                                     contiguous standard cell region and the effective usable stan-
+also considers physical constraints from the structured data,                                     dard cell area. These factors are combined into a numerical
+including minimum spacing, halo boundaries, and I/O interface                                     score that reflects area utilization quality. The score is used
+locations. Finally, when the preliminary layout is completed,                                     as feedback to guide further layout optimization. The SCUS
+the layout coordinates after performing the Design Rule Check                                     formula is defined as follows:                   
+(DRC) are provided as input to the next agent.                                                                                                     Anotch
+                                                                                                             Cfinal = α · max |R| + β · 1 −                      (2)
+   Verification Agent: The Verification Agent evaluates the                                                               R∈R                      Atotal
+layout using the SCUS, which measures the continuity and                                             Where maxR∈R |R| represents the size of the largest con-
+compactness of the remaining standard cell regions. If the                                        nected and uninterrupted standard cell region in the layout.
+SCUS score decreases compared to the previous iteration or                                        Anotch denotes the area of irregular gaps (commonly referred
+design rule violations are detected, the Verification Agent                                       to as notches) left between macros. These regions are unusable
+refers to the Layout Experience manual to generate targeted                                       for standard cell placement, fragment the layout into smaller
+optimization suggestions and feeds them back to the Floorplan                                     disconnected areas, and may increase routing congestion. Atotal
+Agent for updates. The feedback cycle is executed up to three                                     is the total chip area including both macros and standard cells.
+rounds until the SCUS score is maximized and all design rules                                     The weighting factors α and β balance the importance of
+are satisfied, ensuring the final layout reaches its optimal state.                               connectivity and compactness in the final score.
+
+
+
+
+     Authorized licensed use limited to: Shanghai Jiaotong University. Downloaded on September 10,2026 at 12:07:20 UTC from IEEE Xplore. Restrictions apply.
+      TABLE I: EXPERIMENTAL RESULTS COMPARING LLM-BASED PLACEMENT AND BASELINE METHODS
+                                            Dens.   Freq.                                                        Power     WL       Area                   Time
+ Name            Tech    #Macros   #Cells                   Method                      Timing (ps)      cong.                               DRC    NVP
+                                            (%)      (ns)                                                        (mW)     (µm)     (µm2 )                  (min)
+                                                                                         TNS     WNS
+                                                            CHIP-MAP(GPT-4o)            -60.25   -1.56   0.356    241    8145856    810234   545     521   5.6
+                                                            CHIP-MAP(Deepseek-R1)       -61.28   -1.58   0.355    241    8193282    810548   566     520   7.2
+                                                            OpenROAD                    -71.88   -1.96   0.360    246    8209505    810360   825     541    28
+ Black Parrot    45nm    220       1024k     68      3      SA                         -165.72   -1.90   0.385    248    8775993    813755   1253    552    —
+                                                            DREAMPlace                 -198.21   -1.88   0.385    244    8914932    813703   1352    605    —
+                                                            ChiPFormer                 -463.36   -1.75   0.392    250    8993077    816983   2035   1687    —
+                                                            CHIP-MAP(GPT-4o)          -3053.54   -1.28   0.225    541    6782462    783253    0     3123   3.6
+                                                            CHIP-MAP(Deepseek-R1)     -2996.20   -1.21   0.206    541    6772743    783426    0     3232   4.2
+                                                            OpenROAD                  -3204.87   -1.32   0.249    550    7176803    792446    0     3468   5.1
+ Ariane136       45nm    136       151k      68      2      SA                        -4116.46   -1.71   0.252    574    7296870    792731    0     3662    —
+                                                            DREAMPlace                -3293.09   -1.38   0.232    574    6885717    792608    0     3581    —
+                                                            ChiPFormer                -3266.36   -1.34   0.232    563    6705656    789664    0     5521    —
+                                                            CHIP-MAP(GPT-4o)           -515.07   -0.63   0.321    620    4008348    673169   103    1172   3.4
+                                                            CHIP-MAP(Deepseek-R1)      -569.54   -0.72   0.334    622    4014585    672647   112    1168   3.8
+                                                            OpenROAD                   -751.62   -0.98   0.342    627    4015115    675207   147    1531   4.2
+ Swerv wrapper   45nm    28        98k       65      2      SA                         -880.45   -1.20   0.455    682    5313519    679744   152    1789    —
+                                                            DREAMPlace                 -640.11   -0.89   0.375    666    4631643    675207   137    1165    —
+                                                            ChiPFormer                 -843.14   -1.08   0.440    684    5144218    679744   149    1756    —
+                                                            CHIP-MAP(GPT-4o)             -1.72   -0.02     0      880    1515861    236835    0      29    3.2
+                                                            CHIP-MAP(Deepseek-R1)        -1.93   -0.02     0      891    1535475    237412    0      32    3.4
+                                                            OpenROAD                     -2.22   -0.03     0      881    1559775    237956    0      38    0.04
+ Chameleon       130nm   6         72k       50      7      SA                           -3.12   -0.04     0      882    1569845    238401    0      32     —
+                                                            DREAMPlace                   -2.56   -0.03     0      892    1565845    238401    0      29     —
+                                                            ChiPFormer                   -3.62   -0.04     0      882    1584586    238401    0      37     —
+                                                            CHIP-MAP(GPT-4o)              0.00    0.00     0      101    9413645   4901578    0      32    3.2
+                                                            CHIP-MAP(Deepseek-R1)         0.00    0.00     0      103    9511663   4943464    0      36    3.6
+                                                            OpenROAD                     -0.37   -0.07     0      103    9612127   4962674    0      38    0.1
+ Microwatt       130nm   6         67k       50      15     SA                           -0.48   -0.05     0      104    9645845   4951578    0      40     —
+                                                            DREAMPlace                   -0.56   -0.07     0      103    9624545   4943464    0      39     —
+                                                            ChiPFormer                   -0.52   -0.06     0      104    9686447   4975851    0      39     —
+
+C. Prompt Structured Multi Agent Orchestration                                   Microwatt, and Chameleon. The benchmarks range from small
+   As illustrated in Fig. 4, CHIP-MAP adopts a prompt-                           designs such as Microwatt (6 macros, 67k cells) to complex
+structured collaborative framework that coordinates multiple                     processors like BlackParrot (220 macros, over 1M cells), pro-
+specialized agents in a closed loop. As illustrated in Fig. 3,                   viding comprehensive evaluation coverage.
+the coordination layer defines standardized inputs and outputs,                  B. Benchmark Comparison of Baseline Macro Placement Al-
+enabling each agent to operate under a unified scheme and                        gorithms
+exchange information in a machine-executable format. The
+                                                                                    Following the evaluation framework of Wang et al. [20], we
+entire workflow, from EDA file ingestion to layout gener-
+                                                                                 performed an end-to-end evaluation of five macropositioning
+ation and verification, is represented in JSON, supporting
+                                                                                 methods, including simulated annealing (SA), DREAMPlace,
+iterative feedback integration, incremental optimization, and
+                                                                                 ChiPFormer, OpenROAD’s Hier-RTLMP, and our proposed
+convergence checking. Through this modular and auditable
+                                                                                 CHIP-MAP, on five representative benchmarks. For each de-
+mechanism, CHIP-MAP consistently produces legal and high-
+                                                                                 sign, the LEF/DEF output from the floorplanning stage was
+quality macro layouts under strict design rules and achieves
+                                                                                 converted to Bookshelf format and processed by each place-
+efficient convergence within a limited number of iterations.
+                                                                                 ment engine. The resulting placements were then re-imported
+                  V. E XPERIMENTAL A NALYSIS                                     into the OpenROAD flow to perform standard cell placement
+                                                                                 (RePlace), clock tree synthesis (TritonCTS), and detailed rout-
+A. Experiment Setup                                                              ing (TritonRoute). We collect PPA metrics (TNS, WNS, power,
+   The framework is built on the principles of prompt engi-                      WL, area) along with congestion, DRC, NVP (the number of
+neering, implemented in Python with a multi-agent architecture                   network violations), and runtime (the execution time of the floor
+where all agents are configured with temperature set to 0 for                    planning stage).
+deterministic outputs. The experiments were carried out on an                       As shown in Table I, under legality constraints, CHIP-MAP
+Intel® Core™ i9-13900H CPU. The backbone language model                          achieves substantial improvements on multiple benchmarks. For
+is GPT-4o [17], accessed via the OpenAI API, while DeepSeek-                     BlackParrot, the MWA-guided Floorplan Agent places highly
+R1 [18] was additionally used for comparison. The framework                      coupled and frequently communicating macros closer together,
+is fully compatible with mainstream EDA toolchains: it can                       effectively shortening critical signal paths and reducing buffer
+replace existing macro placement engines such as Hier-RTLMP                      overhead. As a result, TNS improves from -71.88 ps to -60.25
+in OpenROAD, or serve as an enhancement module within                            ps, WL decreases from 8.21M µm to 8.15M µm, and violations
+commercial flows including Synopsys and Cadence. Its output                      are also reduced. Furthermore, with function and timing aware
+is generated as macro coordinate files, which can be directly                    grouping and a three round floorplan verification feedback
+mappable to standard layout input formats accepted by Synop-                     loop, the system iteratively corrects problematic placements and
+sys, Cadence, and OpenROAD, ensuring seamless integration.                       excessive spacings, reducing violations while stabilizing timing.
+   To evaluate the framework, we employed public benchmarks                      In terms of runtime, since the baselines are implemented in
+from the OpenROAD GitHub repository [16], including 64-bit                       OpenROAD, we only compare macro-placement search time:
+RISC-V cores (BlackParrot and Ariane136), SweRV wrapper,                         CHIP-MAP is faster on large designs, while slightly slower on
+
+
+
+
+    Authorized licensed use limited to: Shanghai Jiaotong University. Downloaded on September 10,2026 at 12:07:20 UTC from IEEE Xplore. Restrictions apply.
+small designs but still within an acceptable range. All results are                                                                 Fragmented     Compact     Congestion       Long wires   Low utilization
+
+averaged over 10 independent runs, with up to three feedback
+iterations per run.
+                                                                                                                                                                            A
+
+                                                                                                                                                                                       B
+C. Evaluation Under Extreme Area Constraints                                                                                       OpenROAD      CHIP-MAP    CHIP-MAP         CHIP-MAP       CHIP-MAP
+                                                                                                                                                             w/o group      w/o MWA+SCUS      w/o SCUS
+   We conducted a core area compression experiment to eval-                                                                      Fig. 6: Layout comparison on Ariane136 with ablation study.
+uate the robustness of the proposed CHIP-MAP framework                                                                           Yellow boxes indicate problematic regions in each layout.
+against the traditional OpenROAD flow under extreme area
+constraints. For each benchmark and each placement method,                                                                       D. Ablation Experiment
+we gradually reduced the available core region until reaching
+the minimum core area (MinCA) and recorded the key PPA                                                                              In this ablation study, we initially attempted a single-agent
+metrics at their respective MinCA points, including timing                                                                       setting. However, a single LLM was unable to handle multiple
+(TNS, WNS), power, wirelength, area, and MinCA. In this                                                                          tasks simultaneously, often resulting in invalid layouts or non-
+evaluation, CHIP-MAP consistently achieved legal layouts at                                                                      convergence on large-scale designs. Therefore, we only report
+smaller MinCA values and delivered superior PPA results com-                                                                     on the remaining three variants. All experimental results are
+pared to OpenROAD. In contrast, OpenROAD’s PPA metrics                                                                           normalized, with our method set at 1 as the baseline to ensure
+degraded more severely under its compression limitations. As                                                                     comparability between metrics on different scales. Our method
+shown in Table II, the optimization percentages relative to                                                                      integrates group agent chain-of-thought reasoning together with
+OpenROAD highlight the ability of CHIP-MAP to maintain                                                                           the MWA and SCUS optimization tools. The w/o group setting
+design quality under tighter area constraints. These results                                                                     removes the COT reasoning of the group agent; the w/o
+demonstrate that our framework can generate ultracompact                                                                         MWA+SCUS setting discards all optimization tools; and the
+layouts with more favorable PPA trade-offs under extreme area                                                                    w/o SCUS setting removes only SCUS while retaining MWA
+constraints. The superior performance of CHIP-MAP under                                                                          and group-agent reasoning.
+aggressive core area compression establishes it as a more robust                                                                    As shown in Fig. 5, the results indicate that our method
+solution than conventional methods for workflows that require                                                                    achieves the best performance in all benchmarks. In Ariane136,
+maximal area efficiency.                                                                                                         the removal of the group agent degrades WNS by up to 6×,
+                                                                                                                                 while the removal of MWA + SCUS produces better results
+TABLE II: PPA COMPARISON UNDER MINIMUM CORE                                                                                      than the removal of the group agent, but still suffers significant
+AREA COMPRESSION LIMITS.                                                                                                         degradation. Similar trends are observed in other benchmarks,
+            Name          Method     Timing (ps) Power (mW) WL (µm) Area (µm2 ) MinCA                                            where the w/o SCUS method shows some improvement over
+                                     TNS WNS
+            Black Parrot  CHIP-MAP  -142.17  -1.52
+                          OpenROAD -163.24 -2.10
+                                                    261
+                                                    264
+                                                             8054852
+                                                             8456325
+                                                                      785426
+                                                                      806325
+                                                                                6597190
+                                                                                7182400
+                                                                                                                                 w/o MWA+SCUS.
+            Ariane136     CHIP-MAP -3022.32  -1.34  568      6642368  778456    1257760                                             As shown in Fig. 6, the placement results clearly explain
+                          OpenROAD -3366.36 -1.71   572      6693242  789339    1320200
+            Swerv wrapper CHIP-MAP  -584.04 -0.60
+                          OpenROAD -683.55 -0.83
+                                                    681
+                                                    684
+                                                             4781118
+                                                             5131627
+                                                                      677565
+                                                                      679442
+                                                                                 935610
+                                                                                 935614
+                                                                                                                                 the performance degradation. The yellow regions indicate that
+            Chameleon     CHIP-MAP   -2.14
+                          OpenROAD -3.62
+                                             -0.03
+                                             -0.06
+                                                    882
+                                                    886
+                                                             1482132
+                                                             1502348
+                                                                      234672
+                                                                      235423
+                                                                                9832500
+                                                                                9520000
+                                                                                                                                 OpenROAD produces large unusable notch areas Anotch , which
+            Microwatt     CHIP-MAP   -0.23
+                          OpenROAD -0.84
+                                             -0.07
+                                             -0.11
+                                                    101
+                                                    104
+                                                             9488196
+                                                            11354329
+                                                                     4953600
+                                                                     4982174
+                                                                                9334900
+                                                                                9396400
+                                                                                                                                 fragment the standard cell regions and reduce overall uti-
+                                                                                                                                 lization. In the w/o group method, the absence of grouping
+                                                    w/o group
+                                                                                      6
+                                                                                                                  w/o group      constraints causes macros to pile up, leading to severe con-
+                                                    w/o MWA+SCUS                                                  w/o MWA+SCUS
+         2.5
+                                                    w/o SCUS                          5
+                                                                                                                  w/o SCUS       gestion and increased timing delay. In the w/o MWA+SCUS
+                                                    CHIP-MAP                                                      CHIP-MAP
+Normalized value
+
+
+
+
+                                                                   Normalized value
+
+
+
+
+                   2
+                                                                                      4
+                                                                                                                                 method, strongly connected modules (A and B) fail to re-
+         1.5
+                                                                                      3
+                                                                                                                                 main adjacent, forcing interconnects to become unnecessarily
+                   1                                                                  2
+                                                                                                                                 long and significantly increasing critical path delay. Although
+         0.5                                                                          1                                          w/o SCUS produces reasonable placement, the lack of layout
+                   0                                                                  0                                          quality evaluation results in insufficient compactness, reducing
+                        Tns    Wns      Power       WL    Area                            Tns   Wns     Power     WL    Area
+
+                                     Black Parrot                                                     Ariane136                  utilization and limiting PPA improvements.
+                                                    w/o group                                                     w/o group
+
+                   3
+                                                    w/o MWA+SCUS                                                  w/o MWA+SCUS                          VI. C ONCLUSION
+                                                    w/o SCUS                          2                           w/o SCUS
+                                                                                                                  CHIP-MAP          In this paper, we propose CHIP-MAP, a fully automated
+                                                                   Normalized value
+
+
+
+
+         2.5                                        CHIP-MAP
+Normalized value
+
+
+
+
+                                                                            1.5
+                   2
+                                                                                                                                 multi-agent framework for macro placement that leverages
+         1.5                                                                          1
+                                                                                                                                 large language models to coordinate four specialized agents
+                   1
+                                                                            0.5                                                  with MWA and SCUS evaluators, achieving iterative layout
+         0.5
+
+                                                                                      0
+                                                                                                                                 optimization and consistent PPA improvements on OpenROAD
+                   0
+                                                                                          Tns   Wns     Power     WL    Area
+                        Tns    Wns      Power
+                               Swerv_wapper
+                                                    WL    Area
+                                                                                                  Chameleon
+                                                                                                                                 benchmarks. Through standardized agent I/O and coordinate
+                                                                                                                                 output support, the framework enables plug-and-play integra-
+Fig. 5: Performance comparison of different CHIP-MAP com-                                                                        tion with industrial EDA flows. This study is the first to validate
+ponent combinations on key metrics, averaged over 10 inde-                                                                       the effectiveness of large language models in macro placement
+pendent runs, each with 3 feedback iterations.                                                                                   with good generalization across different designs.
+
+
+
+
+                       Authorized licensed use limited to: Shanghai Jiaotong University. Downloaded on September 10,2026 at 12:07:20 UTC from IEEE Xplore. Restrictions apply.
+                              R EFERENCES                                        [11] Z. Wang, Y. Shen, X. Yao, et al., “ChatPattern: Layout pattern customiza-
+                                                                                      tion via natural language,” in Proc. ACM/IEEE Design Autom. Conf.
+ [1] S. Garg and N. K. Shukla, “A study of floorplanning challenges and               (DAC), 2024, pp. 1–6.
+     analysis of macro placement approaches in physically aware synthesis,”      [12] B. Liu, H. Zhang, X. Gao, et al., “LayoutCopilot: An LLM-powered
+     Int. J. Hybrid Inf. Technol., vol. 9, no. 1, pp. 279–290, 2016.                  multi-agent collaborative framework for interactive analog layout design,”
+ [2] H. Pan, C. Lan, Y. Liu, Z. Wang, L. Shang, X. Zeng, F. Yang, and K. Zhu,         arXiv preprint arXiv:2406.18873, 2024.
+     “Physically aware synthesis revisited: guiding technology mapping with      [13] C. Luo, Y. Shen, Z. Zhu, et al., “LayoutLLM: Layout instruction tuning
+     primitive logic gate placement,” in Proc. IEEE/ACM Int. Conf. Comput.-           with large language models for document understanding,” in Proc.
+     Aided Des. (ICCAD), 2024, pp. 1–9.                                               IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR), 2024, pp.
+ [3] Y. Zhao, L. Zou, and B. Yu, “Invited: Physical design for advanced               15630–15640.
+     3D ICs: Challenges and solutions,” in Proc. Int. Symp. Physical Design      [14] Y. Lai, Y. Mu, and P. Luo, “MaskPlace: Fast chip placement via
+     (ISPD), 2025, pp. 209–216.                                                       reinforced visual representation learning,” in Adv. Neural Inf. Process.
+ [4] I. L. Markov, J. Hu, and M.-C. Kim, “Progress and challenges in VLSI             Syst. (NeurIPS), vol. 35, pp. 24019–24030, 2022.
+     placement research,” in Proc. IEEE/ACM Int. Conf. Comput.-Aided Des.        [15] C. T. Ho and H. Ren, “Large language model (LLM) for standard cell
+     (ICCAD), 2012, pp. 275–282.                                                      layout design optimization,” arXiv preprint arXiv:2406.06549, 2024.
+ [5] A. B. Kahng, “Solvers, engines, tools and flows: The next wave for          [16] OpenROAD, “OpenROAD,” [Online]. Available: https://github.com/
+     AI/ML in physical design,” in Proc. Int. Symp. Physical Design (ISPD),           The-OpenROAD-Project/
+     2024, pp. 117–124.                                                          [17] OpenAI, “GPT-4o,” [Online]. Available: https://openai.com/index/
+ [6] I.-L. Tseng, “Challenges in floorplanning and macro placement for                hello-gpt-4o
+     modern SoCs,” in Proc. Int. Symp. Physical Design (ISPD), 2024, pp.         [18] DeepSeek, “DeepSeek-R1: Incentivizing Reasoning Capability in LLMs
+     71–72.                                                                           via reinforcement learning,” [Online]. Available: https://www.deepseek.
+ [7] C. K. Cheng, A. B. Kahng, S. Kundu, Y. Wang, and Z. Wang, “Assessment            com/
+     of reinforcement learning for macro placement,” in Proc. Int. Symp.         [19] A. Vidal-Obiols, et al., “RTL-aware dataflow-driven macro placement,” in
+     Physical Design (ISPD), 2023, pp. 158–164.                                       Proc. Design, Autom. Test Eur. Conf. Exhib. (DATE), 2019, pp. 924–929.
+ [8] P. Liao, S. Liu, Z. Chen, W. Lv, Y. Lin, and B. Yu, “DREAMPlace:            [20] Z. Wang, Z. Geng, Z. Tu, et al., “Benchmarking end-to-end per-
+     Timing-driven global placement with momentum-based net weighting,”               formance of AI-based chip placement algorithms,” arXiv preprint
+     in Proc. Design, Autom. Test Eur. Conf. Exhib. (DATE), 2022, pp. 939–            arXiv:2407.15026, 2024.
+     944.
+ [9] Y. Lai, J. Liu, Z. Tang, B. Wang, J. Hao, and P. Luo, “ChipFormer:
+     Transferable chip placement via offline decision transformer,” arXiv
+     preprint arXiv:2306.14744, 2023.
+[10] J. Pan, G. Zhou, C. C. Chang, et al., “A survey of research in large
+     language models for electronic design automation,” ACM Trans. Design
+     Autom. Electron. Syst., in press.
+
+
+
+
+    Authorized licensed use limited to: Shanghai Jiaotong University. Downloaded on September 10,2026 at 12:07:20 UTC from IEEE Xplore. Restrictions apply.
+

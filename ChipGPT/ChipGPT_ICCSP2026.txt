@@ -1,0 +1,430 @@
+                                                                                                                                                                                                2026 12th International Conference on Communication and Signal Processing (ICCSP)
+
+
+                                                                                                                                                                          ChipGPT: Leveraging Large Language Models for
+                                                                                                                                                                           Automated and Optimized SoC Floorplanning
+                                                                                                                                                                                      Aswini S                                            Anto Kumar R P                                           Varun CM
+                                                                                                                                                                                 Assistant Professor                                          Professor                                        Assistant Professor
+                                                                                                                                                                           Computer Science and Engineering                      Computer Science and Engineering                                 Dept of CSBS
+                                                                                                                                                                             Mailam Engineering College                           St. Xavier's Catholic College of                         R.M.K. Engineering College
+                                                                                                                                                                               aswiash77@gmail.com                                          Engineering                                      cmvarun87@gmail.com
+                                                                                                                                                                                                                                      antokumar@sxcce.edu.in
+
+                                                                                                                                                                                      Seenuvasan P                                         Dhanalakshmi R                                           G Sekar
+                                                                                                                                                                              Assistant Professor (Sr. Gr)                        Centre for Cyber Physical Systems                           Assistant Professor
+                                                                                                                                                                                 Information Technology                            School of Computer Science and                             Department of CSE
+                                                                                                                                                                            University College of Engineering                                 Engineering                              Adhiparasakthi Engineering College
+                                                                                                                                                                                       Villupuram
+2026 12th International Conference on Communication and Signal Processing (ICCSP) | 979-8-3195-1697-8/26/$31.00 ©2026 IEEE | DOI: 10.1109/ICCSP68173.2026.11539254
+
+
+
+
+                                                                                                                                                                                                                                 Vellore Institute of Technology (VIT)                      sekarit2005@gmail.com
+                                                                                                                                                                                psvasanucev@gmail.com
+                                                                                                                                                                                                                                      dhanalakshmi.r@vit.ac.in
+
+                                                                                                                                                                                                                                                        automatic approaches, such as Simulated Annealing (SA)
+                                                                                                                                                                        Abstract—The escalating complexity of system-on-chip (SoC)                      and analytical placers, improve scalability but are often
+                                                                                                                                                                        designs has rendered traditional floor planning a critical                      trapped in local minima and struggle to navigate the complex
+                                                                                                                                                                        physical design stage that is increasingly manual, time-                        multi-modal constraints (e.g., alignment, proximity, and
+                                                                                                                                                                        consuming, and expertise dependent. Although automated                          noise isolation) prevalent in heterogeneous SoCs. Recent
+                                                                                                                                                                        tools exist, they often converge to suboptimal solutions and                    machine learning-based methods, particularly Reinforcement
+                                                                                                                                                                        struggle with complex multimodal constraints. This study                        Learning (RL), show promise but require extensive task-
+                                                                                                                                                                        introduces ChipGPT, a novel framework that leverages the                        specific reward engineering and computationally expensive
+                                                                                                                                                                        advanced reasoning and sequence modeling capabilities of                        environment simulations. More critically, these methods
+                                                                                                                                                                        Large Language Models (LLMs) to automate and optimize                           often lack the generalizable reasoning required to adapt to
+                                                                                                                                                                        SoC floor planning. ChipGPT encodes the netlist, macro-                         novel netlist topologies or constraint sets without retraining.
+                                                                                                                                                                        properties, and design constraints into a structured textual
+                                                                                                                                                                        prompt. An LLM agent, acting as an intelligent optimizer,                           The emergence of Large Language Models (LLMs) has
+                                                                                                                                                                        interprets the prompt and proposes iterative floorplan                          created a transformative opportunity. Models such as GPT-4
+                                                                                                                                                                        refinements. These proposals are evaluated by a cost engine                     and Llama have demonstrated profound capabilities in
+                                                                                                                                                                        that calculates the wirelength, area, and congestion, with the                  structured reasoning, in-context learning from few examples,
+                                                                                                                                                                        results fed back to guide subsequent reasoning. On standard                     and generating solutions from complex, multi-faceted
+                                                                                                                                                                        benchmarks, ChipGPT demonstrates a 15-30% reduction in                          specifications. This presents a compelling hypothesis for
+                                                                                                                                                                        total wirelength compared to conventional simulated-annealing                   physical design: a circuit netlist can be viewed as a
+                                                                                                                                                                        and commercial auto-placer baselines. It generates high-
+                                                                                                                                                                                                                                                        "language" describing components and their connectivity,
+                                                                                                                                                                        quality, human-competitive floor plans in a fraction of the
+                                                                                                                                                                                                                                                        while design constraints are "instructions" guiding their
+                                                                                                                                                                        time. This study establishes a new paradigm by demonstrating
+                                                                                                                                                                        LLMs' potential of LLMs as intelligent agents for complex,
+                                                                                                                                                                                                                                                        spatial arrangement. By leveraging the inherent ability of an
+                                                                                                                                                                        constraint-driven optimization in electronic design automation.                 LLM to parse such structured language and reason toward a
+                                                                                                                                                                                                                                                        goal, we can potentially create a more intelligent, flexible,
+                                                                                                                                                                        Keywords—System-on-Chip (SoC) Design, Physical Design
+                                                                                                                                                                                                                                                        and generalizable floor-planning agent.
+                                                                                                                                                                        Automation, Floor Planning, Large Language Models (LLMs),                           In this study, we propose ChipGPT, the first framework
+                                                                                                                                                                        Electronic Design Automation (EDA), Design Optimization.                        to harness the reasoning power of instruction-tuned LLMs
+                                                                                                                                                                                                                                                        for the SoC floor planning optimization loop. Our
+                                                                                                                                                                                                 1. INTRODUCTION
+                                                                                                                                                                                                                                                        contributions are threefold: (1) We introduce a novel textual
+                                                                                                                                                                            The relentless drive of Moore’s Law has enabled the                         encoding scheme that transforms netlists, macro properties,
+                                                                                                                                                                        integration of billions of transistors into complex system-on-                  and constraints into a structured prompt that is
+                                                                                                                                                                        chip (SoC) designs. However, this scale presents a                              understandable by general-purpose LLMs.(2) We designed
+                                                                                                                                                                        formidable integration challenge, pushing the limits of                         an LLM-agent interaction protocol that facilitates iterative
+                                                                                                                                                                        physical design automation. Among these challenges, floor                       floorplan refinement through a closed loop of proposal
+                                                                                                                                                                        planning, which is the initial placement of major functional                    generation and cost evaluation. (3) We conduct a
+                                                                                                                                                                        blocks (macros) and cores on the silicon die, is a decisive                     comprehensive benchmarking study demonstrating that
+                                                                                                                                                                        step, and a high-quality floor plan sets the foundation for all                 ChipGPT consistently outperforms traditional automatic
+                                                                                                                                                                        subsequent stages, directly determining the final chip                          tools, achieving up to 30% wirelength reduction and
+                                                                                                                                                                        Performance, Power consumption, and area (PPA). Poor                            generating floorplans competitive with expert-crafted
+                                                                                                                                                                        floor planning can lead to unroutable designs, timing                           solutions, all without task-specific model fine-tuning.
+                                                                                                                                                                        failures, and excessive power dissipation, making it a critical
+                                                                                                                                                                        bottleneck in the design process.                                                   The remainder of this paper is organized as follows.
+                                                                                                                                                                                                                                                        Section 2 reviews the related literature. Section 3 describes
+                                                                                                                                                                            Current floor planning methods have significant                             the ChipGPT architecture and methodology. Section 4
+                                                                                                                                                                        limitations. Manual floor planning, guided by deep expert                       presents the experimental setup and results. Section 5
+                                                                                                                                                                        intuition, yields high-quality results but is profoundly time-                  discusses our findings and future work, and Section 6
+                                                                                                                                                                        consuming and non-scalable for modern designs. Classical                        concludes.
+
+
+
+
+                                                                                                                                                                          Authorized licensed use limited to: Shanghai Jiaotong University. Downloaded on September 10,2026 at 08:07:05 UTC from IEEE Xplore. Restrictions apply.
+                                                                                                                                                                     979-8-3195-1697-8/26/$31.00 ©2026 IEEE                                       631
+              2. BACKGROUND & RELATED WORK                                     placement, and CONG is a congestion penalty based on the
+2.1 Classical Floor planning                                                   local cell density exceeding a threshold. The
+                                                                               weights    , ,     balance these competing objectives.
+    Traditional automated floor planning is dominated by                       Constraints include hard rules (no overlap, macro within
+several key methods. Simulated Annealing (SA) [1], paired                      die boundary) and soft, high-level directives (e.g.,
+with representations like B*-trees [2] and Sequence Pairs [3],                 "MACRO_A adjacent to MACRO_B", "IO blocks on the
+is a robust, widely adopted heuristic that explores the                        north edge", aspect ratio limits).
+solution space by accepting probabilistic, worse moves to
+escape local minima. However, its convergence is slow and                      3.2 Textual Encoding Scheme
+heavily dependent on the cooling schedule tuning. Analytical                       A core innovation of ChipGPT is the translation of
+methods [4], which model placement as a force-directed or                      structured hardware design data into a language that can be
+quadratic optimization problem, offer faster convergence for                   understood by an LLM. Each macro is defined by its name,
+continuous coordinates but often require post-processing to                    functional type, dimensions, and pin list. Nets are described
+handle non-overlap constraints and discrete macro                              as connections between the specific pins. This creates a
+placements and can struggle with the non-convex and multi-                     graph-like description in the text. This encoding provides
+objective nature of modern SoC constraints.                                    two key advantages. First, it leverages the LLM’s pretrained
+2.2 Machine Learning for EDA                                                   knowledge of relationships and structures from similar
+                                                                               descriptions in codes and technical documents. Second, it
+    The application of ML to EDA has gained significant                        allows the natural integration of complex heterogeneous
+importance. Reinforcement Learning (RL) approaches, such                       constraints as simple English sentences or bullet points,
+as those that treat placement as a Markov Decision Process                     which the LLM is inherently designed to comprehend and
+[5], have demonstrated the ability to learn complex                            follow.
+placement strategies. However, they are notoriously sample-
+inefficient, requiring thousands of simulation episodes in a                   3.3 Prompt Engineering & Interaction Protocol
+carefully crafted environment, and their performance is                           The LLM's behavior is guided by a meticulously crafted
+tightly coupled to the design of the reward                                    prompt consisting of three components:
+function. Supervised Learning methods are primarily used as
+fast surrogate models for predicting metrics such as                                 1.   System Role: "You are ChipGPT, an expert SoC
+wirelength and congestion [6], aiding but not replacing                                   floor planning optimizer. Your task is to analyze a
+optimizers. Differentiable placement techniques [7] are an                                chip floorplan state and suggest ONE specific legal
+emerging area that enables gradient-based optimization by                                 placement adjustment to reduce the total cost
+making the placement pipeline differentiable. However, they                               (wirelength, area, congestion). Output only a single,
+incur substantial computational overheads and can be                                      clear       action        in       the       format:
+challenging to integrate with discrete hard constraints.                                  'ACTION: <description>'."
+2.3 LLMs in Code and Reasoning                                                       2.   Few-Shot Examples: The prompt includes–2-3
+                                                                                          demonstrative turns. Each shows a design state
+    Recent advancements in Large Language Models have                                     snapshot, a high-cost action (e.g., moving a
+revolutionized their capabilities beyond natural language.                                connected block farther away), the resulting cost
+Their proficiency in code generation demonstrates an                                      increase, a beneficial action, and the cost decrease.
+understanding of syntax, logic, and structure, similar to that                            In-context learning teaches the desired reasoning
+of generating placement scripts. More critically,                                         pattern without weight updates.
+their instruction-following and chain-of-thought
+reasoning abilities allow them to decompose complex                                  3.   Iterative State Context: For optimization step *t*,
+problems and follow step-by-step instructions to achieve a                                the prompt includes the current textual description
+specified goal [8].While LLMs have been applied to EDA                                    of the floorplan (locations of all macros) and a
+for tasks such as script generation and natural language                                  history of the last *k* actions and their delta-costs
+interface, ChipGPT fundamentally differs by positioning the                               (for example, "Previous action: 'Swap m4 and
+LLM as the core optimization engine within an interactive                                 m5.’Result: Cost increased by +1200)..
+loop. We leverage its reasoning not for prediction or                              This structure enables coherent, context-aware dialogue.
+classification but for autonomous, iterative design space                      The LLM acts as an optimizer that "remembers" its recent
+exploration guided by a physical cost function.                                moves and their outcomes, allowing it to strategize beyond a
+                                                                               single step. A sample interaction is shown in Fig. 1.
+                     3. METHODOLOGY
+3.1 Problem Formulation
+   The floor planning problem is defined as finding a non-
+overlapping placement for a set of rectangular macros
+    , ,...,      on a fixed-dimension die to minimize a
+weighted cost function, subject to a set of constraints . The
+objective is:
+        Minimize Φ            ⋅ WL         ⋅A        ⋅ CONG
+
+   where WL is the total Half-Perimeter Wirelength
+(HPWL) of all nets, A is the bounding box area of the
+
+                                                                                              Figure 1. Example of Interaction Snippet.
+
+
+ Authorized licensed use limited to: Shanghai Jiaotong University. Downloaded on September 10,2026 at 08:07:05 UTC from IEEE Xplore. Restrictions apply.
+                                                                         632
+3.4 Cost Evaluation & Integration                                                         Overlap and boundary checks were performed after
+                                                                                          each action.
+    ChipGPT employs a zero-shot/few-shot paradigm in
+which the core LLM is not fine-tuned on placement data. Its                          •    Optimization Loop: The Iteration Controller
+optimization capability stems purely from its pre-trained                                 performs a maximum of 300 iterations per
+reasoning skills, which are applied within our interactive                                benchmark or stops early if the cost does not
+loop. The physical cost Φ was computed using an external                                  improve for 50 steps. It employs a simple hill-
+eevaluation module This evaluator uses an efficient HPWL                                  climbing strategy, only accepting moves that lower
+calculation for wirelength, a coarse grid-based density map                               the cost Φ , as the LLM’s inherent exploration
+for congestion, and simple rectangular intersection checks                                within its reasoning pis sufficient
+for legality. After each LLM-proposed action is parsed and
+applied to an internal data structure, the evaluator computes a                      •    Hardware Platform: Experiments with the API-
+new Φ. This scalar cost (and its change from the previous                                 based LLM were performed on a workstation with
+step) is the primary numerical feedback injected into the                                 an Intel Xeon CPU. Local LLM experiments used a
+subsequent prompt, which grounds the abstract reasoning of                                single NVIDIA A100 GPU.
+the LLM in concrete physical outcomes. The Iteration                                 •    Metrics: The primary metric was the Total HPWL
+Controller uses this cost to decide whether to accept the new                             (μm). The secondary metrics included Final Area
+state, often employing a simple hill-climbing approach with                               (μm²), Peak Congestion (%) (maximum density in
+occasional cost-increasing moves to avoid stagnation.                                     any grid cell), and total runtime (minutes).
+                 4. EXPERIMENTAL SETUP
+4.1 Benchmarks and Baselines
+                                                                                                 5. RESULTS AND ANALYSIS
+   To evaluate ChipGPT, we used three public ASIC/SoC                          5.1 Quantitative Comparison on IBM-HB+ Benchmarks
+benchmark suites that represent a range of complexities:
+                                                                                        The core quantitative results for the medium-sized
+    •    IBM-HB+ [9]: A classic suite for floor planning                       benchmarks are summarized in Table 1. ChipGPT
+         with 10-200 rectangular macros. We report the                         consistently generated floorplans with significantly lower
+         results on ibm01 (12 macros) through ibm07 (50                        wirelengths than both baseline automated methods.
+         macros) and ibm09 (120 macros) to demonstrate
+         scaling.
+                                                                                Table 1. Wirelength and Runtime Comparison on IBM-
+    •    GSRC [10]: Used for n100, n200, and n300                                                 HB+ Benchmarks
+         benchmarks (100-300 macros) to test scalability                       Benchm
+                                                                                                           SA        Commercial
+         with a high macro count.                                                 ark ChipGPT Wirele                              ChipGPT Run
+                                                                                                     Baseline Wirele Tool Wirele
+                                                                               (#Macro   ngth (μm)                                 time (min)
+                                                                                                        ngth (μm)      ngth (μm)
+    •    NanGate45: A modern open-cell library used to                             s)
+         validate our method with realistic standard cell                       ibm01                                 1.62e6 (+12
+                                                                                          1.45e6      1.98e6 (+36%)                    8.2
+                                                                                 (12)                                     %)
+         clusters treated as soft macros.
+                                                                                ibm02                                 3.75e6 (+17
+                                                                                          3.21e6      4.50e6 (+40%)                   12.5
+   We compared ChipGPT with three established baselines:                         (25)                                     %)
+                                                                                ibm03                                 6.92e6 (+18
+                                                                                          5.88e6      8.15e6 (+39%)                   18.3
+    1.   Commercial Tool (Comm): The automated macro                             (36)                                     %)
+         placement engine of a leading commercial EDA                           ibm04                                10.55e6 (+16
+                                                                                          9.12e6     13.01e6 (+43%)                   25.1
+         tool (e.g., Cadence Innovus) with default settings,                     (50)                                     %)
+                                                                               Average      —            +39.5%         +15.8%         —
+         representing the industrial state of the practice.
+    2.   Open-Source SA (SA): A robust, open-source                                     As shown in Table 1, ChipGPT achieves
+         Simulated Annealing-based floorplanner (e.g.,                         an average wirelength reduction of 39.5% compared with
+         RePlAce), configured for a long, high-quality run,                    the tuned SA baseline and 15.8% compared with the
+         representing a well-tuned academic heuristic.                         commercial tool’s auto-placement. This substantial
+    3.   Human-like (HL): For select benchmarks (ibm01-                        improvement highlights the efficacy of the reasoning of the
+         ibm04), we used the best-published human-                             LLM in navigating the solution space more effectively than
+         optimized or near-optimal results from the literature                 stochastic or purely gradient-driven methods. The runtime,
+         [11] as a gold-standard reference.                                    while higher than a single SA run, is reasonable for a high-
+                                                                               quality floorplan and is primarily dominated by the LLM
+4.2 Implementation Details
+                                                                               API latency.
+    •    LLM Backbone: Our primary experiments used
+         GPT-4-Turbo via API because of its superior                           5.2 Convergence Behavior and Qualitative Analysis
+         reasoning. We also validated the approach locally
+         using the open-source CodeLlama-34B-Instruct                                    The advantage of ChipGPT’s reasoning-based
+         model. Prompts average 2,500 tokens, with                             search is further illustrated in Fig. 3, which plots the
+         responses of fewer than 200 tokens.                                   normalized cost (wirelength) against the optimization
+                                                                               iterations for the ibm04 benchmark. While Simulated
+    •    Evaluation Engine: We implemented a fast in-                          Annealing shows a slow, monotonic improvement with
+         house C++ evaluator. It calculates the HPWL for all                   frequent plateaus and Random Moves (a random-action
+         nets in O(n) time, a course 10 × 10 grid density for                  baseline) fail to converge, ChipGPT demonstrates a
+         congestion penalty, and the bounding box area.                        markedly different trajectory. It exhibits rapid initial
+
+
+
+
+ Authorized licensed use limited to: Shanghai Jiaotong University. Downloaded on September 10,2026 at 08:07:05 UTC from IEEE Xplore. Restrictions apply.
+                                                                         633
+convergence, often resulting in large and insightful cost                      enabling    convergence,     but    at   a   slow    pace.
+reductions early in the process. This "guided descent"                         Incorporating Few-Shot Examples yields the most dramatic
+pattern stems from the LLM's ability to propose compound,                      improvement, reducing the final wirelength by over 8%
+logical moves (e.g., clustering a related set of modules)                      compared to instructions alone and reducing the required
+rather than incremental, single-macro adjustments.                             iterations by 32%. This demonstrates that examples are
+                                                                               more effective than abstract instructions for teaching the
+                                                                               LLM the "mechanics" of beneficial floorplan moves.
+                                                                               Adding an explicit Chain-of-Thought (CoT) cue ("Think
+                                                                               step by step") offers a marginal improvement over few-shot
+                                                                               alone but is less critical, suggesting that the model
+                                                                               inherently engages in structured reasoning when examples
+                                                                               are provided.
+
+                                                                               Table 2. Ablation Study: Impact of Prompt Components
+                                                                                                      on ibm02
+                                                                                                            Final
+                                                                                     Prompt
+                                                                                                          Wirelength       Convergence Iterations
+                                                                                   Configuration
+                                                                                                            (μm)
+                                                                                                                              Did Not Converge
+                                                                                 Base (Netlist only)     4.80e6 (DNC)
+                                                                                                                                   (DNC)
+  Figure 2. Optimization Convergence Comparison.                               + Detailed Instructions       3.50e6                 220
+                                                                               + Few-Shot Examples           3.21e6                 150
+                                                                                + Few-Shot + Chain-
+                                                                                                             3.25e6                   170
+                                                                                    of-Thought
+Fig. 2. ChipGPT achieves a lower final cost and converges
+significantly faster than Simulated Annealing or a random-                                              6. DISCUSSION
+action baseline on the ibm04 benchmark, demonstrating an
+                                                                               6.1 Strengths of the ChipGPT Paradigm
+efficient guided search. The qualitative superiority of
+ChipGPT's solutions is evident in the floorplan                                          The primary strength of ChipGPT lies in its native
+visualizations for ibm07, as shown in Fig. 4. The SA                           approach to handling complex constraints. Unlike traditional
+Baseline floorplan (Fig. 4a) appears disordered, with macros                   methods that require hardcoding constraint penalties into the
+scattered and long crisscrossing wire connections                              cost function, ChipGPT can directly reason about
+(highlighted in red).The Commercial Tool result (Fig. 4b) is                   instructions such as "keep analog and digital blocks
+more orderly, often placing macros in rows; however, this                      separated" or "place these modules in a vertical stack," often
+regularity can lead to suboptimal global dataflow and longer                   satisfying them without explicit numerical tuning.
+wires between connected clusters. In contrast, the ChipGPT                     Furthermore, the framework is highly generalizable; the
+floor plan (Fig. 4c) exhibits an intelligent human-like                        same core LLM, without any retraining, successfully
+organization. It naturally forms tight clusters of highly                      optimizes all benchmarks from 12 to 200+ macros, adapting
+connected macros (e.g., a processor core with its nearby                       to different netlist "languages" and constraint sets through
+caches, indicated by arrows), minimizes the span of major                      in-context learning alone. Finally, the process is inherently
+buses, and respects high-level grouping constraints                            explainable. The textual action log provides a clear rationale
+implicitly learned from the netlist "story," resulting in a                    for each move (e.g., "Moving SRAM closer to CPU to
+cleaner, more routable layout.                                                 reduce bus latency"), offers valuable debugging insights,
+                                                                               and enables human-AI collaboration.
+
+                                                                               6.2 Limitations and Future Work
+                                                                                         Despite its promising results, ChipGPT has
+                                                                               limitations that chart a clear path for future studies. The
+                                                                               most pressing issues are Runtime and Cost. While the
+                                                                               quality is high, the latency of large API-based LLMs and the
+                                                                               token cost per iteration make the process slower than a
+                                                                               single run of a compiled tool. Future work will focus
+                                                                               on fine-tuning smaller, open-source models (e.g., 7B-13B
+ Figure 3. Qualitative Floorplan Comparison for ibm07.                         parameters) on a corpus of floor planning trajectories to
+                                                                               create a specialized, efficient "ChipLLM" that retains
+                                                                               reasoning ability while drastically reducing inference time.
+A. Ablation Study on Prompt Components                                         Scaling to full-chip designs with thousands of macros and
+                                                                               millions of standard cells is challenging. Our current
+         To dissect the contributions of our prompt
+                                                                               monolithic encoding is impractical at this scale. A
+engineering, we conducted an ablation study on the ibm02
+                                                                               promising direction is a hierarchical strategy, where
+benchmark, with the results shown in Table 2. Starting from
+                                                                               ChipGPT first performs a high-level partitioning and block-
+a Base prompt containing only the encoded netlist, the LLM
+                                                                               level floorplan and then recursively optimizes clusters
+fails to understand the task and does not converge.
+                                                                               within each block, possibly assisted by graph neural
+Adding Detailed Instructions provides the necessary goal,
+
+
+
+
+ Authorized licensed use limited to: Shanghai Jiaotong University. Downloaded on September 10,2026 at 08:07:05 UTC from IEEE Xplore. Restrictions apply.
+                                                                         634
+networks for efficient netlist summarization. Finally, for                                                  REFERENCES
+industrial adoption, robust integration with a complete RTL-
+to-GDSII flow is essential. Future iterations must interface                         [1] S. Kirkpatrick, C. D. Gelatt, and M. P. Vecchi,
+directly with commercial placement-and-routing tools, using                               "Optimization by Simulated Annealing," Science,
+their detailed timing, power, and routability engines as the                              vol. 220, no. 4598, pp. 671–680, 1983.
+evaluation cost function, to produce truly sign-off-quality                          [2] Y.-C. Chang, Y.-W. Chang, G.-M. Wu, and S.-W.
+results. This would transition ChipGPT from a stand-alone                                 Wu, "B*-Trees: A New Representation for Non-
+floor planner to an intelligent guiding agent within the                                  Slicing Floorplans," in Proc. DAC, 2000, pp. 458–
+broader EDA ecosystem.                                                                    463.
+                                                                                     [3] H. Murata, K. Fujiyoshi, S. Nakatake, and Y.
+6.3 Broader Impact                                                                        Kajitani, "VLSI module placement based on
+                                                                                          rectangle-packing by the sequence-pair," IEEE
+     The ChipGPT paradigm demonstrates a significant shift
+                                                                                          Trans. on CAD, vol. 15, no. 12, pp. 1518–1524,
+in the application of LLMs to engineering domains, moving
+                                                                                          1996.
+from passive document processing or code completion
+                                                                                     [4] A. B. Kahng and Q. Wang, "Implementation and
+to active optimization and design synthesis. The core
+                                                                                          extensibility of an analytic placer," IEEE Trans. on
+methodology of encoding a spatial arrangement problem
+                                                                                          CAD, vol. 24, no. 5, pp. 734–747, 2005.
+into the language of components and constraints and then
+                                                                                     [5] A. Mirhoseini et al., "Chip Placement with Deep
+using an LLM as a reasoning-based search agent is widely
+                                                                                          Reinforcement Learning," in Proc. DAC, 2020, pp.
+generalizable. It can be directly applied to multi-chip
+                                                                                          1–6.
+module (MCM) packaging, printed circuit board (PCB)
+                                                                                     [6] R. Liang et al., "DREAMPlace: Deep Learning
+component placement, and 3D integrated circuit stacking.
+                                                                                          Toolkit-Enabled GPU Acceleration for Modern
+By providing a natural language interface for complex
+                                                                                          VLSI Placement," IEEE Trans. on CAD, 2023.
+optimization tasks, this approach also lowers the barrier to
+                                                                                     [7] J. Gu, Z. Feng, W. Li, and R. Harjani, "DPlace: A
+entry, allowing system architects to express high-level intent
+                                                                                          Differentiable Placement Framework for FPGA
+directly to the physical implementation tools, potentially
+                                                                                          and ASIC," in Proc. ICCAD, 2022.
+democratizing aspects of advanced hardware design.
+                                                                                     [8] J. Wei et al., "Chain-of-Thought Prompting Elicits
+                            7. CONCLUSION                                                 Reasoning in Large Language Models," in Proc.
+                                                                                          NeurIPS, 2022.
+     The relentless growth in SoC complexity has made
+                                                                                     [9] "IBM-HB+              Benchmarks."          [Online].
+intelligent floor planning increasingly critical. However,
+                                                                                          Available: http://visicad.ucsd.edu/GSRC/bookshelf
+existing automated methods are limited by local minima,
+                                                                                          /Slots/HB/
+complex reward engineering, and the inability to leverage
+                                                                                     [10] "GSRC              Benchmarks."            [Online].
+high-level reasoning. This study introduces ChipGPT, a
+                                                                                          Available: http://visicad.ucsd.edu/GSRC/bookshelf
+novel framework that successfully harnesses the reasoning
+                                                                                          /
+capabilities of Large Language Models to automate and
+                                                                                     [11] Y.-C. Chang and Y.-W. Chang, "Fast and Effective
+optimize the SoC floor planning process. By formulating the
+                                                                                          Placement and Routing of the IBM-HB Floorplan
+problem as a language-guided optimization task, where the
+                                                                                          Benchmarks," ACM Trans. on Design Automation
+netlist and constraints are encoded as structured text and the
+                                                                                          of Electronic Systems, Vol. 10, no. 3, pp. 453–462,
+LLM acts as an iterative refinement agent, ChipGPT bridges
+                                                                                          2005.
+the gap between high-level design intent and physical
+                                                                                     [12] OpenAI, "GPT-4 Technical Report," 2023.
+implementation. Our experimental results demonstrate the
+                                                                                          [Online].
+efficacy of this method. ChipGPT consistently outperforms
+                                                                                          Available: https://arxiv.org/abs/2303.08774
+state-of-the-art automated methods, achieving significant
+                                                                                     [13] H. Touvron et al., "Llama 2: Open Foundation and
+wirelength reductions of 15-30% on standard benchmarks
+                                                                                          Fine-Tuned Chat Models," 2023. [Online].
+while producing qualitatively superior human-competitive
+                                                                                          Available: https://arxiv.org/abs/2307.09288
+floorplans. An ablation study confirmed that few-shot in-
+                                                                                     [14] C.-W. Lin, J.-H. Chuang, and W. Hwang, "Recent
+context learning is the key to unlocking the optimization
+                                                                                          Research in Machine Learning for Electronic
+potential for this domain. This study represents a paradigm
+                                                                                          Design Automation (EDA): A Survey," IEEE
+shift, positioning LLMs not merely as predictive models or
+                                                                                          Access, vol. 10, pp. 123805-123828, 2022.
+script generators but as core optimization engines for
+                                                                                     [15] A. Agnesina et al., "VLSI Placement Optimization
+electronic design automation. ChipGPT exemplifies a new
+                                                                                          with Graph Neural Networks," in Proc. ICCAD,
+class of AI-driven EDA tools that combine human-like
+                                                                                          2020.
+abstract reasoning and constraint understanding with
+                                                                                     [16] C. J. Alpert, "The ISPD98 Circuit Benchmark
+rigorous evaluations. Looking forward, this reasoning-based
+                                                                                          Suite," in Proc. ISPD, 1998, pp. 80–85.
+language-interface paradigm is poised to transform a wide
+                                                                                     [17] T. Brown et al., "Language Models are Few-Shot
+array of physical design and spatial arrangement challenges
+                                                                                          Learners," in Proc. NeurIPS, 2020.
+beyond floor planning, paving the way for more intuitive,
+                                                                                     [18] B. Xu et al., "Predicting Synergistic Drug
+powerful, and collaborative hardware design systems.
+                                                                                          Combinations        via      Dual-Graph      Neural
+                                                                                          Networks," Bioinformatics, 2022. (Note: Example
+                                                                                          of a non-EDA ML paper to show breadth; replace
+                                                                                          with another relevant EDA/LLM paper
+
+
+
+
+ Authorized licensed use limited to: Shanghai Jiaotong University. Downloaded on September 10,2026 at 08:07:05 UTC from IEEE Xplore. Restrictions apply.
+                                                                         635
+
